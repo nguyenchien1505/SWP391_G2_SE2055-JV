@@ -43,6 +43,10 @@ public class User {
     @Column(nullable = false, length = 120)
     private String email;
 
+    @Column(nullable = false, length = 20)
+    private String phone;
+
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private Role role;

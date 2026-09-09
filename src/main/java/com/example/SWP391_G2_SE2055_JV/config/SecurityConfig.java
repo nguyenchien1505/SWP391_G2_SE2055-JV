@@ -50,6 +50,14 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                
+                // User management endpoints
+                .requestMatchers(HttpMethod.GET, "/users/**").hasAnyRole("OWNER", "MANAGER", "HR")
+                .requestMatchers(HttpMethod.POST, "/users/**").hasAnyRole("OWNER", "MANAGER")
+                .requestMatchers(HttpMethod.PUT, "/users/**").hasAnyRole("OWNER", "MANAGER")
+                .requestMatchers(HttpMethod.DELETE, "/users/**").hasRole("OWNER")
+                
+                // Other endpoints
                 .requestMatchers("/analytics/**", "/dashboard/**").hasAnyRole("OWNER", "MANAGER")
                 .requestMatchers("/recruitment/**").hasAnyRole("OWNER", "MANAGER", "DEPARTMENT_MANAGER", "HR")
                 .requestMatchers(HttpMethod.GET, "/scheduling/**")
