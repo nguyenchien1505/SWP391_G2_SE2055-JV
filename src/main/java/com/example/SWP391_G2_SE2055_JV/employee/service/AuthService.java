@@ -24,8 +24,8 @@ public class AuthService {
     private final JavaMailSender mailSender;
 
     /**
-     * Sends a temporary password to the user's email.
-     * The user is flagged to change it on next login.
+     * Sends a temporary password to the given email.
+     * User is flagged to change it on next login.
      */
     @Transactional
     public void forgotPassword(String email) {
@@ -37,17 +37,18 @@ public class AuthService {
         user.setMustChangePassword(true);
         userRepository.save(user);
 
-        sendTempPasswordEmail(user.getEmail(), user.getUsername(), tempPassword);
+        sendTempPasswordEmail(user.getEmail(), tempPassword);
         log.info("Temporary password sent to {}", email);
     }
 
     /**
      * Allows an authenticated user to change their own password.
+     * Principal name is email (set in UserDetailsServiceImpl).
      */
     @Transactional
-    public void changePassword(String username, ChangePasswordRequest request) {
-        User user = userRepository.findByUsername(username)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+    public void changePassword(String email, ChangePasswordRequest request) {
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new ResourceNotFoundException("No account found for email: " + email));
 
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new BusinessException("Current password is incorrect");
@@ -58,15 +59,15 @@ public class AuthService {
         userRepository.save(user);
     }
 
-    private void sendTempPasswordEmail(String to, String username, String tempPassword) {
+    private void sendTempPasswordEmail(String to, String tempPassword) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
         message.setSubject("[Hotel Workforce] Temporary Password");
         message.setText(String.format(
-            "Hello %s,%n%nYour temporary password is: %s%n%n"
-            + "Please log in and change your password immediately.%n%n"
+            "Hello,%n%nYour temporary password is: %s%n%n"
+            + "Please log in with your email and change your password immediately.%n%n"
             + "Hotel Workforce Management System",
-            username, tempPassword
+            tempPassword
         ));
         mailSender.send(message);
     }

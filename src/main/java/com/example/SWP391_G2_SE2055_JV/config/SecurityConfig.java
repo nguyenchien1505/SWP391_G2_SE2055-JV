@@ -1,5 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.config;
 
+import com.example.SWP391_G2_SE2055_JV.config.oauth2.OAuth2LoginFailureHandler;
+import com.example.SWP391_G2_SE2055_JV.config.oauth2.OAuth2LoginSuccessHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,13 +14,11 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
-
 
 @Configuration
 @EnableWebSecurity
@@ -26,51 +26,56 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final UserDetailsService userDetailsService;
+    private final UserDetailsService       userDetailsService;
+    private final OAuth2LoginSuccessHandler successHandler;
+    private final OAuth2LoginFailureHandler failureHandler;
 
-    // ── Public endpoints ─────────────────────────────────────────────────────
     private static final String[] PUBLIC_ENDPOINTS = {
-        "/auth/login",
+        "/auth/login/google",
+        "/auth/unauthorized",
         "/auth/forgot-password",
-        "/auth/reset-password",
+        "/actuator/health"
     };
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-                .maximumSessions(1)          // one active session per user
+                .maximumSessions(1)
             )
-
-            .authenticationProvider(authenticationProvider())
-
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/analytics/**", "/dashboard/**").hasAnyRole("OWNER", "MANAGER")
-                .requestMatchers("/recruitment/**").hasAnyRole("OWNER", "MANAGER", "DEPARTMENT_MANAGER", "HR")
+
+                .requestMatchers("/analytics/**", "/dashboard/**")
+                    .hasAnyRole("OWNER", "MANAGER")
+                .requestMatchers("/recruitment/**")
+                    .hasAnyRole("OWNER", "MANAGER", "DEPARTMENT_MANAGER", "HR")
                 .requestMatchers(HttpMethod.GET, "/scheduling/**")
                     .hasAnyRole("OWNER", "MANAGER", "DEPARTMENT_MANAGER", "SUPERVISOR", "EMPLOYEE")
                 .requestMatchers("/scheduling/**")
                     .hasAnyRole("OWNER", "MANAGER", "DEPARTMENT_MANAGER", "SUPERVISOR")
                 .requestMatchers("/attendance/**").authenticated()
-                .requestMatchers("/laborcost/**").hasAnyRole("OWNER", "MANAGER", "ACCOUNTANT")
+                .requestMatchers("/laborcost/**")
+                    .hasAnyRole("OWNER", "MANAGER", "ACCOUNTANT")
                 .anyRequest().authenticated()
             )
-
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             )
-
-            .formLogin(form -> form
-                .loginProcessingUrl("/auth/login")
-                .successHandler((req, res, auth) -> res.setStatus(HttpStatus.OK.value()))
-                .failureHandler((req, res, ex) -> res.setStatus(HttpStatus.UNAUTHORIZED.value()))
-                .permitAll()
+            // ── Google OAuth2 Login ──────────────────────────────────────────
+            .oauth2Login(oauth2 -> oauth2
+                .authorizationEndpoint(endpoint ->
+                    endpoint.baseUri("/auth/login")   // frontend redirects to this
+                )
+                .redirectionEndpoint(endpoint ->
+                    endpoint.baseUri("/auth/callback/google") // Google redirects back here
+                )
+                .successHandler(successHandler)
+                .failureHandler(failureHandler)
             )
+            // ── Logout ───────────────────────────────────────────────────────
             .logout(logout -> logout
                 .logoutUrl("/auth/logout")
                 .invalidateHttpSession(true)

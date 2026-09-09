@@ -3,7 +3,7 @@
     name: hotel-workforce-management
 
   datasource:
-    url: jdbc:mysql://localhost:3306/hotel_workforce
+    url: jdbc:mysql://localhost:3306/hotel_workforce?useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true
     username: root
     password: password
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -23,6 +23,19 @@
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+  # ── Google OAuth2 ──────────────────────────────────────────────────────────
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id:     ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - email
+              - profile
+            redirect-uri: "{baseUrl}/auth/callback/google"
+
   mail:
     host: smtp.gmail.com
     port: 587
@@ -35,9 +48,8 @@
           starttls:
             enable: true
 
-  # Session configuration (RBAC — no JWT)
   session:
-    timeout: 8h   # session expires after 8 hours of inactivity
+    timeout: 8h
 
 server:
   port: 8080
