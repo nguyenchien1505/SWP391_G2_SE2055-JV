@@ -23,10 +23,6 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JavaMailSender mailSender;
 
-    /**
-     * Sends a temporary password to the user's email.
-     * The user is flagged to change it on next login.
-     */
     @Transactional
     public void forgotPassword(String email) {
         User user = userRepository.findByEmail(email)
@@ -41,13 +37,10 @@ public class AuthService {
         log.info("Temporary password sent to {}", email);
     }
 
-    /**
-     * Allows an authenticated user to change their own password.
-     */
     @Transactional
-    public void changePassword(String username, ChangePasswordRequest request) {
-        User user = userRepository.findByUsername(username)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+    public void changePassword(String email, ChangePasswordRequest request) {
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new ResourceNotFoundException("No account found for email: " + email));
 
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new BusinessException("Current password is incorrect");
@@ -64,7 +57,7 @@ public class AuthService {
         message.setSubject("[Hotel Workforce] Temporary Password");
         message.setText(String.format(
             "Hello %s,%n%nYour temporary password is: %s%n%n"
-            + "Please log in and change your password immediately.%n%n"
+            + "Please log in with your email and change your password immediately.%n%n"
             + "Hotel Workforce Management System",
             username, tempPassword
         ));

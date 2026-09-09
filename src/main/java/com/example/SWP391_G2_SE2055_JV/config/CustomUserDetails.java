@@ -8,15 +8,11 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.util.Collection;
 import java.util.List;
 
-/**
- * Spring Security principal wrapper.
- * Constructed by UserDetailsServiceImpl from a persisted account.
- */
 @Getter
 public class CustomUserDetails implements UserDetails {
 
     private final Long id;
-    private final String username;   // login username / email
+    private final String username;
     private final String password;
     private final Role role;
     private final boolean enabled;
@@ -31,16 +27,13 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // Spring Security expects the "ROLE_" prefix when using hasRole()
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
-    @Override public String getPassword()   { return password; }
-    @Override public String getUsername()   { return username; }
-    @Override public boolean isEnabled()    { return enabled; }
-
-    // Not using account-expiry or credential-expiry features for now
-    @Override public boolean isAccountNonExpired()    { return true; }
-    @Override public boolean isAccountNonLocked()     { return true; }
+    @Override public String getPassword()            { return password; }
+    @Override public String getUsername()            { return username; }
+    @Override public boolean isEnabled()             { return enabled; }
+    @Override public boolean isAccountNonExpired()   { return true; }
+    @Override public boolean isAccountNonLocked()    { return true; }
     @Override public boolean isCredentialsNonExpired(){ return true; }
 }

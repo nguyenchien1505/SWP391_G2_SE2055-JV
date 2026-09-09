@@ -14,3 +14,4 @@ CREATE TABLE IF NOT EXISTS users (
     CONSTRAINT uk_users_username UNIQUE (username),
     CONSTRAINT uk_users_email    UNIQUE (email)
 );
+

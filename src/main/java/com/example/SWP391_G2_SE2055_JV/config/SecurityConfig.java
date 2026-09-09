@@ -19,7 +19,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 
-
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -28,7 +27,6 @@ public class SecurityConfig {
 
     private final UserDetailsService userDetailsService;
 
-    // ── Public endpoints ─────────────────────────────────────────────────────
     private static final String[] PUBLIC_ENDPOINTS = {
         "/auth/login",
         "/auth/forgot-password",
@@ -37,27 +35,25 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
+        // Build provider inline — NOT a @Bean, avoids Spring Boot auto-config conflict
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder());
 
+        http
             .csrf(AbstractHttpConfigurer::disable)
+            .authenticationProvider(provider)
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-                .maximumSessions(1)          // one active session per user
+                .maximumSessions(1)
             )
-
-            .authenticationProvider(authenticationProvider())
-
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                
-                // User management endpoints
                 .requestMatchers(HttpMethod.GET, "/users/**").hasAnyRole("OWNER", "MANAGER", "HR")
                 .requestMatchers(HttpMethod.POST, "/users/**").hasAnyRole("OWNER", "MANAGER")
                 .requestMatchers(HttpMethod.PUT, "/users/**").hasAnyRole("OWNER", "MANAGER")
                 .requestMatchers(HttpMethod.DELETE, "/users/**").hasRole("OWNER")
-                
-                // Other endpoints
                 .requestMatchers("/analytics/**", "/dashboard/**").hasAnyRole("OWNER", "MANAGER")
                 .requestMatchers("/recruitment/**").hasAnyRole("OWNER", "MANAGER", "DEPARTMENT_MANAGER", "HR")
                 .requestMatchers(HttpMethod.GET, "/scheduling/**")
@@ -68,11 +64,9 @@ public class SecurityConfig {
                 .requestMatchers("/laborcost/**").hasAnyRole("OWNER", "MANAGER", "ACCOUNTANT")
                 .anyRequest().authenticated()
             )
-
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             )
-
             .formLogin(form -> form
                 .loginProcessingUrl("/auth/login")
                 .successHandler((req, res, auth) -> res.setStatus(HttpStatus.OK.value()))
@@ -87,14 +81,6 @@ public class SecurityConfig {
             );
 
         return http.build();
-    }
-
-    @Bean
-    public DaoAuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
-        provider.setPasswordEncoder(passwordEncoder());
-        return provider;
     }
 
     @Bean

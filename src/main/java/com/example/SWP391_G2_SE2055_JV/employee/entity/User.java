@@ -9,14 +9,6 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
-/**
- * Represents a system account linked to an employee.
- * Authentication: username + BCrypt-hashed password.
- * Authorization: single Role per account (RBAC).
- *
- * Note: password reset flow — user calls /auth/forgot-password,
- *       receives a temporary password by email, then changes it on first login.
- */
 @Entity
 @Table(name = "users", uniqueConstraints = {
     @UniqueConstraint(name = "uk_users_username", columnNames = "username"),
@@ -43,9 +35,8 @@ public class User {
     @Column(nullable = false, length = 120)
     private String email;
 
-    @Column(nullable = false, length = 20)
+    @Column(length = 20)
     private String phone;
-
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -55,7 +46,6 @@ public class User {
     @Builder.Default
     private boolean enabled = true;
 
-    /** Forces a password change on next login (e.g. after admin reset). */
     @Column(nullable = false)
     @Builder.Default
     private boolean mustChangePassword = false;

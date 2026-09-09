@@ -9,10 +9,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-/**
- * Response DTO for user data.
- * Excludes sensitive fields like password.
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -22,20 +18,19 @@ public class UserResponse {
     private Long id;
     private String username;
     private String email;
+    private String phone;
     private Role role;
     private boolean enabled;
     private boolean mustChangePassword;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    /**
-     * Maps User entity to UserResponse DTO.
-     */
     public static UserResponse fromEntity(User user) {
         return UserResponse.builder()
             .id(user.getId())
             .username(user.getUsername())
             .email(user.getEmail())
+            .phone(user.getPhone())
             .role(user.getRole())
             .enabled(user.isEnabled())
             .mustChangePassword(user.isMustChangePassword())
