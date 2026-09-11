@@ -56,7 +56,6 @@ public class GlobalExceptionHandler {
                 .message(fe.getDefaultMessage())
                 .build())
             .toList();
-
         return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, "Validation failed",
             request.getRequestURI(), fieldErrors);
     }

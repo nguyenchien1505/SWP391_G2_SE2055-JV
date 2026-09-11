@@ -1,4 +1,4 @@
-﻿spring:
+spring:
   application:
     name: hotel-workforce-management
 
@@ -12,9 +12,9 @@
     hibernate:
       ddl-auto: validate
     show-sql: false
+    open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
         default_batch_fetch_size: 20
 
@@ -59,4 +59,5 @@ server:
 logging:
   level:
     com.example.SWP391_G2_SE2055_JV: DEBUG
-    org.springframework.security: INFO
+    org.springframework.security: DEBUG
+    org.springframework.security.web.authentication: DEBUG

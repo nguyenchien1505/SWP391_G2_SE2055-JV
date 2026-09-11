@@ -49,14 +49,14 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private User build(String username, String email, String phone,
-                       Long hotelId, Role role, String encodedPw) {
+                       Long hotelId, Role role, String encodedPassword) {
         return User.builder()
             .username(username)
             .email(email)
             .phone(phone)
             .hotelId(hotelId)
             .role(role)
-            .password(encodedPw)
+            .password(encodedPassword)
             .enabled(true)
             .mustChangePassword(false)
             .build();

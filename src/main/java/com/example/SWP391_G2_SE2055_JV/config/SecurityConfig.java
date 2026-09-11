@@ -40,8 +40,13 @@ public class SecurityConfig {
     private final OAuth2LoginSuccessHandler successHandler;
     private final OAuth2LoginFailureHandler failureHandler;
 
+    // NOTE: "/auth/login" is public for BOTH:
+    //   - formLogin POST /auth/login          (local username/password)
+    //   - oauth2Login GET /auth/login/google  (Spring appends /{registrationId})
     private static final String[] PUBLIC_ENDPOINTS = {
         "/auth/login",
+        "/auth/login/**",
+        "/auth/callback/**",
         "/auth/unauthorized",
         "/auth/forgot-password",
         "/actuator/health"
@@ -49,6 +54,7 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        // Build provider inline — NOT a @Bean, avoids Spring Boot auto-config conflict
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
         provider.setUserDetailsService(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder());
@@ -106,7 +112,6 @@ public class SecurityConfig {
 
                 .anyRequest().authenticated()
             )
-
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             )
@@ -117,6 +122,14 @@ public class SecurityConfig {
                 .redirectionEndpoint(e -> e.baseUri("/auth/callback/google"))
                 .successHandler(successHandler)
                 .failureHandler(failureHandler)
+            )
+
+            // ── Local username/password login ───────────────────────────────
+            .formLogin(form -> form
+                .loginProcessingUrl("/auth/login")
+                .successHandler((req, res, auth) -> res.setStatus(HttpStatus.OK.value()))
+                .failureHandler((req, res, ex) -> res.setStatus(HttpStatus.UNAUTHORIZED.value()))
+                .permitAll()
             )
 
             // ── Logout ───────────────────────────────────────────────────────
