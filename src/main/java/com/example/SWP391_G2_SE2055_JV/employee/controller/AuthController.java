@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -20,32 +21,27 @@ public class AuthController {
 
     private final AuthService authService;
 
-    /**
-     * Returns info of the currently logged-in user.
-     * Frontend calls this after OAuth2 redirect to know the role.
-     */
+    /** Returns current authenticated user info — called by frontend after login. */
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> me(@AuthenticationPrincipal CustomUserDetails user) {
-        return ResponseEntity.ok(Map.of(
-            "id",    user.getId(),
-            "email", user.getUsername(),
-            "role",  user.getRole().name()
-        ));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("id",      user.getId());
+        body.put("email",   user.getUsername());
+        body.put("role",    user.getRole().name());
+        body.put("hotelId", user.getHotelId());
+        return ResponseEntity.ok(body);
     }
 
-    /**
-     * Called when Google login succeeds but the email is not whitelisted.
-     * Returns 401 with a descriptive message.
-     */
+    /** Email not in system — shown after rejected OAuth2 login. */
     @GetMapping("/unauthorized")
     public ResponseEntity<Map<String, String>> unauthorized() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
             "error",   "access_denied",
-            "message", "Your Google account is not registered in this system. Please contact HR."
+            "message", "Your Google account is not registered. Please contact your manager."
         ));
     }
 
-    /** Sends a temporary password to the given email (admin use). */
+    /** Request temporary password via email. */
     @PostMapping("/forgot-password")
     public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         authService.forgotPassword(request.getEmail());

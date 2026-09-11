@@ -1,0 +1,6 @@
+-- V2__add_phone_to_users.sql
+ALTER TABLE users
+    ADD COLUMN phone VARCHAR(20) NOT NULL DEFAULT '0000000000';
+
+ALTER TABLE users
+    ALTER COLUMN phone DROP DEFAULT;

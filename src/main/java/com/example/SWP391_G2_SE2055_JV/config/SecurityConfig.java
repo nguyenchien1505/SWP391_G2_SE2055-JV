@@ -20,18 +20,28 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 
+/**
+ * Security configuration — session-based auth + Google OAuth2 + RBAC
+ *
+ * Roles (Milestone 1):
+ *   ADMIN_PLATFORM — SaaS platform admin
+ *   DIRECTOR       — hotel director, read-only
+ *   MANAGER        — hotel operations manager
+ *   RECEPTIONIST   — front desk
+ *   CLEANER        — housekeeping staff
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final UserDetailsService       userDetailsService;
+    private final UserDetailsService        userDetailsService;
     private final OAuth2LoginSuccessHandler successHandler;
     private final OAuth2LoginFailureHandler failureHandler;
 
     private static final String[] PUBLIC_ENDPOINTS = {
-        "/auth/login/google",
+        "/auth/login",
         "/auth/unauthorized",
         "/auth/forgot-password",
         "/actuator/health"
@@ -39,42 +49,76 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder());
+
         http
             .csrf(AbstractHttpConfigurer::disable)
-            .sessionManagement(session -> session
-                .maximumSessions(1)
-            )
+            .authenticationProvider(provider)
+            .sessionManagement(session -> session.maximumSessions(1))
+
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                .requestMatchers("/analytics/**", "/dashboard/**")
-                    .hasAnyRole("OWNER", "MANAGER")
-                .requestMatchers("/recruitment/**")
-                    .hasAnyRole("OWNER", "MANAGER", "DEPARTMENT_MANAGER", "HR")
+                // ── Platform admin only ──────────────────────────────────────
+                .requestMatchers("/platform/**")
+                    .hasRole("ADMIN_PLATFORM")
+
+                // ── Hotel management — manager + admin ───────────────────────
+                .requestMatchers("/hotels/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER")
+
+                // ── Users/staff management ───────────────────────────────────
+                .requestMatchers(HttpMethod.GET, "/users/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "DIRECTOR")
+                .requestMatchers("/users/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
+
+                // ── Organization (departments, positions) ────────────────────
+                .requestMatchers(HttpMethod.GET, "/organization/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST")
+                .requestMatchers("/organization/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
+
+                // ── Room management ──────────────────────────────────────────
+                .requestMatchers(HttpMethod.GET, "/rooms/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "CLEANER")
+                .requestMatchers("/rooms/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "RECEPTIONIST")
+
+                // ── Scheduling (shifts + housekeeping) ───────────────────────
                 .requestMatchers(HttpMethod.GET, "/scheduling/**")
-                    .hasAnyRole("OWNER", "MANAGER", "DEPARTMENT_MANAGER", "SUPERVISOR", "EMPLOYEE")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "CLEANER")
                 .requestMatchers("/scheduling/**")
-                    .hasAnyRole("OWNER", "MANAGER", "DEPARTMENT_MANAGER", "SUPERVISOR")
-                .requestMatchers("/attendance/**").authenticated()
-                .requestMatchers("/laborcost/**")
-                    .hasAnyRole("OWNER", "MANAGER", "ACCOUNTANT")
+                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
+
+                // ── Assets ───────────────────────────────────────────────────
+                .requestMatchers(HttpMethod.GET, "/assets/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "CLEANER")
+                .requestMatchers("/assets/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
+
+                // ── Reports / dashboard ──────────────────────────────────────
+                .requestMatchers("/dashboard/**", "/analytics/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER")
+
                 .anyRequest().authenticated()
             )
+
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             )
-            // ── Google OAuth2 Login ──────────────────────────────────────────
+
+            // ── Google OAuth2 ────────────────────────────────────────────────
             .oauth2Login(oauth2 -> oauth2
-                .authorizationEndpoint(endpoint ->
-                    endpoint.baseUri("/auth/login")   // frontend redirects to this
-                )
-                .redirectionEndpoint(endpoint ->
-                    endpoint.baseUri("/auth/callback/google") // Google redirects back here
-                )
+                .authorizationEndpoint(e -> e.baseUri("/auth/login"))
+                .redirectionEndpoint(e -> e.baseUri("/auth/callback/google"))
                 .successHandler(successHandler)
                 .failureHandler(failureHandler)
             )
+
             // ── Logout ───────────────────────────────────────────────────────
             .logout(logout -> logout
                 .logoutUrl("/auth/logout")
@@ -84,14 +128,6 @@ public class SecurityConfig {
             );
 
         return http.build();
-    }
-
-    @Bean
-    public DaoAuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
-        provider.setPasswordEncoder(passwordEncoder());
-        return provider;
     }
 
     @Bean

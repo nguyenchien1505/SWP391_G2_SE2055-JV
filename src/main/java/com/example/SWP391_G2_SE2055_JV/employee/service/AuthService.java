@@ -19,14 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private final UserRepository userRepository;
+    private final UserRepository  userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JavaMailSender mailSender;
+    private final JavaMailSender  mailSender;
 
-    /**
-     * Sends a temporary password to the given email.
-     * User is flagged to change it on next login.
-     */
     @Transactional
     public void forgotPassword(String email) {
         User user = userRepository.findByEmail(email)
@@ -37,14 +33,9 @@ public class AuthService {
         user.setMustChangePassword(true);
         userRepository.save(user);
 
-        sendTempPasswordEmail(user.getEmail(), tempPassword);
-        log.info("Temporary password sent to {}", email);
+        sendEmailSafe(user.getEmail(), user.getUsername(), tempPassword);
     }
 
-    /**
-     * Allows an authenticated user to change their own password.
-     * Principal name is email (set in UserDetailsServiceImpl).
-     */
     @Transactional
     public void changePassword(String email, ChangePasswordRequest request) {
         User user = userRepository.findByEmail(email)
@@ -59,16 +50,20 @@ public class AuthService {
         userRepository.save(user);
     }
 
-    private void sendTempPasswordEmail(String to, String tempPassword) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(to);
-        message.setSubject("[Hotel Workforce] Temporary Password");
-        message.setText(String.format(
-            "Hello,%n%nYour temporary password is: %s%n%n"
-            + "Please log in with your email and change your password immediately.%n%n"
-            + "Hotel Workforce Management System",
-            tempPassword
-        ));
-        mailSender.send(message);
+    public void sendEmailSafe(String to, String username, String tempPassword) {
+        log.info("=== TEMP PASSWORD for {} : {} ===", username, tempPassword);
+        try {
+            SimpleMailMessage msg = new SimpleMailMessage();
+            msg.setTo(to);
+            msg.setSubject("[Hotel Workforce] Temporary Password");
+            msg.setText(String.format(
+                "Hello %s,%n%nYour temporary password is: %s%n%n"
+                + "Please log in and change it immediately.%n%nHotel Workforce System",
+                username, tempPassword
+            ));
+            mailSender.send(msg);
+        } catch (Exception e) {
+            log.warn("Email not sent to {} — {}", to, e.getMessage());
+        }
     }
 }

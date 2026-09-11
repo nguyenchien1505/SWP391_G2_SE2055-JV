@@ -9,9 +9,6 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
-/**
- * Called when Google OAuth2 itself fails (user cancels, Google error, etc.)
- */
 @Slf4j
 @Component
 public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {

@@ -1,17 +1,17 @@
 package com.example.SWP391_G2_SE2055_JV.config;
 
 /**
- * System roles aligned to the hotel workforce actors.
+ * System roles — Milestone 1
  *
- * Hierarchy (widest → narrowest access):
- *   OWNER → MANAGER → DEPARTMENT_MANAGER → HR → SUPERVISOR → ACCOUNTANT → EMPLOYEE
+ * ADMIN_PLATFORM : manages the SaaS platform (hotels, subscriptions) DIRECTOR :
+ * hotel director — read-only overview MANAGER : hotel operations manager — full
+ * hotel management RECEPTIONIST : front desk — room status, check-in/out
+ * CLEANER : housekeeping staff — cleaning schedule, room status update
  */
 public enum Role {
-    OWNER,
+    ADMIN_PLATFORM,
+    DIRECTOR,
     MANAGER,
-    DEPARTMENT_MANAGER,
-    HR,
-    SUPERVISOR,
-    ACCOUNTANT,
-    EMPLOYEE
+    RECEPTIONIST,
+    CLEANER
 }

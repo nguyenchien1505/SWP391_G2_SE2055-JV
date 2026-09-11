@@ -12,49 +12,51 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Seeds one test account per role when the app starts.
- * Only runs when profile is "dev" or "test" — never in prod.
- *
- * Default password for all accounts: Password123
+ * Seeds one test account per role on first startup.
+ * Active on dev / test / default profiles only.
+ * Password for all accounts: Password123
  */
 @Slf4j
 @Component
-@Profile({"dev", "test"})
+@Profile({"dev", "test", "default"})
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
-    private final UserRepository userRepository;
+    private final UserRepository  userRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
     public void run(String... args) {
         if (userRepository.count() > 0) {
-            log.info("[DataInitializer] Users already exist — skipping seed.");
+            log.info("[DataInitializer] Users exist — skipping seed.");
             return;
         }
 
-        String defaultPassword = passwordEncoder.encode("Password123");
+        String pw = passwordEncoder.encode("Password123");
 
-        List<User> seedUsers = List.of(
-            buildUser("owner1",      "owner@hotel.com",      Role.OWNER,              defaultPassword),
-            buildUser("manager1",    "manager@hotel.com",    Role.MANAGER,            defaultPassword),
-            buildUser("deptmgr1",    "deptmgr@hotel.com",    Role.DEPARTMENT_MANAGER, defaultPassword),
-            buildUser("hr1",         "hr@hotel.com",         Role.HR,                 defaultPassword),
-            buildUser("supervisor1", "supervisor@hotel.com", Role.SUPERVISOR,         defaultPassword),
-            buildUser("accountant1", "accountant@hotel.com", Role.ACCOUNTANT,         defaultPassword),
-            buildUser("employee1",   "employee@hotel.com",   Role.EMPLOYEE,           defaultPassword)
+        // hotel_id = 1 is a placeholder — real hotel will be created via /platform/hotels
+        List<User> seeds = List.of(
+            build("admin", "admin@platform.com", "0900000000", null, Role.ADMIN_PLATFORM, pw),
+            build("director1",   "director@hotel.com",       "0901000001", 1L, Role.DIRECTOR,       pw),
+            build("manager1",    "manager@hotel.com",        "0901000002", 1L, Role.MANAGER,         pw),
+            build("reception1",  "reception@hotel.com",      "0901000003", 1L, Role.RECEPTIONIST,    pw),
+            build("cleaner1",    "cleaner@hotel.com",        "0901000004", 1L, Role.CLEANER,         pw),
+            build("director2",    "trantrungd83@gmail.com",        "0901000005", 1L, Role.DIRECTOR,         pw)
         );
 
-        userRepository.saveAll(seedUsers);
-        log.info("[DataInitializer] Seeded {} test users (password: Password123)", seedUsers.size());
+        userRepository.saveAll(seeds);
+        log.info("[DataInitializer] Seeded {} users (password: Password123)", seeds.size());
     }
 
-    private User buildUser(String username, String email, Role role, String encodedPassword) {
+    private User build(String username, String email, String phone,
+                       Long hotelId, Role role, String encodedPw) {
         return User.builder()
             .username(username)
             .email(email)
+            .phone(phone)
+            .hotelId(hotelId)
             .role(role)
-            .password(encodedPassword)
+            .password(encodedPw)
             .enabled(true)
             .mustChangePassword(false)
             .build();
