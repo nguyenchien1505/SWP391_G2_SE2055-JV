@@ -28,7 +28,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
  *   DIRECTOR       — hotel director, read-only
  *   MANAGER        — hotel operations manager
  *   RECEPTIONIST   — front desk
- *   CLEANER        — housekeeping staff
+ *   HOUSEKEEPING   — housekeeping staff
  */
 @Configuration
 @EnableWebSecurity
@@ -89,19 +89,19 @@ public class SecurityConfig {
 
                 // ── Room management ──────────────────────────────────────────
                 .requestMatchers(HttpMethod.GET, "/rooms/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "CLEANER")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "HOUSEKEEPING")
                 .requestMatchers("/rooms/**")
                     .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "RECEPTIONIST")
 
                 // ── Scheduling (shifts + housekeeping) ───────────────────────
                 .requestMatchers(HttpMethod.GET, "/scheduling/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "CLEANER")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "HOUSEKEEPING")
                 .requestMatchers("/scheduling/**")
                     .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
 
                 // ── Assets ───────────────────────────────────────────────────
                 .requestMatchers(HttpMethod.GET, "/assets/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "CLEANER")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "HOUSEKEEPING")
                 .requestMatchers("/assets/**")
                     .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
 

@@ -4,5 +4,5 @@ ALTER TABLE users
         'DIRECTOR',
         'MANAGER',
         'RECEPTIONIST',
-        'CLEANER'
+        'HOUSEKEEPING'
     ) NOT NULL;
