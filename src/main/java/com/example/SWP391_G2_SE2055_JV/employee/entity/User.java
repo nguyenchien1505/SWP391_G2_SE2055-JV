@@ -44,10 +44,6 @@ public class User {
     @Column(nullable = false, length = 30)
     private Role role;
 
-    /**
-     * Tenant isolation — which hotel this account belongs to.
-     * Null only for ADMIN_PLATFORM.
-     */
     @Column(name = "hotel_id")
     private Long hotelId;
 

@@ -48,8 +48,7 @@ public class SecurityConfig {
         "/auth/login/**",
         "/auth/callback/**",
         "/auth/unauthorized",
-        "/auth/forgot-password",
-        "/actuator/health"
+        "/auth/forgot-password"
     };
 
     @Bean

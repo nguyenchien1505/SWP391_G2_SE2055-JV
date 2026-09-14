@@ -19,8 +19,8 @@ import org.springframework.web.bind.annotation.*;
  * REST Controller for User management (CRUD operations).
  *
  * Authorization:
- * - OWNER, MANAGER: full access (create, read, update, delete)
- * - HR: read-only access
+ * - ADMIN_PLATFORM, MANAGER: full access (create, read, update, delete)
+ * - DIRECTOR: read-only access
  * - Other roles: no access
  */
 @RestController
@@ -33,10 +33,10 @@ public class UserController {
     /**
      * GET /users
      * Get all users with pagination.
-     * Access: OWNER, MANAGER, HR
+     * Access: ADMIN_PLATFORM, MANAGER, DIRECTOR
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('OWNER', 'MANAGER', 'HR')")
+    @PreAuthorize("hasAnyRole('ADMIN_PLATFORM', 'MANAGER', 'DIRECTOR')")
     public ResponseEntity<Page<UserResponse>> getAllUsers(
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(userService.getAllUsers(pageable));
@@ -45,10 +45,10 @@ public class UserController {
     /**
      * GET /users/{id}
      * Get a single user by ID.
-     * Access: OWNER, MANAGER, HR
+     * Access: ADMIN_PLATFORM, MANAGER, DIRECTOR
      */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('OWNER', 'MANAGER', 'HR')")
+    @PreAuthorize("hasAnyRole('ADMIN_PLATFORM', 'MANAGER', 'DIRECTOR')")
     public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
         return ResponseEntity.ok(userService.getUserById(id));
     }
@@ -57,10 +57,10 @@ public class UserController {
      * POST /users
      * Create a new user account.
      * Generates temporary password and sends email.
-     * Access: OWNER, MANAGER only
+     * Access: ADMIN_PLATFORM, MANAGER only
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('OWNER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN_PLATFORM', 'MANAGER')")
     public ResponseEntity<UserResponse> createUser(@Valid @RequestBody CreateUserRequest request) {
         UserResponse created = userService.createUser(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
@@ -69,10 +69,10 @@ public class UserController {
     /**
      * PUT /users/{id}
      * Update an existing user (partial update).
-     * Access: OWNER, MANAGER only
+     * Access: ADMIN_PLATFORM, MANAGER only
      */
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('OWNER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN_PLATFORM', 'MANAGER')")
     public ResponseEntity<UserResponse> updateUser(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUserRequest request) {
@@ -82,10 +82,10 @@ public class UserController {
     /**
      * DELETE /users/{id}
      * Delete a user by ID.
-     * Access: OWNER only
+     * Access: ADMIN_PLATFORM, MANAGER only
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('OWNER')")
+    @PreAuthorize("hasAnyRole('ADMIN_PLATFORM', 'MANAGER')")
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
         userService.deleteUser(id);
         return ResponseEntity.noContent().build();
@@ -95,10 +95,10 @@ public class UserController {
      * POST /users/{id}/reset-password
      * Reset user password (admin action).
      * Generates new temporary password and sends email.
-     * Access: OWNER, MANAGER only
+     * Access: ADMIN_PLATFORM, MANAGER only
      */
     @PostMapping("/{id}/reset-password")
-    @PreAuthorize("hasAnyRole('OWNER', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN_PLATFORM', 'MANAGER')")
     public ResponseEntity<Void> resetPassword(@PathVariable Long id) {
         userService.resetUserPassword(id);
         return ResponseEntity.ok().build();
