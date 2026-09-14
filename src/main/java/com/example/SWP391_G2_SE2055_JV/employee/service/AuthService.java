@@ -29,11 +29,10 @@ public class AuthService {
             .orElseThrow(() -> new ResourceNotFoundException("No account found for email: " + email));
 
         String tempPassword = RandomStringUtils.randomAlphanumeric(10);
-        user.setPassword(passwordEncoder.encode(tempPassword));
-        user.setMustChangePassword(true);
+        user.setPasswordHash(passwordEncoder.encode(tempPassword));
         userRepository.save(user);
 
-        sendEmailSafe(user.getEmail(), user.getUsername(), tempPassword);
+        sendEmailSafe(user.getEmail(), user.getFullName(), tempPassword);
     }
 
     @Transactional
@@ -41,17 +40,16 @@ public class AuthService {
         User user = userRepository.findByEmail(email)
             .orElseThrow(() -> new ResourceNotFoundException("No account found for email: " + email));
 
-        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
             throw new BusinessException("Current password is incorrect");
         }
 
-        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        user.setMustChangePassword(false);
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
     }
 
-    public void sendEmailSafe(String to, String username, String tempPassword) {
-        log.info("=== TEMP PASSWORD for {} : {} ===", username, tempPassword);
+    public void sendEmailSafe(String to, String fullName, String tempPassword) {
+        log.info("=== TEMP PASSWORD for {} : {} ===", to, tempPassword);
         try {
             SimpleMailMessage msg = new SimpleMailMessage();
             msg.setTo(to);
@@ -59,7 +57,7 @@ public class AuthService {
             msg.setText(String.format(
                 "Hello %s,%n%nYour temporary password is: %s%n%n"
                 + "Please log in and change it immediately.%n%nHotel Workforce System",
-                username, tempPassword
+                fullName, tempPassword
             ));
             mailSender.send(msg);
         } catch (Exception e) {

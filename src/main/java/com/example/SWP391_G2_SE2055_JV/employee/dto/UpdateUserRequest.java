@@ -13,15 +13,20 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UpdateUserRequest {
 
+    @Size(max = 255, message = "Full name must not exceed 255 characters")
+    private String fullName;
+
     @Email(message = "Email must be valid")
-    @Size(max = 120, message = "Email must not exceed 120 characters")
+    @Size(max = 255, message = "Email must not exceed 255 characters")
     private String email;
 
     @Pattern(regexp = "^[0-9]{10,15}$", message = "Phone must be 10-15 digits")
-    @Size(max = 20, message = "Phone must not exceed 20 characters")
+    @Size(max = 30, message = "Phone must not exceed 30 characters")
     private String phone;
 
     private Role role;
+
+    private Long locationId;
 
     private Boolean enabled;
 }

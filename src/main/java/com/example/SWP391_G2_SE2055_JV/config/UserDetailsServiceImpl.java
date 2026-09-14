@@ -18,13 +18,15 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         return userRepository.findByEmail(username)
+            .filter(user -> !user.isDeleted())
             .map(user -> new CustomUserDetails(
                 user.getId(),
                 user.getEmail(),
-                user.getPassword(),
+                user.getPasswordHash(),
                 user.getRole(),
-                user.getHotelId(),
-                user.isEnabled()
+                user.getTenantId(),
+                user.getLocationId(),
+                user.isActive()
             ))
             .orElseThrow(() -> new UsernameNotFoundException("No account found for email: " + username));
     }

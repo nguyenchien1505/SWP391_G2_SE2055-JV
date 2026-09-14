@@ -1,6 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.employee.dto;
 
 import com.example.SWP391_G2_SE2055_JV.config.Role;
+import com.example.SWP391_G2_SE2055_JV.config.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.employee.entity.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,26 +17,26 @@ import java.time.LocalDateTime;
 public class UserResponse {
 
     private Long id;
-    private String username;
+    private Long tenantId;
+    private Long locationId;
+    private String fullName;
     private String email;
     private String phone;
     private Role role;
-    private boolean enabled;
-    private boolean mustChangePassword;
+    private UserStatus status;
     private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
 
     public static UserResponse fromEntity(User user) {
         return UserResponse.builder()
             .id(user.getId())
-            .username(user.getUsername())
+            .tenantId(user.getTenantId())
+            .locationId(user.getLocationId())
+            .fullName(user.getFullName())
             .email(user.getEmail())
             .phone(user.getPhone())
             .role(user.getRole())
-            .enabled(user.isEnabled())
-            .mustChangePassword(user.isMustChangePassword())
+            .status(user.getStatus())
             .createdAt(user.getCreatedAt())
-            .updatedAt(user.getUpdatedAt())
             .build();
     }
 }

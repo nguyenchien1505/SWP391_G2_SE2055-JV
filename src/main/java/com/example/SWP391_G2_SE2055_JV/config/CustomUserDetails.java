@@ -15,17 +15,19 @@ public class CustomUserDetails implements UserDetails {
     private final String  username;   // stores email
     private final String  password;
     private final Role    role;
-    private final Long    hotelId;    // null for ADMIN_PLATFORM
+    private final Long    tenantId;   // null for ADMIN_PLATFORM
+    private final Long    locationId; // null for ADMIN_PLATFORM
     private final boolean enabled;
 
     public CustomUserDetails(Long id, String username, String password,
-                              Role role, Long hotelId, boolean enabled) {
-        this.id       = id;
-        this.username = username;
-        this.password = password;
-        this.role     = role;
-        this.hotelId  = hotelId;
-        this.enabled  = enabled;
+                              Role role, Long tenantId, Long locationId, boolean enabled) {
+        this.id         = id;
+        this.username   = username;
+        this.password   = password;
+        this.role       = role;
+        this.tenantId   = tenantId;
+        this.locationId = locationId;
+        this.enabled    = enabled;
     }
 
     @Override
@@ -39,5 +41,5 @@ public class CustomUserDetails implements UserDetails {
     @Override public boolean isAccountNonExpired()     { return true; }
     @Override public boolean isAccountNonLocked()      { return true; }
     @Override public boolean isCredentialsNonExpired() { return true; }
-    
+
 }

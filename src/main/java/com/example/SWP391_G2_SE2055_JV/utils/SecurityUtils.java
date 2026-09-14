@@ -24,15 +24,27 @@ public final class SecurityUtils {
     public static Role    getCurrentRole()    { return getCurrentUser().getRole(); }
 
     /**
-     * Returns the hotel this user belongs to.
-     * Throws if called for ADMIN_PLATFORM (hotelId is null).
+     * Returns the tenant this user belongs to.
+     * Throws if called for ADMIN_PLATFORM (tenantId is null).
      */
-    public static Long getCurrentHotelId() {
-        Long hotelId = getCurrentUser().getHotelId();
-        if (hotelId == null) {
-            throw new UnauthorizedException("Platform admin has no hotel context");
+    public static Long getCurrentTenantId() {
+        Long tenantId = getCurrentUser().getTenantId();
+        if (tenantId == null) {
+            throw new UnauthorizedException("Platform admin has no tenant context");
         }
-        return hotelId;
+        return tenantId;
+    }
+
+    /**
+     * Returns the location (hotel property) this user belongs to.
+     * Throws if called for ADMIN_PLATFORM (locationId is null).
+     */
+    public static Long getCurrentLocationId() {
+        Long locationId = getCurrentUser().getLocationId();
+        if (locationId == null) {
+            throw new UnauthorizedException("Platform admin has no location context");
+        }
+        return locationId;
     }
 
     public static boolean isAdminPlatform() {

@@ -37,7 +37,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
         User user = userRepository.findByEmail(googleEmail).orElse(null);
 
-        if (user == null || !user.isEnabled()) {
+        if (user == null || user.isDeleted() || !user.isActive()) {
             log.warn("OAuth2 login rejected: {} (not registered or disabled)", googleEmail);
             SecurityContextHolder.clearContext();
             request.getSession().invalidate();
@@ -48,17 +48,19 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         CustomUserDetails userDetails = new CustomUserDetails(
             user.getId(),
             user.getEmail(),
-            user.getPassword(),
+            user.getPasswordHash(),
             user.getRole(),
-            user.getHotelId(),
-            user.isEnabled()
+            user.getTenantId(),
+            user.getLocationId(),
+            user.isActive()
         );
 
         UsernamePasswordAuthenticationToken newAuth =
             new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
         SecurityContextHolder.getContext().setAuthentication(newAuth);
 
-        log.info("OAuth2 login success: {} role={} hotelId={}", googleEmail, user.getRole(), user.getHotelId());
+        log.info("OAuth2 login success: {} role={} tenantId={} locationId={}",
+            googleEmail, user.getRole(), user.getTenantId(), user.getLocationId());
         response.sendRedirect(SUCCESS_REDIRECT);
     }
 }

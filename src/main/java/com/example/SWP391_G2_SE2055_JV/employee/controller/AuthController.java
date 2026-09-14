@@ -25,10 +25,11 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> me(@AuthenticationPrincipal CustomUserDetails user) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("id",      user.getId());
-        body.put("email",   user.getUsername());
-        body.put("role",    user.getRole().name());
-        body.put("hotelId", user.getHotelId());
+        body.put("id",         user.getId());
+        body.put("email",      user.getUsername());
+        body.put("role",       user.getRole().name());
+        body.put("tenantId",   user.getTenantId());
+        body.put("locationId", user.getLocationId());
         return ResponseEntity.ok(body);
     }
 

@@ -4,9 +4,9 @@
       on-profile: dev
 
   datasource:
-    url: jdbc:mysql://localhost:3306/hotel_workforce
-    username: root
-    password: password
+    url: jdbc:mysql://localhost:3306/hotel_workforce?useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:

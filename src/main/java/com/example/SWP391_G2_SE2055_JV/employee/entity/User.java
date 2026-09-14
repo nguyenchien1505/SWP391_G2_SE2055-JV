@@ -1,10 +1,10 @@
 package com.example.SWP391_G2_SE2055_JV.employee.entity;
 
 import com.example.SWP391_G2_SE2055_JV.config.Role;
+import com.example.SWP391_G2_SE2055_JV.config.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
@@ -12,13 +12,12 @@ import java.time.LocalDateTime;
 /**
  * System account — authentication + RBAC.
  *
- * hotelId is null for ADMIN_PLATFORM (platform-level admin).
- * All other roles belong to a specific hotel (tenant).
+ * tenantId/locationId are null for ADMIN_PLATFORM (platform-level admin).
+ * All other roles belong to a specific tenant and, usually, a specific location.
  */
 @Entity
 @Table(name = "users", uniqueConstraints = {
-    @UniqueConstraint(name = "uk_users_username", columnNames = "username"),
-    @UniqueConstraint(name = "uk_users_email",    columnNames = "email")
+    @UniqueConstraint(name = "uk_users_email", columnNames = "email")
 })
 @EntityListeners(AuditingEntityListener.class)
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
@@ -28,37 +27,49 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 60)
-    private String username;
+    @Column(name = "tenant_id")
+    private Long tenantId;
 
-    @Column(nullable = false)
-    private String password;
+    @Column(name = "location_id")
+    private Long locationId;
 
-    @Column(nullable = false, length = 120)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role;
+
+    @Column(name = "full_name")
+    private String fullName;
+
+    @Column(nullable = false, length = 255)
     private String email;
 
-    @Column(length = 20)
+    @Column(name = "password_hash")
+    private String passwordHash;
+
     private String phone;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
-    private Role role;
-
-    @Column(name = "hotel_id")
-    private Long hotelId;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private boolean enabled = true;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private boolean mustChangePassword = false;
+    @Column(length = 20)
+    private UserStatus status;
 
     @CreatedDate
-    @Column(updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
+    @Column(name = "created_by")
+    private Long createdBy;
+
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private boolean deleted = false;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @Column(name = "deleted_by")
+    private Long deletedBy;
+
+    public boolean isActive() {
+        return status == UserStatus.ACTIVE;
+    }
 }
