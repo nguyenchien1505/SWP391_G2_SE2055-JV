@@ -93,9 +93,21 @@ public class SecurityConfig {
                 .requestMatchers("/rooms/**")
                     .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "RECEPTIONIST")
 
-                // ── Scheduling (shifts + housekeeping) ───────────────────────
+                // ── Scheduling (work-schedule policy, shifts, shift-change requests, housekeeping) ──
+                // Housekeeping may complete their own cleaning assignment (self-ownership
+                // checked in CleaningAssignmentService), but nothing else under /scheduling/**.
+                .requestMatchers(HttpMethod.PATCH, "/scheduling/cleaning-assignments/*/status")
+                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "HOUSEKEEPING")
+                // Any staff role may submit a shift-change request for their own shift
+                // (self-ownership checked in ShiftChangeRequestService).
+                .requestMatchers(HttpMethod.POST, "/scheduling/shift-change-requests")
+                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "RECEPTIONIST", "HOUSEKEEPING")
                 .requestMatchers(HttpMethod.GET, "/scheduling/**")
                     .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "HOUSEKEEPING")
+                // Director sets work-schedule policy (Milestone-2 addition — previously
+                // policy writes were Manager-only, which didn't match the intended workflow).
+                .requestMatchers("/scheduling/policies/**")
+                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER")
                 .requestMatchers("/scheduling/**")
                     .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
 

@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.scheduling.entity;
 
+import com.example.SWP391_G2_SE2055_JV.config.PolicyStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -35,7 +36,9 @@ public class WorkSchedulePolicy {
     @Column(name = "effective_to")
     private LocalDate effectiveTo;
 
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private PolicyStatus status;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

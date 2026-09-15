@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.housekeeping.entity;
 
+import com.example.SWP391_G2_SE2055_JV.config.CleaningAssignmentStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -20,7 +21,9 @@ public class CleaningAssignment {
     @Column(name = "room_id", nullable = false)
     private Long roomId;
 
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private CleaningAssignmentStatus status;
 
     @Column(name = "assigned_at")
     private LocalDateTime assignedAt;
