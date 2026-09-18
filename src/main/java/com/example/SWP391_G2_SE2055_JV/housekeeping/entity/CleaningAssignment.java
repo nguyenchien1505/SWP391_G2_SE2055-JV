@@ -1,5 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.housekeeping.entity;
 
+import com.example.SWP391_G2_SE2055_JV.housekeeping.enums.CleaningTaskStatus;
+import com.example.SWP391_G2_SE2055_JV.housekeeping.enums.CleaningTaskType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -20,7 +22,16 @@ public class CleaningAssignment {
     @Column(name = "room_id", nullable = false)
     private Long roomId;
 
-    private String status;
+    /** Loại task dọn — BR-61. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "task_type", nullable = false, length = 20)
+    @Builder.Default
+    private CleaningTaskType taskType = CleaningTaskType.POST_CHECKOUT;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private CleaningTaskStatus status = CleaningTaskStatus.ASSIGNED;
 
     @Column(name = "assigned_at")
     private LocalDateTime assignedAt;

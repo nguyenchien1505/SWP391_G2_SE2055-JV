@@ -26,7 +26,14 @@ public class Room {
     @Column(name = "room_number", nullable = false)
     private String roomNumber;
 
+    /** Sức chứa riêng của phòng (override room_type.capacity) */
+    private Integer capacity;
+
     private String floor;
+
+    /** Ghi chú vận hành */
+    @Column(length = 500)
+    private String note;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

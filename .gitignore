@@ -33,3 +33,6 @@ build/
 .vscode/
 
 .env
+
+### Project personal working docs (specs, notes) — không commit ###
+personal docs/
