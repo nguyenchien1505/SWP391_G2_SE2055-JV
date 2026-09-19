@@ -3,6 +3,7 @@ package com.example.SWP391_G2_SE2055_JV.config;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -11,6 +12,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -24,11 +26,17 @@ import java.util.UUID;
  *       này KHÔNG phải role mà là Loại Position.</li>
  * </ul>
  * Position loại OTHER không nhận thêm quyền đặc thù nào — BR-ORG-09, BR-PERM-06.
+ *
+ * <p>{@code equals}/{@code hashCode} CHỈ theo {@code id}: SessionRegistry của
+ * {@code maximumSessions(1)} dùng chúng để nhận ra "cùng một người" giữa các lần đăng
+ * nhập. Để so toàn bộ dữ liệu phân quyền, dùng {@link #hasSameStateAs}.
  */
 @Getter
 @Builder
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class CustomUserDetails implements UserDetails {
 
+    @EqualsAndHashCode.Include
     private final UUID         id;
     private final String       username;      // email
     private final String       password;
@@ -39,6 +47,21 @@ public class CustomUserDetails implements UserDetails {
     private final PositionType positionType;  // chỉ STAFF mới có
     private final boolean      mustChangePassword;
     private final boolean      enabled;
+
+    /**
+     * So mọi trường ảnh hưởng tới phân quyền — dùng để biết principal trong session có
+     * cần thay bằng bản mới đọc từ DB hay không (xem {@link CurrentUserRefreshFilter}).
+     */
+    public boolean hasSameStateAs(CustomUserDetails other) {
+        return other != null
+            && role == other.role
+            && positionType == other.positionType
+            && mustChangePassword == other.mustChangePassword
+            && enabled == other.enabled
+            && Objects.equals(tenantId, other.tenantId)
+            && Objects.equals(locationId, other.locationId)
+            && Objects.equals(positionId, other.positionId);
+    }
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

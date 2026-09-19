@@ -4,17 +4,21 @@ import com.example.SWP391_G2_SE2055_JV.dto.CreateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.TempPasswordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.UserResponse;
+import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
+import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -24,7 +28,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -48,6 +51,7 @@ public class UserService {
 
     private final UserRepository     userRepository;
     private final PositionRepository positionRepository;
+    private final LocationRepository locationRepository;
     private final ShiftRepository    shiftRepository;
     private final PasswordEncoder    passwordEncoder;
 
@@ -78,7 +82,7 @@ public class UserService {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
 
         assertCanCreateRole(request.getRole());
-        validateProfile(request, tenantId);
+        Location location = validateProfile(request, tenantId);
 
         // BR-USER-06: email của người đã nghỉ việc VẪN chiếm chỗ, không dùng lại được.
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -108,12 +112,19 @@ public class UserService {
         User saved = userRepository.save(user);
         log.info("Tạo tài khoản {} role={} tenant={}", saved.getEmail(), saved.getRole(), tenantId);
 
+        // BR-ORG-02, DM-13: Location có Manager thì mới chính thức vận hành.
+        if (saved.getRole() == Role.MANAGER) {
+            location.setStatus(LocationStatus.OPERATIONAL);
+            locationRepository.save(location);
+        }
+
         return new TempPasswordResponse(UserResponse.fromEntity(saved), tempPassword);
     }
 
     @Transactional
     public UserResponse updateUser(UUID id, UpdateUserRequest request) {
         User user = getOwnedUser(id);
+        assertCanModify(user);
 
         if (request.getEmail() != null && !request.getEmail().equals(user.getEmail())) {
             throw new BusinessException(
@@ -159,6 +170,7 @@ public class UserService {
     @Transactional
     public UserResponse terminateUser(UUID id) {
         User user = getOwnedUser(id);
+        assertCanModify(user);
 
         if (user.isTerminated()) {
             throw new BusinessException("Nhân viên này đã ở trạng thái nghỉ việc.");
@@ -175,6 +187,14 @@ public class UserService {
         int released = releaseFutureShifts(user.getId(), UnassignedReason.TERMINATION);
         log.info("Cho nghỉ việc {} — gỡ {} ca tương lai", user.getEmail(), released);
 
+        // DM-13: Location mất Manager thì quay về "Chưa vận hành" cho tới khi có Manager mới.
+        if (user.getRole() == Role.MANAGER && user.getLocationId() != null) {
+            locationRepository.findById(user.getLocationId()).ifPresent(location -> {
+                location.setStatus(LocationStatus.NOT_OPERATIONAL);
+                locationRepository.save(location);
+            });
+        }
+
         return UserResponse.fromEntity(user);
     }
 
@@ -182,6 +202,7 @@ public class UserService {
     @Transactional
     public TempPasswordResponse resetUserPassword(UUID id) {
         User user = getOwnedUser(id);
+        assertCanModify(user);
         if (user.isTerminated()) {
             throw new BusinessException("Không cấp lại mật khẩu cho nhân viên đã nghỉ việc.");
         }
@@ -199,11 +220,11 @@ public class UserService {
 
     /**
      * BR-SCH-17: "ca tương lai" là ca có ngày LỚN HƠN hôm nay — ca của chính hôm nay
-     * KHÔNG bị gỡ tự động.
+     * KHÔNG bị gỡ tự động. "Hôm nay" tính theo giờ Hà Nội, không theo giờ server.
      */
     private int releaseFutureShifts(UUID staffId, UnassignedReason reason) {
         List<Shift> futureShifts =
-            shiftRepository.findByStaffIdAndShiftDateGreaterThan(staffId, LocalDate.now());
+            shiftRepository.findByStaffIdAndShiftDateGreaterThan(staffId, ShiftTimeUtils.todayInHanoi());
         LocalDateTime now = LocalDateTime.now();
         for (Shift shift : futureShifts) {
             shift.setStaffId(null);
@@ -226,6 +247,17 @@ public class UserService {
         return user;
     }
 
+    /**
+     * BR-PERM-02/03: Manager chỉ quản lý STAFF; tài khoản Manager — kể cả của chính mình —
+     * do Giám đốc quản lý. Thiếu chốt này Manager có thể tự cho mình nghỉ việc hoặc tự
+     * khóa mình, để lại Location không người quản lý.
+     */
+    private void assertCanModify(User target) {
+        if (SecurityUtils.hasRole(Role.MANAGER) && target.getRole() != Role.STAFF) {
+            throw new BusinessException("Manager chỉ thao tác được trên tài khoản STAFF (BR-PERM-03).");
+        }
+    }
+
     /** BR-PERM-02/03: Giám đốc CRUD Manager, Manager CRUD Staff trong Location. */
     private void assertCanCreateRole(Role target) {
         Role actor = SecurityUtils.getCurrentRole();
@@ -239,8 +271,12 @@ public class UserService {
         }
     }
 
-    /** Trường bắt buộc khác nhau theo vai trò — BR-USER-01, BR-USER-05. */
-    private void validateProfile(CreateUserRequest request, UUID tenantId) {
+    /**
+     * Trường bắt buộc khác nhau theo vai trò — BR-USER-01, BR-USER-05.
+     *
+     * @return Location của người được tạo, đã xác nhận thuộc đúng Tenant.
+     */
+    private Location validateProfile(CreateUserRequest request, UUID tenantId) {
         if (request.getRole() == Role.STAFF) {
             requireStaffProfile(request);
             if (request.getPositionId() == null) {
@@ -264,6 +300,21 @@ public class UserService {
                 && !SecurityUtils.getCurrentLocationId().equals(request.getLocationId())) {
             throw new BusinessException("Chỉ tạo được nhân sự trong Location của mình.");
         }
+
+        if (request.getLocationId() == null) {
+            return null;
+        }
+        // Khóa ngoại chỉ đảm bảo Location TỒN TẠI, không đảm bảo nó thuộc Tenant này.
+        Location location = locationRepository.findByIdAndTenantId(request.getLocationId(), tenantId)
+            .orElseThrow(() -> new ResourceNotFoundException("Location", "id", request.getLocationId()));
+
+        // BR-SCH-08: 1 Location chỉ có 1 Manager.
+        if (request.getRole() == Role.MANAGER
+                && userRepository.existsByLocationIdAndRoleAndStatusNot(
+                    location.getId(), Role.MANAGER, UserStatus.TERMINATED)) {
+            throw new BusinessException("Location này đã có Manager.");
+        }
+        return location;
     }
 
     /** Bộ 10 trường bắt buộc của BR-USER-01 (Manager dùng lại, trừ Position). */

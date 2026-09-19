@@ -3,7 +3,9 @@ package com.example.SWP391_G2_SE2055_JV.utils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 
 /**
  * Suy ra {@code isOvernight} và {@code durationHours} từ giờ bắt đầu/kết thúc.
@@ -14,7 +16,27 @@ import java.time.LocalTime;
  */
 public final class ShiftTimeUtils {
 
+    /**
+     * Giờ Hà Nội (UTC+7). IANA không có mã "Asia/Hanoi" — cả Việt Nam dùng chung
+     * {@code Asia/Ho_Chi_Minh}.
+     */
+    public static final ZoneId HANOI_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
     private ShiftTimeUtils() {}
+
+    /**
+     * "Hôm nay" theo giờ Hà Nội — mốc xác định "ca tương lai" (BR-SCH-17): ca có ngày
+     * LỚN HƠN hôm nay mới bị gỡ tự động, ca của chính hôm nay giữ nguyên.
+     *
+     * <p>Không dùng {@code LocalDate.now()} trần vì nó theo múi giờ của server: server
+     * chạy UTC thì từ 00:00 đến 07:00 giờ Việt Nam "hôm nay" bị lùi về hôm qua, và ca
+     * của chính hôm nay bị gỡ nhầm.
+     *
+     * <p>Team chốt dùng CỐ ĐỊNH giờ Hà Nội, chưa đọc cột {@code locations.timezone}.
+     */
+    public static LocalDate todayInHanoi() {
+        return LocalDate.now(HANOI_ZONE);
+    }
 
     /** Ca kết thúc vào ngày hôm sau khi giờ kết thúc không lớn hơn giờ bắt đầu. */
     public static boolean isOvernight(LocalTime startTime, LocalTime endTime) {

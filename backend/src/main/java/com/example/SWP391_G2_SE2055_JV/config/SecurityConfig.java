@@ -2,6 +2,8 @@ package com.example.SWP391_G2_SE2055_JV.config;
 
 import com.example.SWP391_G2_SE2055_JV.config.oauth2.OAuth2LoginFailureHandler;
 import com.example.SWP391_G2_SE2055_JV.config.oauth2.OAuth2LoginSuccessHandler;
+import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,11 +16,12 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.session.HttpSessionEventPublisher;
 
 /**
  * Xác thực bằng session + Google OAuth2, phân quyền theo HAI trục — BR-PERM-01..06.
@@ -45,7 +48,9 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final UserDetailsService        userDetailsService;
+    private final UserDetailsServiceImpl    userDetailsService;
+    private final UserRepository            userRepository;
+    private final ObjectMapper              objectMapper;
     private final OAuth2LoginSuccessHandler successHandler;
     private final OAuth2LoginFailureHandler failureHandler;
 
@@ -77,7 +82,18 @@ public class SecurityConfig {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .authenticationProvider(provider)
-            .sessionManagement(session -> session.maximumSessions(1))
+            .sessionManagement(session -> session
+                .maximumSessions(1)
+                // Phiên cũ bị đẩy ra khi đăng nhập nơi khác: trả 401 để frontend về trang
+                // login (mặc định Spring chỉ ghi một câu text, không đặt mã lỗi).
+                .expiredSessionStrategy(event ->
+                    event.getResponse().setStatus(HttpStatus.UNAUTHORIZED.value())))
+
+            // Đọc lại user từ DB mỗi request — xem CurrentUserRefreshFilter. Đặt TRƯỚC
+            // AuthorizationFilter để rule URL phân quyền dựa trên dữ liệu mới nhất.
+            .addFilterBefore(
+                new CurrentUserRefreshFilter(userRepository, userDetailsService, objectMapper),
+                AuthorizationFilter.class)
 
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
@@ -141,7 +157,12 @@ public class SecurityConfig {
                     .hasAnyRole(ADMIN, MANAGER)
 
                 // ── Lịch làm việc ────────────────────────────────────────────
-                // Schedule Policy và Shift Template do Giám đốc quản lý (BR-SCH-01, BR-SCH-04).
+                // Schedule Policy và Shift Template do Giám đốc quản lý (BR-SCH-01, BR-SCH-04),
+                // nhưng Manager phải ĐỌC được: xem policy để hiểu vì sao ca bị chặn, và chọn
+                // template khi xếp ca. Rule GET này phải đứng TRƯỚC rule chặn bên dưới vì rule
+                // khớp đầu tiên thắng ("/scheduling/policy/**" khớp cả "/scheduling/policy").
+                .requestMatchers(HttpMethod.GET, "/scheduling/policy/**", "/scheduling/shift-templates/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
                 .requestMatchers("/scheduling/policy/**", "/scheduling/shift-templates/**")
                     .hasAnyRole(ADMIN, DIRECTOR)
                 // Mọi người lao động đều xin nghỉ / đổi ca / check-in-out được (BR-PERM-06).
@@ -213,6 +234,15 @@ public class SecurityConfig {
             }
         }
         return false;
+    }
+
+    /**
+     * Báo cho SessionRegistry của {@code maximumSessions(1)} biết khi session bị hủy
+     * (logout, hết hạn). Thiếu bean này registry giữ mãi session đã chết.
+     */
+    @Bean
+    public HttpSessionEventPublisher httpSessionEventPublisher() {
+        return new HttpSessionEventPublisher();
     }
 
     @Bean

@@ -53,7 +53,8 @@ public class SchedulePolicyService {
      * đăng ký Tenant; ở đây tự tạo bản mặc định để không Tenant nào rơi vào trạng
      * thái "chưa cấu hình" và chặn oan việc xếp ca.
      */
-    private SchedulePolicy getOrCreate(UUID tenantId) {
+    @Transactional
+    public SchedulePolicy getOrCreate(UUID tenantId) {
         return policyRepository.findByTenantId(tenantId)
             .orElseGet(() -> {
                 log.warn("Tenant {} chưa có Schedule Policy — tạo bản mặc định theo BR-SCH-20", tenantId);

@@ -3,7 +3,6 @@ package com.example.SWP391_G2_SE2055_JV.service;
 import com.example.SWP391_G2_SE2055_JV.entity.SchedulePolicy;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
-import com.example.SWP391_G2_SE2055_JV.repository.SchedulePolicyRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -40,8 +39,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SchedulePolicyValidator {
 
-    private final SchedulePolicyRepository policyRepository;
-    private final ShiftRepository          shiftRepository;
+    private final SchedulePolicyService policyService;
+    private final ShiftRepository       shiftRepository;
 
     /**
      * @param excludeShiftId ca đang được sửa — loại khỏi phép tính để không tự đụng chính nó.
@@ -53,10 +52,9 @@ public class SchedulePolicyValidator {
             return;
         }
 
-        SchedulePolicy policy = policyRepository.findByTenantId(tenantId)
-            .orElseThrow(() -> new BusinessException(
-                "Tenant chưa có Schedule Policy. Đây là lỗi dữ liệu: BR-SCH-20 yêu cầu "
-                + "sinh sẵn policy mặc định khi tạo Tenant."));
+        // BR-SCH-20: "không chặn xếp ca vì chưa cấu hình" — Tenant chưa có policy thì
+        // dùng luôn bản mặc định thay vì báo lỗi.
+        SchedulePolicy policy = policyService.getOrCreate(tenantId);
 
         LocalDate date = candidate.getShiftDate();
         LocalDate weekStart = date.with(DayOfWeek.MONDAY);

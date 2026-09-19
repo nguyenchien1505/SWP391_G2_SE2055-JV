@@ -2,6 +2,7 @@ package com.example.SWP391_G2_SE2055_JV.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -58,6 +59,20 @@ public class GlobalExceptionHandler {
             .toList();
         return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, "Validation failed",
             request.getRequestURI(), fieldErrors);
+    }
+
+    /**
+     * Vi phạm ràng buộc DB (UNIQUE, khóa ngoại, CHECK). Service vẫn phải tự kiểm tra trước
+     * để trả thông báo rõ ràng; đây là lưới an toàn cho race condition (2 request cùng tạo
+     * trùng email) và các chỗ chưa kiểm tra, để không rơi xuống 500.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex,
+                                                        HttpServletRequest request) {
+        log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+        return buildResponse(HttpStatus.CONFLICT,
+            "Dữ liệu bị trùng hoặc đang được tham chiếu bởi dữ liệu khác",
+            request.getRequestURI(), null);
     }
 
     @ExceptionHandler(Exception.class)

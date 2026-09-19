@@ -40,4 +40,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     /** BR-ORG-02: Location phải có Manager mới được vận hành chính thức. */
     Optional<User> findFirstByLocationIdAndRoleAndStatus(UUID locationId, Role role, UserStatus status);
+
+    /**
+     * 1 Location chỉ có 1 Manager (BR-SCH-08). Gọi với {@code status = TERMINATED} để đếm
+     * cả Manager đang tạm khóa (INACTIVE) — họ vẫn giữ Location.
+     */
+    boolean existsByLocationIdAndRoleAndStatusNot(UUID locationId, Role role, UserStatus status);
 }

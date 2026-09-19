@@ -4,12 +4,15 @@ import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.ShiftResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateShiftRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
+import com.example.SWP391_G2_SE2055_JV.entity.ShiftTemplate;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.ShiftTemplateRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
@@ -39,6 +42,8 @@ public class ShiftService {
 
     private final ShiftRepository          shiftRepository;
     private final UserRepository           userRepository;
+    private final LocationRepository       locationRepository;
+    private final ShiftTemplateRepository  shiftTemplateRepository;
     private final SchedulePolicyValidator  policyValidator;
 
     @Transactional(readOnly = true)
@@ -58,15 +63,32 @@ public class ShiftService {
         return shiftRepository.findByTenantId(tenantId, pageable).map(ShiftResponse::fromEntity);
     }
 
+    /**
+     * Cùng phạm vi với {@link #getShifts}: Staff chỉ xem ca của mình, Manager chỉ xem ca
+     * trong Location của mình. Ngoài phạm vi thì trả 404 thay vì 403 để không lộ việc ca
+     * đó có tồn tại.
+     */
     @Transactional(readOnly = true)
     public ShiftResponse getShiftById(UUID id) {
-        return ShiftResponse.fromEntity(getOwnedShift(id));
+        Shift shift = getOwnedShift(id);
+
+        boolean outOfScope =
+            (SecurityUtils.hasRole(Role.STAFF)
+                && !SecurityUtils.getCurrentUserId().equals(shift.getStaffId()))
+            || (SecurityUtils.hasRole(Role.MANAGER)
+                && !SecurityUtils.getCurrentLocationId().equals(shift.getLocationId()));
+        if (outOfScope) {
+            throw new ResourceNotFoundException("Shift", "id", id);
+        }
+        return ShiftResponse.fromEntity(shift);
     }
 
     @Transactional
     public ShiftResponse createShift(CreateShiftRequest request) {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
         assertManagesLocation(request.getLocationId());
+        assertLocationInTenant(request.getLocationId(), tenantId);
+        assertTemplateUsable(request.getSourceTemplateId(), tenantId);
 
         Shift shift = Shift.builder()
             .tenantId(tenantId)
@@ -106,6 +128,7 @@ public class ShiftService {
             shift.setEndTime(request.getEndTime());
         }
         if (request.getSourceTemplateId() != null) {
+            assertTemplateUsable(request.getSourceTemplateId(), shift.getTenantId());
             shift.setSourceTemplateId(request.getSourceTemplateId());
         }
 
@@ -165,8 +188,12 @@ public class ShiftService {
     public void deleteShift(UUID id) {
         Shift shift = getOwnedShift(id);
         assertManagesLocation(shift.getLocationId());
+        // DM-15: dữ liệu chấm công nằm ngay trên bản ghi ca — xóa ca đã check-in là mất luôn.
+        if (shift.isCheckedIn()) {
+            throw new BusinessException("Không xóa được ca đã check-in — sẽ mất dữ liệu chấm công.");
+        }
         // Ca không có cột xóa mềm: BR-ROOM-09/DM-17 chỉ yêu cầu lưu vết cho phòng,
-        // còn một slot ca bị hủy thì không còn giá trị lịch sử nào.
+        // còn một slot ca chưa ai làm thì không còn giá trị lịch sử nào.
         shiftRepository.delete(shift);
         log.info("Xóa ca {}", id);
     }
@@ -212,6 +239,27 @@ public class ShiftService {
         if (SecurityUtils.hasRole(Role.MANAGER)
                 && !locationId.equals(SecurityUtils.getCurrentLocationId())) {
             throw new BusinessException("Không có quyền thao tác trên Location khác.");
+        }
+    }
+
+    /** Khóa ngoại chỉ đảm bảo Location TỒN TẠI, không đảm bảo nó thuộc Tenant này. */
+    private void assertLocationInTenant(UUID locationId, UUID tenantId) {
+        locationRepository.findByIdAndTenantId(locationId, tenantId)
+            .orElseThrow(() -> new ResourceNotFoundException("Location", "id", locationId));
+    }
+
+    /**
+     * BR-SCH-04: template phải thuộc Tenant này. BR-SCH-22: template đã vô hiệu hóa chỉ
+     * còn để tra lịch sử, không dùng xếp ca mới. {@code null} = ca tự do, bỏ qua.
+     */
+    private void assertTemplateUsable(UUID templateId, UUID tenantId) {
+        if (templateId == null) {
+            return;
+        }
+        ShiftTemplate template = shiftTemplateRepository.findByIdAndTenantId(templateId, tenantId)
+            .orElseThrow(() -> new ResourceNotFoundException("ShiftTemplate", "id", templateId));
+        if (!template.isActive()) {
+            throw new BusinessException("Mẫu ca này đã bị vô hiệu hóa (BR-SCH-22).");
         }
     }
 

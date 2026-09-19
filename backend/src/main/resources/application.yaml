@@ -25,7 +25,9 @@ spring:
 
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    # db/seed: tài khoản test cho mỗi vai trò (R__seed_test_accounts.sql).
+    # CHỈ dùng dev/demo — BỎ "classpath:db/seed" khi deploy thật.
+    locations: classpath:db/migration,classpath:db/seed
     baseline-on-migrate: true
 
   # ── Google OAuth2 ──────────────────────────────────────────────────────────

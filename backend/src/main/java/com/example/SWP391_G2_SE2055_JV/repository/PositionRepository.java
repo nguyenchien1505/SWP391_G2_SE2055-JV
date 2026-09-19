@@ -12,7 +12,12 @@ import java.util.UUID;
 @Repository
 public interface PositionRepository extends JpaRepository<Position, UUID> {
 
-    List<Position> findByTenantIdAndIsActiveTrue(UUID tenantId);
+    /**
+     * Tên thuộc tính là {@code active} (field), KHÔNG phải {@code isActive} (tên getter
+     * Lombok sinh ra) — viết {@code IsActiveTrue} thì Spring Data không tạo được query
+     * và app dừng ngay lúc khởi động.
+     */
+    List<Position> findByTenantIdAndActiveTrue(UUID tenantId);
 
     Optional<Position> findByIdAndTenantId(UUID id, UUID tenantId);
 

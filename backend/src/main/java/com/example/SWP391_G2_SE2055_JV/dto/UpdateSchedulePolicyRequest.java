@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.dto;
 
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -17,12 +18,16 @@ import java.math.BigDecimal;
 @Data
 public class UpdateSchedulePolicyRequest {
 
+    // Giới hạn trên: vượt cột DECIMAL trong DB thì MySQL báo lỗi và API trả 500 thay vì 422.
+
     @NotNull
     @DecimalMin(value = "0.5", message = "Giờ làm tối đa/ngày phải lớn hơn 0")
+    @DecimalMax(value = "24", message = "Giờ làm tối đa/ngày không vượt quá 24 giờ")
     private BigDecimal maxHoursPerDay;
 
     @NotNull
     @DecimalMin(value = "0.5", message = "Giờ làm tối đa/tuần phải lớn hơn 0")
+    @DecimalMax(value = "168", message = "Giờ làm tối đa/tuần không vượt quá 168 giờ")
     private BigDecimal maxHoursPerWeek;
 
     /** Đếm theo SỐ NGÀY liên tiếp có ca — BR-SCH-14. */
@@ -32,6 +37,7 @@ public class UpdateSchedulePolicyRequest {
 
     @NotNull
     @DecimalMin(value = "0.0", message = "Giờ nghỉ tối thiểu giữa 2 ca không được âm")
+    @DecimalMax(value = "99.99", message = "Giờ nghỉ tối thiểu giữa 2 ca tối đa 99.99 giờ")
     private BigDecimal minRestHoursBetweenShifts;
 
     @NotNull
