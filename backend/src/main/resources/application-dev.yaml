@@ -10,15 +10,22 @@
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
+    # Dev dùng CHUNG nguồn schema với các môi trường khác: Flyway là nguồn duy nhất,
+    # Hibernate chỉ đối chiếu. Trước đây dev để create-drop + tắt Flyway nên schema
+    # dev sinh từ entity còn schema thật sinh từ migration — hai nguồn lệch nhau.
     hibernate:
-      ddl-auto: create-drop   # auto-creates tables from entities on start, drops on stop
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
         format_sql: true
+        type:
+          preferred_uuid_jdbc_type: CHAR
 
   flyway:
-    enabled: false            # use ddl-auto in dev instead
+    enabled: true
+    # Dev được phép xóa sạch và dựng lại: `./mvnw flyway:clean flyway:migrate`
+    clean-disabled: false
 
 logging:
   level:

@@ -17,6 +17,11 @@ spring:
       hibernate:
         format_sql: true
         default_batch_fetch_size: 20
+        type:
+          # Khóa chính toàn hệ thống là uuid (ERD). Mặc định Hibernate 6 map UUID
+          # sang BINARY(16) trên MySQL; CHAR khớp với CHAR(36) trong V1__init_schema.sql
+          # và đọc được trực tiếp khi query tay. Đổi giá trị này là phải viết migration.
+          preferred_uuid_jdbc_type: CHAR
 
   flyway:
     enabled: true
@@ -55,6 +60,15 @@ server:
   port: 8080
   servlet:
     context-path: /api
+
+# Đích redirect sau khi đăng nhập Google. Trước đây hardcode trong
+# OAuth2LoginSuccessHandler nên không đổi được theo môi trường.
+app:
+  frontend:
+    success-redirect: http://localhost:3000/dashboard
+    unauthorized-redirect: http://localhost:3000/unauthorized
+    # BR-USER-07: tài khoản còn mật khẩu tạm phải đổi trước khi vào hệ thống.
+    change-password-redirect: http://localhost:3000/change-password
 
 logging:
   level:

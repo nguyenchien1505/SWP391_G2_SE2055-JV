@@ -1,51 +1,72 @@
 package com.example.SWP391_G2_SE2055_JV.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.util.UUID;
 
+/**
+ * Gói dịch vụ hiện hành của một Tenant — BR-SAAS-02..08.
+ *
+ * <p>DM-09: mỗi Tenant có ĐÚNG 1 bản ghi (unique trên {@code tenant_id}); nâng/hạ gói
+ * là sửa đè bản ghi này chứ không tạo dòng mới.
+ *
+ * <p>Ba cột {@code pricePer*} là SNAPSHOT đơn giá tại thời điểm chốt gói (BR-SAAS-05),
+ * nên Admin Platform đổi {@link PricingConfig} không ảnh hưởng gói đã bán.
+ */
 @Entity
 @Table(name = "subscriptions")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class Subscription {
+@Getter
+@Setter
+@NoArgsConstructor
+@SuperBuilder
+public class Subscription extends AuditableEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", length = 36, nullable = false, updatable = false)
+    private UUID id;
 
-    @Column(name = "tenant_id", nullable = false)
-    private Long tenantId;
+    @Column(name = "tenant_id", length = 36, nullable = false)
+    private UUID tenantId;
 
-    @Column(name = "service_package_id", nullable = false)
-    private Long servicePackageId;
+    @Column(name = "quota_location", nullable = false)
+    private int quotaLocation;
 
-    @Column(name = "start_date", nullable = false)
-    private LocalDate startDate;
+    /** CHỈ đếm Staff — Giám đốc và Manager không tính vào quota (BR-SAAS-03). */
+    @Column(name = "quota_user", nullable = false)
+    private int quotaUser;
 
-    @Column(name = "end_date", nullable = false)
-    private LocalDate endDate;
+    @Column(name = "quota_room", nullable = false)
+    private int quotaRoom;
 
-    @Column(name = "auto_renew", nullable = false)
-    @Builder.Default
-    private boolean autoRenew = false;
+    /** Snapshot đơn giá lúc chốt gói, VND số nguyên — BR-SAAS-05, BR-SAAS-15. */
+    @Column(name = "price_per_location", nullable = false)
+    private Long pricePerLocation;
 
-    private String status;
+    @Column(name = "price_per_user", nullable = false)
+    private Long pricePerUser;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    @Column(name = "price_per_room", nullable = false)
+    private Long pricePerRoom;
 
-    @Column(name = "created_by")
-    private Long createdBy;
+    /** Tenant mới luôn bắt đầu bằng bản dùng thử — BR-SAAS-08. */
+    @Column(name = "is_trial", nullable = false)
+    @lombok.Builder.Default
+    private boolean trial = true;
 
-    @Column(name = "is_deleted", nullable = false)
-    @Builder.Default
-    private boolean deleted = false;
+    /** Hạn dùng thử, tính theo {@code SystemConfig.trialDays} — BR-SAAS-08. */
+    @Column(name = "trial_ends_at")
+    private LocalDate trialEndsAt;
 
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
+    @Column(name = "current_period_start")
+    private LocalDate currentPeriodStart;
 
-    @Column(name = "deleted_by")
-    private Long deletedBy;
+    /** Chu kỳ 30 ngày — BR-SAAS-05. */
+    @Column(name = "next_billing_date")
+    private LocalDate nextBillingDate;
 }

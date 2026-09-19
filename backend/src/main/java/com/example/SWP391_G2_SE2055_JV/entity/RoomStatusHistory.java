@@ -1,41 +1,74 @@
 package com.example.SWP391_G2_SE2055_JV.entity;
 
+import com.example.SWP391_G2_SE2055_JV.enums.ChangeSource;
+import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
- * Lịch sử chuyển trạng thái phòng (append-only)
- * Mỗi lần đổi {@code rooms.current_status_id} ghi 1 dòng ở đây trong cùng transaction;
- * {@code reason} lưu lý do (bảo trì/khóa, kết quả kiểm tra KHÔNG đạt...).
+ * Nhật ký đổi trạng thái phòng — BR-ROOM-09, DM-06.
+ *
+ * <p>Mỗi lần {@link Room#getStatus()} thay đổi sinh ĐÚNG một dòng, kể cả khi hệ thống
+ * tự chuyển. Bảng này là append-only: đã ghi thì không sửa, không xóa.
+ *
+ * <p>DM-06: lịch sử sử dụng phòng được SUY RA từ chuỗi bản ghi này — không có entity
+ * RoomStay và không lưu bất kỳ thông tin khách nào.
  */
 @Entity
 @Table(name = "room_status_history")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class RoomStatusHistory {
+@Getter
+@Setter
+@NoArgsConstructor
+@SuperBuilder
+public class RoomStatusHistory extends AuditableEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", length = 36, nullable = false, updatable = false)
+    private UUID id;
 
-    @Column(name = "room_id", nullable = false)
-    private Long roomId;
+    @Column(name = "tenant_id", length = 36, nullable = false)
+    private UUID tenantId;
 
-    /** Trạng thái nguồn — null nếu là bản ghi đầu tiên của phòng. */
-    @Column(name = "from_status_id")
-    private Long fromStatusId;
+    @Column(name = "room_id", length = 36, nullable = false)
+    private UUID roomId;
 
-    @Column(name = "to_status_id", nullable = false)
-    private Long toStatusId;
+    /** NULL ở bản ghi đầu tiên của phòng mới tạo — BR-ROOM-10. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "from_status", length = 20)
+    private RoomStatus fromStatus;
 
-    /** Người thực hiện — null nếu do hệ thống tự động (vd DIRTY→CLEANING khi phân công). */
-    @Column(name = "changed_by")
-    private Long changedBy;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "to_status", length = 20, nullable = false)
+    private RoomStatus toStatus;
+
+    /** NULL khi changeSource = SYSTEM (không có người thực hiện). */
+    @Column(name = "changed_by", length = 36)
+    private UUID changedBy;
 
     @Column(name = "changed_at", nullable = false)
     private LocalDateTime changedAt;
 
-    @Column(length = 500)
+    /** Cột "Người/nguồn thực hiện" của ma trận BR-ROOM-02. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "change_source", length = 20, nullable = false)
+    private ChangeSource changeSource;
+
+    @Column(name = "reason", length = 500)
     private String reason;
+
+    /** Task dọn gây ra bước chuyển này, nếu có. */
+    @Column(name = "related_task_id", length = 36)
+    private UUID relatedTaskId;
+
+    /** Bước chuyển do hệ thống tự thực hiện thì không có người chịu trách nhiệm. */
+    public boolean isSystemChange() {
+        return changeSource == ChangeSource.SYSTEM;
+    }
 }

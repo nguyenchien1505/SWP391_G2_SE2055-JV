@@ -2,7 +2,6 @@ package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.config.CustomUserDetails;
 import com.example.SWP391_G2_SE2055_JV.dto.ChangePasswordRequest;
-import com.example.SWP391_G2_SE2055_JV.dto.ForgotPasswordRequest;
 import com.example.SWP391_G2_SE2055_JV.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,35 +20,37 @@ public class AuthController {
 
     private final AuthService authService;
 
-    /** Returns current authenticated user info — called by frontend after login. */
+    /**
+     * Thông tin người đang đăng nhập — frontend gọi ngay sau khi login.
+     *
+     * <p>Trả cả {@code positionType} vì Lễ tân / Dọn dẹp không phải role mà là Loại
+     * Position (BR-ORG-08); frontend dựa vào đây để bật/tắt màn hình nghiệp vụ đặc thù.
+     */
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> me(@AuthenticationPrincipal CustomUserDetails user) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("id",         user.getId());
-        body.put("email",      user.getUsername());
-        body.put("role",       user.getRole().name());
-        body.put("tenantId",   user.getTenantId());
-        body.put("locationId", user.getLocationId());
+        body.put("id",                 user.getId());
+        body.put("email",              user.getUsername());
+        body.put("role",               user.getRole().name());
+        body.put("tenantId",           user.getTenantId());
+        body.put("locationId",         user.getLocationId());
+        body.put("positionId",         user.getPositionId());
+        body.put("positionType",       user.getPositionType() == null ? null : user.getPositionType().name());
+        // BR-USER-07: frontend phải ép về màn hình đổi mật khẩu khi cờ này bật.
+        body.put("mustChangePassword", user.isMustChangePassword());
         return ResponseEntity.ok(body);
     }
 
-    /** Email not in system — shown after rejected OAuth2 login. */
+    /** Email chưa có trong hệ thống — hiển thị sau khi đăng nhập Google bị từ chối. */
     @GetMapping("/unauthorized")
     public ResponseEntity<Map<String, String>> unauthorized() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
             "error",   "access_denied",
-            "message", "Your Google account is not registered. Please contact your manager."
+            "message", "Tài khoản Google của bạn chưa được đăng ký. Vui lòng liên hệ quản lý."
         ));
     }
 
-    /** Request temporary password via email. */
-    @PostMapping("/forgot-password")
-    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
-        authService.forgotPassword(request.getEmail());
-        return ResponseEntity.ok().build();
-    }
-
-    /** Change own password — requires active session. */
+    /** Tự đổi mật khẩu — bắt buộc ở lần đăng nhập đầu tiên (BR-USER-07). */
     @PostMapping("/change-password")
     public ResponseEntity<Void> changePassword(
             @AuthenticationPrincipal CustomUserDetails user,

@@ -5,16 +5,14 @@ import com.example.SWP391_G2_SE2055_JV.dto.ShiftResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateShiftRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
-import com.example.SWP391_G2_SE2055_JV.entity.WorkSchedulePolicy;
-import com.example.SWP391_G2_SE2055_JV.enums.PolicyStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
-import com.example.SWP391_G2_SE2055_JV.enums.ShiftStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
-import com.example.SWP391_G2_SE2055_JV.repository.WorkSchedulePolicyRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
+import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -22,130 +20,218 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.DayOfWeek;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
- * Shift is the pivot both Work Schedule Management (this class) and Cleaning Schedule
- * Management ({@code CleaningAssignmentService}) build on: a cleaning assignment is a
- * housekeeping-specific task hung off a shift via {@code shift_id}.
+ * Xếp ca — BR-SCH-02..05, BR-SCH-24, DM-03, DM-15.
+ *
+ * <p>Ca là một SLOT: gỡ người là {@code staffId = null} kèm lý do, không xóa bản ghi.
+ * Mọi đường ghi thay đổi người hoặc giờ ca đều chạy lại {@link SchedulePolicyValidator},
+ * vi phạm là chặn cứng không override (BR-SCH-02).
+ *
+ * <p>Mọi truy vấn đều lọc theo tenantId lấy từ session — không dùng {@code findAll()} trần.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ShiftService {
 
-    private final ShiftRepository shiftRepository;
-    private final WorkSchedulePolicyRepository policyRepository;
-    private final UserRepository userRepository;
+    private final ShiftRepository          shiftRepository;
+    private final UserRepository           userRepository;
+    private final SchedulePolicyValidator  policyValidator;
 
     @Transactional(readOnly = true)
     public Page<ShiftResponse> getShifts(Pageable pageable) {
-        Page<Shift> page = isManagerOrAdmin()
-            ? shiftRepository.findByDeletedFalse(pageable)
-            : shiftRepository.findByUserIdAndDeletedFalse(SecurityUtils.getCurrentUserId(), pageable);
-        return page.map(ShiftResponse::fromEntity);
+        UUID tenantId = SecurityUtils.getCurrentTenantId();
+
+        // Staff chỉ thấy ca của chính mình; Manager giới hạn trong Location của mình.
+        if (SecurityUtils.hasRole(Role.STAFF)) {
+            return shiftRepository.findByStaffId(SecurityUtils.getCurrentUserId(), pageable)
+                .map(ShiftResponse::fromEntity);
+        }
+        if (SecurityUtils.hasRole(Role.MANAGER)) {
+            return shiftRepository
+                .findByTenantIdAndLocationId(tenantId, SecurityUtils.getCurrentLocationId(), pageable)
+                .map(ShiftResponse::fromEntity);
+        }
+        return shiftRepository.findByTenantId(tenantId, pageable).map(ShiftResponse::fromEntity);
     }
 
     @Transactional(readOnly = true)
-    public ShiftResponse getShiftById(Long id) {
-        return ShiftResponse.fromEntity(getActiveOrThrow(id));
+    public ShiftResponse getShiftById(UUID id) {
+        return ShiftResponse.fromEntity(getOwnedShift(id));
     }
 
     @Transactional
     public ShiftResponse createShift(CreateShiftRequest request) {
-        User targetUser = userRepository.findById(request.getUserId())
-            .orElseThrow(() -> new ResourceNotFoundException("User", "id", request.getUserId()));
-
-        enforcePolicy(targetUser, request.getShiftDate());
+        UUID tenantId = SecurityUtils.getCurrentTenantId();
+        assertManagesLocation(request.getLocationId());
 
         Shift shift = Shift.builder()
-            .userId(request.getUserId())
-            .shiftType(request.getShiftType())
+            .tenantId(tenantId)
+            .locationId(request.getLocationId())
+            .staffId(request.getStaffId())
             .shiftDate(request.getShiftDate())
             .startTime(request.getStartTime())
             .endTime(request.getEndTime())
-            .status(ShiftStatus.SCHEDULED)
-            .createdAt(LocalDateTime.now())
-            .createdBy(currentUserIdOrNull())
+            .overnight(ShiftTimeUtils.isOvernight(request.getStartTime(), request.getEndTime()))
+            .durationHours(ShiftTimeUtils.durationHours(request.getStartTime(), request.getEndTime()))
+            .sourceTemplateId(request.getSourceTemplateId())
             .build();
 
+        if (request.getStaffId() != null) {
+            assertStaffBelongsToLocation(request.getStaffId(), tenantId, request.getLocationId());
+            policyValidator.validate(tenantId, request.getStaffId(), shift, null);
+        }
+
         Shift saved = shiftRepository.save(shift);
-        log.info("Created shift {} for user {} on {}", saved.getId(), saved.getUserId(), saved.getShiftDate());
+        log.info("Tạo ca {} ngày {} tại Location {} cho staff {}",
+            saved.getId(), saved.getShiftDate(), saved.getLocationId(), saved.getStaffId());
         return ShiftResponse.fromEntity(saved);
     }
 
     @Transactional
-    public ShiftResponse updateShift(Long id, UpdateShiftRequest request) {
-        Shift shift = getActiveOrThrow(id);
+    public ShiftResponse updateShift(UUID id, UpdateShiftRequest request) {
+        Shift shift = getOwnedShift(id);
+        assertManagesLocation(shift.getLocationId());
 
-        if (request.getShiftType() != null) shift.setShiftType(request.getShiftType());
-        if (request.getShiftDate() != null) shift.setShiftDate(request.getShiftDate());
-        if (request.getStartTime() != null) shift.setStartTime(request.getStartTime());
-        if (request.getEndTime() != null) shift.setEndTime(request.getEndTime());
-        if (request.getStatus() != null) shift.setStatus(request.getStatus());
+        if (request.getShiftDate() != null) {
+            shift.setShiftDate(request.getShiftDate());
+        }
+        if (request.getStartTime() != null) {
+            shift.setStartTime(request.getStartTime());
+        }
+        if (request.getEndTime() != null) {
+            shift.setEndTime(request.getEndTime());
+        }
+        if (request.getSourceTemplateId() != null) {
+            shift.setSourceTemplateId(request.getSourceTemplateId());
+        }
 
-        log.info("Updated shift {}", id);
+        // Giờ ca đổi thì độ dài và cờ qua đêm phải tính lại trước khi validate (BR-SCH-03).
+        shift.setOvernight(ShiftTimeUtils.isOvernight(shift.getStartTime(), shift.getEndTime()));
+        shift.setDurationHours(ShiftTimeUtils.durationHours(shift.getStartTime(), shift.getEndTime()));
+
+        policyValidator.validate(shift.getTenantId(), shift.getStaffId(), shift, shift.getId());
+
+        log.info("Cập nhật ca {}", id);
+        return ShiftResponse.fromEntity(shiftRepository.save(shift));
+    }
+
+    /** Gán người cho ca — chạy lại toàn bộ kiểm tra Policy cho người được gán. */
+    @Transactional
+    public ShiftResponse assignStaff(UUID id, UUID staffId) {
+        Shift shift = getOwnedShift(id);
+        assertManagesLocation(shift.getLocationId());
+
+        if (shift.isAssigned()) {
+            throw new BusinessException(
+                "Ca đã có người phụ trách. Gỡ người hiện tại trước khi gán người mới.");
+        }
+        assertStaffBelongsToLocation(staffId, shift.getTenantId(), shift.getLocationId());
+        policyValidator.validate(shift.getTenantId(), staffId, shift, shift.getId());
+
+        shift.setStaffId(staffId);
+        shift.setUnassignedReason(null);
+        shift.setUnassignedAt(null);
+
+        log.info("Gán ca {} cho staff {}", id, staffId);
+        return ShiftResponse.fromEntity(shiftRepository.save(shift));
+    }
+
+    /**
+     * Gỡ người khỏi ca — BR-SCH-24. Ca quay về trạng thái chưa phân công và LUÔN
+     * ghi lại lý do; bản ghi ca không bị xóa (DM-03).
+     */
+    @Transactional
+    public ShiftResponse unassignStaff(UUID id, UnassignedReason reason) {
+        Shift shift = getOwnedShift(id);
+        assertManagesLocation(shift.getLocationId());
+
+        if (!shift.isAssigned()) {
+            throw new BusinessException("Ca này vốn đã ở trạng thái chưa phân công.");
+        }
+
+        shift.setStaffId(null);
+        shift.setUnassignedReason(reason);
+        shift.setUnassignedAt(LocalDateTime.now());
+
+        log.info("Gỡ người khỏi ca {} — lý do {}", id, reason);
         return ShiftResponse.fromEntity(shiftRepository.save(shift));
     }
 
     @Transactional
-    public void deleteShift(Long id) {
-        Shift shift = getActiveOrThrow(id);
-        shift.setDeleted(true);
-        shift.setDeletedAt(LocalDateTime.now());
-        shift.setDeletedBy(currentUserIdOrNull());
-        shiftRepository.save(shift);
-        log.info("Deleted shift {}", id);
+    public void deleteShift(UUID id) {
+        Shift shift = getOwnedShift(id);
+        assertManagesLocation(shift.getLocationId());
+        // Ca không có cột xóa mềm: BR-ROOM-09/DM-17 chỉ yêu cầu lưu vết cho phòng,
+        // còn một slot ca bị hủy thì không còn giá trị lịch sử nào.
+        shiftRepository.delete(shift);
+        log.info("Xóa ca {}", id);
     }
 
-    /**
-     * Validates a new shift against the location's active work-schedule policy
-     * (max_shifts_per_week). There is no DB-level FK between shifts and
-     * work_schedule_policies — the relationship is enforced here, in application logic.
-     */
-    private void enforcePolicy(User targetUser, LocalDate shiftDate) {
-        if (targetUser.getLocationId() == null) {
-            return;
+    /** BR-DASH-01: chỉ ghi nhận timestamp, không tự tính đi muộn/về sớm. */
+    @Transactional
+    public ShiftResponse checkIn(UUID id) {
+        Shift shift = getOwnedShift(id);
+        assertIsOwnShift(shift);
+
+        if (shift.isCheckedIn()) {
+            throw new BusinessException("Ca này đã được check-in.");
         }
-        policyRepository
-            .findFirstByLocationIdAndStatusAndDeletedFalseOrderByEffectiveFromDesc(
-                targetUser.getLocationId(), PolicyStatus.ACTIVE)
-            .ifPresent(policy -> {
-                if (policy.getMaxShiftsPerWeek() == null) {
-                    return;
-                }
-                LocalDate weekStart = shiftDate.with(DayOfWeek.MONDAY);
-                LocalDate weekEnd = shiftDate.with(DayOfWeek.SUNDAY);
-                int existing = shiftRepository.countByUserIdAndShiftDateBetweenAndDeletedFalse(
-                    targetUser.getId(), weekStart, weekEnd);
-                if (existing >= policy.getMaxShiftsPerWeek()) {
-                    throw new BusinessException(String.format(
-                        "User %d already has %d shift(s) in the week of %s, at the policy limit of %d",
-                        targetUser.getId(), existing, weekStart, policy.getMaxShiftsPerWeek()));
-                }
-            });
+        shift.setCheckInAt(LocalDateTime.now());
+        return ShiftResponse.fromEntity(shiftRepository.save(shift));
     }
 
-    private Shift getActiveOrThrow(Long id) {
-        Shift shift = shiftRepository.findById(id)
+    @Transactional
+    public ShiftResponse checkOut(UUID id) {
+        Shift shift = getOwnedShift(id);
+        assertIsOwnShift(shift);
+
+        if (!shift.isCheckedIn()) {
+            throw new BusinessException("Phải check-in trước khi check-out.");
+        }
+        if (shift.getCheckOutAt() != null) {
+            throw new BusinessException("Ca này đã được check-out.");
+        }
+        shift.setCheckOutAt(LocalDateTime.now());
+        return ShiftResponse.fromEntity(shiftRepository.save(shift));
+    }
+
+    // ── Kiểm tra quyền sở hữu ────────────────────────────────────────────────
+
+    /** Chốt chặn cách ly Tenant: không bao giờ tải ca bằng findById trần. */
+    private Shift getOwnedShift(UUID id) {
+        return shiftRepository.findByIdAndTenantId(id, SecurityUtils.getCurrentTenantId())
             .orElseThrow(() -> new ResourceNotFoundException("Shift", "id", id));
-        if (shift.isDeleted()) {
-            throw new ResourceNotFoundException("Shift", "id", id);
+    }
+
+    /** Manager chỉ thao tác trong Location của mình — BR-PERM-03. */
+    private void assertManagesLocation(UUID locationId) {
+        if (SecurityUtils.hasRole(Role.MANAGER)
+                && !locationId.equals(SecurityUtils.getCurrentLocationId())) {
+            throw new BusinessException("Không có quyền thao tác trên Location khác.");
         }
-        return shift;
     }
 
-    private boolean isManagerOrAdmin() {
-        return SecurityUtils.hasAnyRole(Role.ADMIN_PLATFORM, Role.MANAGER, Role.DIRECTOR);
+    private void assertIsOwnShift(Shift shift) {
+        if (!SecurityUtils.getCurrentUserId().equals(shift.getStaffId())) {
+            throw new BusinessException("Chỉ người được phân công mới check-in/check-out ca này.");
+        }
     }
 
-    private Long currentUserIdOrNull() {
-        try {
-            return SecurityUtils.getCurrentUserId();
-        } catch (Exception e) {
-            return null;
+    /** BR-SCH-05: chỉ xếp ca cho nhân viên thuộc đúng Location đó. */
+    private void assertStaffBelongsToLocation(UUID staffId, UUID tenantId, UUID locationId) {
+        User staff = userRepository.findByIdAndTenantId(staffId, tenantId)
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", staffId));
+
+        if (staff.isTerminated()) {
+            throw new BusinessException("Không xếp ca cho nhân viên đã nghỉ việc (BR-USER-04).");
+        }
+        if (!locationId.equals(staff.getLocationId())) {
+            throw new BusinessException(
+                "Nhân viên không thuộc Location của ca này (BR-SCH-05).");
         }
     }
 }

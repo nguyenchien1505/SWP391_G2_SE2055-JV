@@ -1,41 +1,56 @@
 package com.example.SWP391_G2_SE2055_JV.dto;
 
 import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.Gender;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 @Builder
 public class UserResponse {
 
-    private Long id;
-    private Long tenantId;
-    private Long locationId;
-    private String fullName;
-    private String email;
-    private String phone;
-    private Role role;
-    private UserStatus status;
+    private UUID          id;
+    private UUID          tenantId;
+    private Role          role;
+    private String        email;
+    private UserStatus    status;
+    private boolean       mustChangePassword;
+    private String        fullName;
+    private String        phone;
+    private UUID          locationId;
+    private UUID          positionId;
+    private LocalDate     startWorkDate;
+    private LocalDate     dateOfBirth;
+    private Gender        gender;
+    private String        address;
+    private String        avatarUrl;
+    private LocalDateTime terminatedAt;
     private LocalDateTime createdAt;
 
     public static UserResponse fromEntity(User user) {
         return UserResponse.builder()
             .id(user.getId())
             .tenantId(user.getTenantId())
-            .locationId(user.getLocationId())
-            .fullName(user.getFullName())
-            .email(user.getEmail())
-            .phone(user.getPhone())
             .role(user.getRole())
+            .email(user.getEmail())
             .status(user.getStatus())
+            .mustChangePassword(user.isMustChangePassword())
+            .fullName(user.getFullName())
+            .phone(user.getPhone())
+            .locationId(user.getLocationId())
+            .positionId(user.getPositionId())
+            .startWorkDate(user.getStartWorkDate())
+            .dateOfBirth(user.getDateOfBirth())
+            .gender(user.getGender())
+            .address(user.getAddress())
+            .avatarUrl(user.getAvatarUrl())
+            .terminatedAt(user.getTerminatedAt())
             .createdAt(user.getCreatedAt())
             .build();
     }

@@ -1,39 +1,51 @@
 package com.example.SWP391_G2_SE2055_JV.dto;
 
+import com.example.SWP391_G2_SE2055_JV.enums.Gender;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
+import java.util.UUID;
+
+/**
+ * Tạo tài khoản nhân sự.
+ *
+ * <p>Trường bắt buộc khác nhau theo vai trò nên chỉ 4 trường chung được validate ở
+ * đây; phần còn lại kiểm ở service (xem {@code UserService.validateProfile}):
+ * <ul>
+ *   <li>STAFF — đủ 10 trường của BR-USER-01.</li>
+ *   <li>MANAGER — như STAFF nhưng KHÔNG có Position (BR-USER-05).</li>
+ *   <li>DIRECTOR — chỉ họ tên, email, SĐT (BR-USER-05).</li>
+ * </ul>
+ *
+ * <p>{@code tenantId} KHÔNG nhận từ client — luôn lấy từ session của người tạo.
+ */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class CreateUserRequest {
 
-    @NotBlank(message = "Full name is required")
-    @Size(max = 255, message = "Full name must not exceed 255 characters")
-    private String fullName;
-
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email must be valid")
-    @Size(max = 255, message = "Email must not exceed 255 characters")
-    private String email;
-
-    @Pattern(regexp = "^[0-9]{10,15}$", message = "Phone must be 10-15 digits")
-    @Size(max = 30, message = "Phone must not exceed 30 characters")
-    private String phone;
-
-    @NotNull(message = "Role is required")
+    @NotNull(message = "role là bắt buộc")
     private Role role;
 
-    private Long tenantId;
+    @NotBlank(message = "Họ tên là bắt buộc")
+    private String fullName;
 
-    private Long locationId;
+    /** Username đăng nhập, unique toàn hệ thống — BR-USER-06. */
+    @NotBlank(message = "Email là bắt buộc")
+    @Email(message = "Email không hợp lệ")
+    private String email;
 
-    private Boolean enabled = true;
+    @NotBlank(message = "Số điện thoại là bắt buộc")
+    private String phone;
+
+    private UUID      locationId;
+    /** Department tự suy ra từ Position, không nhập riêng — BR-ORG-07. */
+    private UUID      positionId;
+    private LocalDate startWorkDate;
+    private LocalDate dateOfBirth;
+    private Gender    gender;
+    private String    address;
+    private String    avatarUrl;
 }

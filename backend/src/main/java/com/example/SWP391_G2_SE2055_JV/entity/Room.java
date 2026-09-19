@@ -1,53 +1,82 @@
 package com.example.SWP391_G2_SE2055_JV.entity;
 
+import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.experimental.SuperBuilder;
 
-import java.time.LocalDateTime;
+import java.util.UUID;
 
+/**
+ * Phòng khách sạn — BR-ROOM-01..10.
+ *
+ * <p>Phòng thuộc về một Location cụ thể; số phòng chỉ cần duy nhất trong phạm vi
+ * Location đó (BR-ROOM-05). Ràng buộc unique được ép ở tầng DB bằng cột sinh
+ * {@code active_room_number} — cột này CỐ Ý không map vào entity vì phòng đã xóa
+ * mềm phải nhường lại số phòng.
+ *
+ * <p>Trạng thái đi theo ma trận {@link RoomStatus} (BR-ROOM-02); mỗi lần đổi sinh
+ * đúng một dòng {@link RoomStatusHistory} (BR-ROOM-09).
+ */
 @Entity
 @Table(name = "rooms")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class Room {
+@Getter
+@Setter
+@NoArgsConstructor
+@SuperBuilder
+public class Room extends AuditableEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", length = 36, nullable = false, updatable = false)
+    private UUID id;
 
-    @Column(name = "location_id", nullable = false)
-    private Long locationId;
+    @Column(name = "tenant_id", length = 36, nullable = false)
+    private UUID tenantId;
 
-    @Column(name = "location_room_type_id", nullable = false)
-    private Long locationRoomTypeId;
+    @Column(name = "location_id", length = 36, nullable = false)
+    private UUID locationId;
 
-    @Column(name = "current_status_id", nullable = false)
-    private Long currentStatusId;
-
-    @Column(name = "room_number", nullable = false)
+    /** Duy nhất trong phạm vi Location, không phải toàn hệ thống — BR-ROOM-05. */
+    @Column(name = "room_number", length = 20, nullable = false)
     private String roomNumber;
 
-    /** Sức chứa riêng của phòng (override room_type.capacity) */
-    private Integer capacity;
-
+    /** Kiểu text chứ không phải số — chấp nhận G / M / B1 — BR-ROOM-05. */
+    @Column(name = "floor", length = 10, nullable = false)
     private String floor;
 
-    /** Ghi chú vận hành */
-    @Column(length = 500)
+    @Column(name = "room_type_id", length = 36, nullable = false)
+    private UUID roomTypeId;
+
+    @Column(name = "capacity", nullable = false)
+    private int capacity;
+
+    @Column(name = "note", length = 500)
     private String note;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    /** 7 trạng thái, chuyển theo ma trận BR-ROOM-02 — BR-ROOM-01. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 20, nullable = false)
+    private RoomStatus status;
 
-    @Column(name = "created_by")
-    private Long createdBy;
+    /** Bắt buộc khi và chỉ khi status = UNAVAILABLE — BR-ROOM-07. */
+    @Column(name = "unavailable_reason", length = 500)
+    private String unavailableReason;
 
-    @Column(name = "is_deleted", nullable = false)
-    @Builder.Default
-    private boolean deleted = false;
+    /** BR-ROOM-08: xóa phòng là xóa mềm — FALSE nghĩa là đã xóa. */
+    @Column(name = "is_active", nullable = false)
+    @lombok.Builder.Default
+    private boolean active = true;
 
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
+    /** BR-ROOM-07: phòng Không khả dụng gộp cả Bảo trì lẫn Khóa phòng. */
+    public boolean isUnavailable() {
+        return status == RoomStatus.UNAVAILABLE;
+    }
 
-    @Column(name = "deleted_by")
-    private Long deletedBy;
+    /** BR-ROOM-08: chỉ xóa mềm được phòng đang Trống/Sẵn sàng hoặc Không khả dụng. */
+    public boolean isDeletable() {
+        return active && status != null && status.isDeletable();
+    }
 }

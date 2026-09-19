@@ -1,12 +1,18 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.CreateUserRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.TempPasswordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.UserResponse;
+import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -14,149 +20,276 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 
+/**
+ * Hồ sơ nhân sự và tài khoản đăng nhập — BR-USER-01..08.
+ *
+ * <p>Milestone 1 chỉ quản lý hồ sơ CƠ BẢN: không có Hợp đồng lao động và Lương
+ * (BR-USER-02, BR-OUT-01).
+ *
+ * <p>Mật khẩu tạm KHÔNG gửi qua email: Milestone 1 không tích hợp email/SMS
+ * (BR-USER-03, BR-OUT-01), nên nó được trả về đúng một lần trong response để màn
+ * hình hiển thị cho Manager tự thông báo thủ công.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JavaMailSender mailSender;
+    private static final int TEMP_PASSWORD_LENGTH = 10;
+
+    private final UserRepository     userRepository;
+    private final PositionRepository positionRepository;
+    private final ShiftRepository    shiftRepository;
+    private final PasswordEncoder    passwordEncoder;
 
     @Transactional(readOnly = true)
-    public Page<UserResponse> getAllUsers(Pageable pageable) {
-        return userRepository.findAll(pageable).map(UserResponse::fromEntity);
+    public Page<UserResponse> getUsers(Pageable pageable) {
+        UUID tenantId = SecurityUtils.getCurrentTenantId();
+
+        // BR-PERM-03: Manager chỉ thấy nhân sự trong Location của mình.
+        if (SecurityUtils.hasRole(Role.MANAGER)) {
+            return userRepository
+                .findByTenantIdAndLocationId(tenantId, SecurityUtils.getCurrentLocationId(), pageable)
+                .map(UserResponse::fromEntity);
+        }
+        return userRepository.findByTenantId(tenantId, pageable).map(UserResponse::fromEntity);
     }
 
     @Transactional(readOnly = true)
-    public UserResponse getUserById(Long id) {
-        return UserResponse.fromEntity(getActiveUserOrThrow(id));
+    public UserResponse getUserById(UUID id) {
+        return UserResponse.fromEntity(getOwnedUser(id));
     }
 
+    /**
+     * BR-USER-03: tạo hồ sơ và sinh tài khoản đăng nhập trong MỘT bước, kèm mật khẩu
+     * tạm bắt buộc đổi ở lần đăng nhập đầu tiên (BR-USER-07).
+     */
     @Transactional
-    public UserResponse createUser(CreateUserRequest request) {
+    public TempPasswordResponse createUser(CreateUserRequest request) {
+        UUID tenantId = SecurityUtils.getCurrentTenantId();
+
+        assertCanCreateRole(request.getRole());
+        validateProfile(request, tenantId);
+
+        // BR-USER-06: email của người đã nghỉ việc VẪN chiếm chỗ, không dùng lại được.
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new BusinessException("Email already exists: " + request.getEmail());
+            throw new BusinessException("Email đã tồn tại trong hệ thống: " + request.getEmail());
         }
 
-        String tempPassword = RandomStringUtils.randomAlphanumeric(10);
+        String tempPassword = generateTempPassword();
 
         User user = User.builder()
-            .fullName(request.getFullName())
-            .email(request.getEmail())
-            .phone(request.getPhone())
-            .passwordHash(passwordEncoder.encode(tempPassword))
+            .tenantId(tenantId)
             .role(request.getRole())
-            .tenantId(request.getTenantId())
+            .email(request.getEmail())
+            .passwordHash(passwordEncoder.encode(tempPassword))
+            .mustChangePassword(true)
+            .status(UserStatus.ACTIVE)
+            .fullName(request.getFullName())
+            .phone(request.getPhone())
             .locationId(request.getLocationId())
-            .status(toStatus(request.getEnabled()))
-            .createdBy(currentUserIdOrNull())
+            .positionId(request.getPositionId())
+            .startWorkDate(request.getStartWorkDate())
+            .dateOfBirth(request.getDateOfBirth())
+            .gender(request.getGender())
+            .address(request.getAddress())
+            .avatarUrl(request.getAvatarUrl())
             .build();
 
         User saved = userRepository.save(user);
-        sendTempPasswordEmail(saved.getEmail(), saved.getFullName(), tempPassword);
-        log.info("Created user: {} role: {}", saved.getEmail(), saved.getRole());
-        return UserResponse.fromEntity(saved);
+        log.info("Tạo tài khoản {} role={} tenant={}", saved.getEmail(), saved.getRole(), tenantId);
+
+        return new TempPasswordResponse(UserResponse.fromEntity(saved), tempPassword);
     }
 
     @Transactional
-    public UserResponse updateUser(Long id, UpdateUserRequest request) {
-        User user = getActiveUserOrThrow(id);
+    public UserResponse updateUser(UUID id, UpdateUserRequest request) {
+        User user = getOwnedUser(id);
 
         if (request.getEmail() != null && !request.getEmail().equals(user.getEmail())) {
-            if (userRepository.existsByEmail(request.getEmail())) {
-                throw new BusinessException("Email already exists: " + request.getEmail());
+            throw new BusinessException(
+                "Không đổi được email: email là username unique toàn hệ thống (BR-USER-06).");
+        }
+        if (user.isTerminated()) {
+            throw new BusinessException("Không sửa được hồ sơ của nhân viên đã nghỉ việc.");
+        }
+
+        if (request.getFullName() != null)      user.setFullName(request.getFullName());
+        if (request.getPhone() != null)         user.setPhone(request.getPhone());
+        if (request.getStartWorkDate() != null) user.setStartWorkDate(request.getStartWorkDate());
+        if (request.getDateOfBirth() != null)   user.setDateOfBirth(request.getDateOfBirth());
+        if (request.getGender() != null)        user.setGender(request.getGender());
+        if (request.getAddress() != null)       user.setAddress(request.getAddress());
+        if (request.getAvatarUrl() != null)     user.setAvatarUrl(request.getAvatarUrl());
+
+        if (request.getPositionId() != null) {
+            if (!user.isStaff()) {
+                throw new BusinessException("Chỉ STAFF mới có Position (BR-USER-05).");
             }
-            user.setEmail(request.getEmail());
-        }
-
-        if (request.getFullName() != null) {
-            user.setFullName(request.getFullName());
-        }
-
-        if (request.getPhone() != null) {
-            user.setPhone(request.getPhone());
-        }
-
-        if (request.getRole() != null) {
-            user.setRole(request.getRole());
-        }
-
-        if (request.getLocationId() != null) {
-            user.setLocationId(request.getLocationId());
+            assertPositionExists(request.getPositionId(), user.getTenantId());
+            user.setPositionId(request.getPositionId());
         }
 
         if (request.getEnabled() != null) {
-            user.setStatus(toStatus(request.getEnabled()));
+            user.setStatus(request.getEnabled() ? UserStatus.ACTIVE : UserStatus.INACTIVE);
         }
 
-        log.info("Updated user: {}", user.getEmail());
+        log.info("Cập nhật hồ sơ {}", user.getEmail());
         return UserResponse.fromEntity(userRepository.save(user));
     }
 
+    /**
+     * Cho nghỉ việc — BR-USER-04. Manager thao tác trực tiếp, KHÔNG cần Giám đốc duyệt.
+     *
+     * <p>Xóa mềm: tài khoản chuyển TERMINATED và không đăng nhập được, dữ liệu lịch sử
+     * giữ nguyên, ca TƯƠNG LAI tự động gỡ thành "chưa phân công" (BR-SCH-17, BR-SCH-24).
+     *
+     * <p><b>Chưa xử lý:</b> task dọn tương lai của người này cũng phải bị gỡ theo
+     * (BR-HK-07) — module housekeeping chưa tồn tại nên bước đó chưa cài được.
+     */
     @Transactional
-    public void deleteUser(Long id) {
-        User user = getActiveUserOrThrow(id);
-        user.setDeleted(true);
-        user.setDeletedAt(LocalDateTime.now());
-        user.setDeletedBy(currentUserIdOrNull());
+    public UserResponse terminateUser(UUID id) {
+        User user = getOwnedUser(id);
+
+        if (user.isTerminated()) {
+            throw new BusinessException("Nhân viên này đã ở trạng thái nghỉ việc.");
+        }
+        if (user.getRole() == Role.DIRECTOR) {
+            throw new BusinessException("Không cho nghỉ việc tài khoản Giám đốc qua luồng này.");
+        }
+
+        user.setStatus(UserStatus.TERMINATED);
+        user.setTerminatedAt(LocalDateTime.now());
+        user.setTerminatedBy(SecurityUtils.getCurrentUserId());
         userRepository.save(user);
-        log.info("Deleted user: {}", user.getEmail());
+
+        int released = releaseFutureShifts(user.getId(), UnassignedReason.TERMINATION);
+        log.info("Cho nghỉ việc {} — gỡ {} ca tương lai", user.getEmail(), released);
+
+        return UserResponse.fromEntity(user);
     }
 
+    /** Cấp lại mật khẩu tạm. Trả về đúng một lần, không gửi email (BR-USER-03). */
     @Transactional
-    public void resetUserPassword(Long id) {
-        User user = getActiveUserOrThrow(id);
+    public TempPasswordResponse resetUserPassword(UUID id) {
+        User user = getOwnedUser(id);
+        if (user.isTerminated()) {
+            throw new BusinessException("Không cấp lại mật khẩu cho nhân viên đã nghỉ việc.");
+        }
 
-        String tempPassword = RandomStringUtils.randomAlphanumeric(10);
+        String tempPassword = generateTempPassword();
         user.setPasswordHash(passwordEncoder.encode(tempPassword));
+        user.setMustChangePassword(true);
         userRepository.save(user);
 
-        sendTempPasswordEmail(user.getEmail(), user.getFullName(), tempPassword);
-        log.info("Reset password for user: {}", user.getEmail());
+        log.info("Cấp lại mật khẩu tạm cho {}", user.getEmail());
+        return new TempPasswordResponse(UserResponse.fromEntity(user), tempPassword);
     }
 
-    private User getActiveUserOrThrow(Long id) {
-        User user = userRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
-        if (user.isDeleted()) {
-            throw new ResourceNotFoundException("User not found with id: " + id);
+    // ── Nội bộ ──────────────────────────────────────────────────────────────
+
+    /**
+     * BR-SCH-17: "ca tương lai" là ca có ngày LỚN HƠN hôm nay — ca của chính hôm nay
+     * KHÔNG bị gỡ tự động.
+     */
+    private int releaseFutureShifts(UUID staffId, UnassignedReason reason) {
+        List<Shift> futureShifts =
+            shiftRepository.findByStaffIdAndShiftDateGreaterThan(staffId, LocalDate.now());
+        LocalDateTime now = LocalDateTime.now();
+        for (Shift shift : futureShifts) {
+            shift.setStaffId(null);
+            shift.setUnassignedReason(reason);
+            shift.setUnassignedAt(now);
+        }
+        shiftRepository.saveAll(futureShifts);
+        return futureShifts.size();
+    }
+
+    private User getOwnedUser(UUID id) {
+        User user = userRepository.findByIdAndTenantId(id, SecurityUtils.getCurrentTenantId())
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+
+        // BR-PERM-03: Manager chỉ thao tác trong Location của mình.
+        if (SecurityUtils.hasRole(Role.MANAGER)
+                && !SecurityUtils.getCurrentLocationId().equals(user.getLocationId())) {
+            throw new ResourceNotFoundException("User", "id", id);
         }
         return user;
     }
 
-    private UserStatus toStatus(Boolean enabled) {
-        return (enabled == null || enabled) ? UserStatus.ACTIVE : UserStatus.INACTIVE;
-    }
+    /** BR-PERM-02/03: Giám đốc CRUD Manager, Manager CRUD Staff trong Location. */
+    private void assertCanCreateRole(Role target) {
+        Role actor = SecurityUtils.getCurrentRole();
 
-    private Long currentUserIdOrNull() {
-        try {
-            return SecurityUtils.getCurrentUserId();
-        } catch (Exception e) {
-            return null;
+        if (target == Role.PLATFORM_ADMIN || target == Role.DIRECTOR) {
+            throw new BusinessException(
+                "Không tạo được tài khoản " + target + " qua luồng này.");
+        }
+        if (actor == Role.MANAGER && target != Role.STAFF) {
+            throw new BusinessException("Manager chỉ được tạo tài khoản STAFF (BR-PERM-03).");
         }
     }
 
-    private void sendTempPasswordEmail(String to, String fullName, String tempPassword) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(to);
-        message.setSubject("[Hotel Workforce] Your Account Details");
-        message.setText(String.format(
-            "Hello %s,%n%nYour account has been created.%n%n"
-            + "Email: %s%n"
-            + "Temporary Password: %s%n%n"
-            + "Please log in and change your password immediately.%n%n"
-            + "Hotel Workforce Management System",
-            fullName, to, tempPassword
-        ));
-        mailSender.send(message);
+    /** Trường bắt buộc khác nhau theo vai trò — BR-USER-01, BR-USER-05. */
+    private void validateProfile(CreateUserRequest request, UUID tenantId) {
+        if (request.getRole() == Role.STAFF) {
+            requireStaffProfile(request);
+            if (request.getPositionId() == null) {
+                throw new BusinessException("Position là bắt buộc với STAFF (BR-USER-01).");
+            }
+            assertPositionExists(request.getPositionId(), tenantId);
+        } else if (request.getRole() == Role.MANAGER) {
+            requireStaffProfile(request);
+            if (request.getPositionId() != null) {
+                throw new BusinessException("Manager KHÔNG có Position (BR-USER-05).");
+            }
+        }
+
+        if (request.getRole() != Role.STAFF && request.getRole() != Role.MANAGER
+                && request.getLocationId() != null) {
+            throw new BusinessException("Vai trò này không gắn với Location nào.");
+        }
+
+        // Manager chỉ tạo người trong chính Location của mình.
+        if (SecurityUtils.hasRole(Role.MANAGER)
+                && !SecurityUtils.getCurrentLocationId().equals(request.getLocationId())) {
+            throw new BusinessException("Chỉ tạo được nhân sự trong Location của mình.");
+        }
+    }
+
+    /** Bộ 10 trường bắt buộc của BR-USER-01 (Manager dùng lại, trừ Position). */
+    private void requireStaffProfile(CreateUserRequest request) {
+        if (request.getLocationId() == null)    throw missing("Location trực thuộc");
+        if (request.getStartWorkDate() == null) throw missing("Ngày bắt đầu làm việc");
+        if (request.getDateOfBirth() == null)   throw missing("Ngày sinh");
+        if (request.getGender() == null)        throw missing("Giới tính");
+        if (isBlank(request.getAddress()))      throw missing("Địa chỉ");
+        if (isBlank(request.getAvatarUrl()))    throw missing("Ảnh đại diện");
+    }
+
+    private void assertPositionExists(UUID positionId, UUID tenantId) {
+        positionRepository.findByIdAndTenantId(positionId, tenantId)
+            .orElseThrow(() -> new ResourceNotFoundException("Position", "id", positionId));
+    }
+
+    private static BusinessException missing(String field) {
+        return new BusinessException(field + " là bắt buộc (BR-USER-01).");
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private static String generateTempPassword() {
+        return RandomStringUtils.randomAlphanumeric(TEMP_PASSWORD_LENGTH);
     }
 }

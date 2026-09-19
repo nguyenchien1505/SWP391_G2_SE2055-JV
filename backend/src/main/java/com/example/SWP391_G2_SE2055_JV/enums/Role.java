@@ -1,19 +1,23 @@
 package com.example.SWP391_G2_SE2055_JV.enums;
 
 /**
- * System roles — Milestone 1
+ * Vai trò tài khoản — DM-01.
  *
- * ADMIN_PLATFORM : manages the SaaS platform (hotels, subscriptions) DIRECTOR :
- * hotel director — sets high-level policy (e.g. work-schedule policy) and has
- * read-only oversight of day-to-day operations otherwise MANAGER : hotel operations
- * manager — full hotel management RECEPTIONIST : front desk — room status,
- * check-in/out HOUSEKEEPING : housekeeping staff — cleaning schedule, room status
- * update
+ * <p>Chỉ 4 giá trị. "Lễ tân" và "Dọn dẹp" KHÔNG phải role: chúng là
+ * {@link PositionType} của Position mà Staff được gán (BR-ORG-08). Quyền nghiệp vụ
+ * đặc thù gán theo LOẠI Position, không theo tên Position và không theo role.
  */
 public enum Role {
-    ADMIN_PLATFORM,
+
+    /** Nhà cung cấp SaaS. Đứng ngoài mọi Tenant nên tenant_id NULL — BR-PERM-01. */
+    PLATFORM_ADMIN,
+
+    /** Chủ Tenant, phạm vi toàn Tenant. Không có Location/Position — BR-PERM-02. */
     DIRECTOR,
+
+    /** Vận hành đúng 1 Location. Không có Position — BR-USER-05, BR-PERM-03. */
     MANAGER,
-    RECEPTIONIST,
-    HOUSEKEEPING
+
+    /** Nhân viên. Bắt buộc có Location và Position — BR-USER-01. */
+    STAFF
 }

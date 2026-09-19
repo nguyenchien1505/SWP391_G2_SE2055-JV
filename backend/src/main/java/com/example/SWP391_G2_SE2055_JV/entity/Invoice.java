@@ -1,64 +1,91 @@
 package com.example.SWP391_G2_SE2055_JV.entity;
 
+import com.example.SWP391_G2_SE2055_JV.enums.InvoiceStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.InvoiceType;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.experimental.SuperBuilder;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
+/**
+ * Hóa đơn NỘI BỘ của hệ thống SaaS — không phải hóa đơn điện tử (BR-SAAS-15).
+ *
+ * <p>Ba cột {@code quota*Snapshot} chốt lại quota tại thời điểm phát hành: BR-SAAS-06
+ * cho phép ghi đè quota giữa kỳ, nếu không chốt thì hóa đơn cũ không giải thích được
+ * đã tính trên cơ sở nào.
+ */
 @Entity
 @Table(name = "invoices")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class Invoice {
+@Getter
+@Setter
+@NoArgsConstructor
+@SuperBuilder
+public class Invoice extends AuditableEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", length = 36, nullable = false, updatable = false)
+    private UUID id;
 
-    @Column(name = "tenant_id", nullable = false)
-    private Long tenantId;
+    @Column(name = "tenant_id", length = 36, nullable = false)
+    private UUID tenantId;
 
-    @Column(name = "subscription_id")
-    private Long subscriptionId;
+    @Column(name = "subscription_id", length = 36, nullable = false)
+    private UUID subscriptionId;
 
-    @Column(name = "invoice_no")
-    private String invoiceNo;
+    /** PERIODIC (chu kỳ) hoặc UPGRADE_DIFF (chênh lệch tăng gói) — BR-SAAS-15. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "invoice_type", length = 20, nullable = false)
+    private InvoiceType invoiceType;
 
-    private BigDecimal amount;
+    @Column(name = "period_start")
+    private LocalDate periodStart;
 
-    @Column(name = "tax_amount")
-    private BigDecimal taxAmount;
+    @Column(name = "period_end")
+    private LocalDate periodEnd;
 
-    @Column(name = "total_amount")
-    private BigDecimal totalAmount;
+    /** Quota được chốt lại tại thời điểm phát hành — BR-SAAS-06. */
+    @Column(name = "quota_location_snapshot", nullable = false)
+    private int quotaLocationSnapshot;
 
-    private String currency;
+    @Column(name = "quota_user_snapshot", nullable = false)
+    private int quotaUserSnapshot;
 
-    private String status;
+    @Column(name = "quota_room_snapshot", nullable = false)
+    private int quotaRoomSnapshot;
 
-    @Column(name = "issued_at")
+    /** VND số nguyên, không tách VAT — BR-SAAS-15. */
+    @Column(name = "amount", nullable = false)
+    private Long amount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 20, nullable = false)
+    private InvoiceStatus status;
+
+    @Column(name = "issued_at", nullable = false)
     private LocalDateTime issuedAt;
-
-    @Column(name = "due_date")
-    private LocalDate dueDate;
 
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    /** Mốc bắt đầu ân hạn, chỉ set ở lần thanh toán thất bại ĐẦU TIÊN — BR-SAAS-10. */
+    @Column(name = "first_failed_at")
+    private LocalDateTime firstFailedAt;
 
-    @Column(name = "created_by")
-    private Long createdBy;
+    /** Hết ngày này mà chưa PAID thì Tenant bị SUSPENDED — BR-SAAS-10. */
+    @Column(name = "grace_until")
+    private LocalDate graceUntil;
 
-    @Column(name = "is_deleted", nullable = false)
-    @Builder.Default
-    private boolean deleted = false;
+    public boolean isPending() {
+        return status == InvoiceStatus.PENDING;
+    }
 
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
-
-    @Column(name = "deleted_by")
-    private Long deletedBy;
+    public boolean isPaid() {
+        return status == InvoiceStatus.PAID;
+    }
 }

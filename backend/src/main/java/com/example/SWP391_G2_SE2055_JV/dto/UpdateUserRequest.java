@@ -1,32 +1,35 @@
 package com.example.SWP391_G2_SE2055_JV.dto;
 
-import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.Gender;
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
+import java.util.UUID;
+
+/**
+ * Cập nhật một phần hồ sơ nhân sự. Trường nào để null thì giữ nguyên.
+ *
+ * <p>KHÔNG đổi được email (là username unique toàn hệ thống — BR-USER-06), role,
+ * và tenantId qua đây. Đổi Location phải đi qua luồng điều chuyển có duyệt (BR-TRF-02),
+ * không sửa trực tiếp.
+ */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class UpdateUserRequest {
 
-    @Size(max = 255, message = "Full name must not exceed 255 characters")
-    private String fullName;
+    private String    fullName;
+    private String    phone;
+    private UUID      positionId;
+    private LocalDate startWorkDate;
+    private LocalDate dateOfBirth;
+    private Gender    gender;
+    private String    address;
+    private String    avatarUrl;
 
-    @Email(message = "Email must be valid")
-    @Size(max = 255, message = "Email must not exceed 255 characters")
-    private String email;
-
-    @Pattern(regexp = "^[0-9]{10,15}$", message = "Phone must be 10-15 digits")
-    @Size(max = 30, message = "Phone must not exceed 30 characters")
-    private String phone;
-
-    private Role role;
-
-    private Long locationId;
-
+    /** Chỉ dùng để bật/tắt tạm tài khoản; nghỉ việc dùng endpoint riêng (BR-USER-04). */
     private Boolean enabled;
+
+    /** Không dùng — giữ lại để lỗi rõ ràng nếu client cũ còn gửi lên. */
+    @Email
+    private String email;
 }

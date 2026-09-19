@@ -1,22 +1,22 @@
 package com.example.SWP391_G2_SE2055_JV.dto;
 
-import com.example.SWP391_G2_SE2055_JV.enums.ShiftStatus;
-import com.example.SWP391_G2_SE2055_JV.enums.ShiftType;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.UUID;
 
+/**
+ * Cập nhật một phần thông tin ca. Trường nào để null thì giữ nguyên.
+ *
+ * <p>Không đổi người phụ trách qua đây — dùng endpoint assign/unassign riêng để
+ * lý do gỡ ca luôn được ghi lại (BR-SCH-24).
+ */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class UpdateShiftRequest {
 
-    private ShiftType shiftType;
     private LocalDate shiftDate;
     private LocalTime startTime;
     private LocalTime endTime;
-    private ShiftStatus status;
+    private UUID      sourceTemplateId;
 }

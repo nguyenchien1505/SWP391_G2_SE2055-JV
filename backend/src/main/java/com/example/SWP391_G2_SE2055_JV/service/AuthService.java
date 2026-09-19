@@ -7,13 +7,18 @@ import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.RandomStringUtils;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Tự đổi mật khẩu — BR-USER-07.
+ *
+ * <p>KHÔNG có luồng "quên mật khẩu" tự phục vụ: Milestone 1 không tích hợp gửi
+ * email/SMS (BR-OUT-01), nên việc cấp lại mật khẩu đi qua Manager
+ * ({@code POST /users/{id}/reset-password}) và mật khẩu tạm hiển thị trên màn hình
+ * cho Manager thông báo thủ công (BR-USER-03).
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -21,47 +26,24 @@ public class AuthService {
 
     private final UserRepository  userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JavaMailSender  mailSender;
-
-    @Transactional
-    public void forgotPassword(String email) {
-        User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new ResourceNotFoundException("No account found for email: " + email));
-
-        String tempPassword = RandomStringUtils.randomAlphanumeric(10);
-        user.setPasswordHash(passwordEncoder.encode(tempPassword));
-        userRepository.save(user);
-
-        sendEmailSafe(user.getEmail(), user.getFullName(), tempPassword);
-    }
 
     @Transactional
     public void changePassword(String email, ChangePasswordRequest request) {
         User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new ResourceNotFoundException("No account found for email: " + email));
+            .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản với email: " + email));
 
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
-            throw new BusinessException("Current password is incorrect");
+            throw new BusinessException("Mật khẩu hiện tại không đúng");
+        }
+        if (passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
+            throw new BusinessException("Mật khẩu mới phải khác mật khẩu hiện tại");
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        // BR-USER-07: đổi xong thì gỡ cờ bắt buộc đổi mật khẩu.
+        user.setMustChangePassword(false);
         userRepository.save(user);
-    }
 
-    public void sendEmailSafe(String to, String fullName, String tempPassword) {
-        log.info("=== TEMP PASSWORD for {} : {} ===", to, tempPassword);
-        try {
-            SimpleMailMessage msg = new SimpleMailMessage();
-            msg.setTo(to);
-            msg.setSubject("[Hotel Workforce] Temporary Password");
-            msg.setText(String.format(
-                "Hello %s,%n%nYour temporary password is: %s%n%n"
-                + "Please log in and change it immediately.%n%nHotel Workforce System",
-                fullName, tempPassword
-            ));
-            mailSender.send(msg);
-        } catch (Exception e) {
-            log.warn("Email not sent to {} — {}", to, e.getMessage());
-        }
+        log.info("Đổi mật khẩu thành công cho {}", email);
     }
 }

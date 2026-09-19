@@ -1,39 +1,53 @@
 package com.example.SWP391_G2_SE2055_JV.config;
 
+import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import lombok.Builder;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 
+/**
+ * Principal trong session.
+ *
+ * <p>Cấp HAI loại authority vì phân quyền Milestone 1 đi theo hai trục (BR-ORG-08):
+ * <ul>
+ *   <li>{@code ROLE_*} theo {@link Role} — 4 giá trị của DM-01.</li>
+ *   <li>{@code POSITION_*} theo {@link PositionType} — chỉ có với STAFF. Đây mới là
+ *       thứ quyết định quyền nghiệp vụ đặc thù của Lễ tân / Dọn dẹp, vì hai vai trò
+ *       này KHÔNG phải role mà là Loại Position.</li>
+ * </ul>
+ * Position loại OTHER không nhận thêm quyền đặc thù nào — BR-ORG-09, BR-PERM-06.
+ */
 @Getter
+@Builder
 public class CustomUserDetails implements UserDetails {
 
-    private final Long    id;
-    private final String  username;   // stores email
-    private final String  password;
-    private final Role    role;
-    private final Long    tenantId;   // null for ADMIN_PLATFORM
-    private final Long    locationId; // null for ADMIN_PLATFORM
-    private final boolean enabled;
-
-    public CustomUserDetails(Long id, String username, String password,
-                              Role role, Long tenantId, Long locationId, boolean enabled) {
-        this.id         = id;
-        this.username   = username;
-        this.password   = password;
-        this.role       = role;
-        this.tenantId   = tenantId;
-        this.locationId = locationId;
-        this.enabled    = enabled;
-    }
+    private final UUID         id;
+    private final String       username;      // email
+    private final String       password;
+    private final Role         role;
+    private final UUID         tenantId;      // null với PLATFORM_ADMIN
+    private final UUID         locationId;    // null với PLATFORM_ADMIN và DIRECTOR
+    private final UUID         positionId;    // chỉ STAFF mới có
+    private final PositionType positionType;  // chỉ STAFF mới có
+    private final boolean      mustChangePassword;
+    private final boolean      enabled;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
+        List<GrantedAuthority> authorities = new ArrayList<>(2);
+        authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name()));
+        if (positionType != null) {
+            authorities.add(new SimpleGrantedAuthority("POSITION_" + positionType.name()));
+        }
+        return authorities;
     }
 
     @Override public String  getPassword()             { return password; }
@@ -42,5 +56,4 @@ public class CustomUserDetails implements UserDetails {
     @Override public boolean isAccountNonExpired()     { return true; }
     @Override public boolean isAccountNonLocked()      { return true; }
     @Override public boolean isCredentialsNonExpired() { return true; }
-
 }

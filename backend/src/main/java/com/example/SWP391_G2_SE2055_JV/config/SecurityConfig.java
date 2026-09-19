@@ -21,14 +21,23 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 
 /**
- * Security configuration — session-based auth + Google OAuth2 + RBAC
+ * Xác thực bằng session + Google OAuth2, phân quyền theo HAI trục — BR-PERM-01..06.
  *
- * Roles (Milestone 1):
- *   ADMIN_PLATFORM — SaaS platform admin
- *   DIRECTOR       — hotel director, read-only
- *   MANAGER        — hotel operations manager
- *   RECEPTIONIST   — front desk
- *   HOUSEKEEPING   — housekeeping staff
+ * <p>Trục 1 — {@code ROLE_*} (4 giá trị của DM-01):
+ * <pre>
+ *   PLATFORM_ADMIN : quản lý Tenant, gói dịch vụ, cấu hình chung của hệ thống
+ *   DIRECTOR       : phạm vi toàn Tenant — danh mục, Location, Phòng, Policy, duyệt điều chuyển
+ *   MANAGER        : vận hành 1 Location — Staff, lịch, task dọn, trạng thái phòng, tài sản
+ *   STAFF          : quyền chung của người lao động
+ * </pre>
+ *
+ * <p>Trục 2 — {@code POSITION_*}: Lễ tân và Dọn dẹp KHÔNG phải role mà là Loại Position
+ * (BR-ORG-08). Quyền nghiệp vụ đặc thù của hai nhóm này gắn vào authority
+ * {@code POSITION_RECEPTION} / {@code POSITION_HOUSEKEEPING}. Position loại OTHER chỉ có
+ * quyền chung, không nhận authority đặc thù nào (BR-ORG-09, BR-PERM-06).
+ *
+ * <p>Rule ở đây là lớp chặn thô theo URL; kiểm tra quyền sở hữu (Staff chỉ xem ca của
+ * mình, Manager chỉ thao tác trong Location của mình) nằm ở tầng service.
  */
 @Configuration
 @EnableWebSecurity
@@ -40,20 +49,27 @@ public class SecurityConfig {
     private final OAuth2LoginSuccessHandler successHandler;
     private final OAuth2LoginFailureHandler failureHandler;
 
-    // NOTE: "/auth/login" is public for BOTH:
-    //   - formLogin POST /auth/login          (local username/password)
-    //   - oauth2Login GET /auth/login/google  (Spring appends /{registrationId})
+    // "/auth/login" công khai cho CẢ hai luồng:
+    //   - formLogin  POST /auth/login
+    //   - oauth2Login GET /auth/login/google  (Spring nối thêm /{registrationId})
     private static final String[] PUBLIC_ENDPOINTS = {
         "/auth/login",
         "/auth/login/**",
         "/auth/callback/**",
         "/auth/unauthorized",
-        "/auth/forgot-password"
+        // BR-SAAS-13: Tenant tự đăng ký, chưa có tài khoản nên phải công khai.
+        // (Endpoint chưa hiện thực — khai báo sẵn để rule không bị bỏ sót khi làm.)
+        "/auth/register-tenant"
     };
+
+    private static final String ADMIN    = "PLATFORM_ADMIN";
+    private static final String DIRECTOR = "DIRECTOR";
+    private static final String MANAGER  = "MANAGER";
+    private static final String STAFF    = "STAFF";
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        // Build provider inline — NOT a @Bean, avoids Spring Boot auto-config conflict
+        // Dựng provider inline — KHÔNG để @Bean, tránh xung đột với auto-config.
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
         provider.setUserDetailsService(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder());
@@ -67,59 +83,90 @@ public class SecurityConfig {
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // ── Platform admin only ──────────────────────────────────────
-                .requestMatchers("/platform/**")
-                    .hasRole("ADMIN_PLATFORM")
+                // ── Nền tảng SaaS — chỉ Admin Platform (BR-PERM-01) ──────────
+                .requestMatchers("/platform/**").hasRole(ADMIN)
 
-                // ── Hotel management — manager + admin ───────────────────────
-                .requestMatchers("/hotels/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER")
+                // ── Gói dịch vụ của chính Tenant — Giám đốc tự custom (BR-SAAS-04) ──
+                .requestMatchers("/billing/**").hasAnyRole(ADMIN, DIRECTOR)
 
-                // ── Users/staff management ───────────────────────────────────
-                .requestMatchers(HttpMethod.GET, "/users/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "DIRECTOR")
-                .requestMatchers("/users/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
+                // ── Location: chỉ Giám đốc CRUD; Manager chỉ sửa thông tin vận hành (BR-ORG-03) ──
+                .requestMatchers(HttpMethod.GET, "/locations/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+                .requestMatchers(HttpMethod.PATCH, "/locations/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+                .requestMatchers("/locations/**")
+                    .hasAnyRole(ADMIN, DIRECTOR)
 
-                // ── Organization (departments, positions) ────────────────────
+                // ── Danh mục cấp Tenant: chỉ Giám đốc tạo (BR-ORG-06, BR-ORG-11, BR-ASSET-09) ──
                 .requestMatchers(HttpMethod.GET, "/organization/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
                 .requestMatchers("/organization/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
+                    .hasAnyRole(ADMIN, DIRECTOR)
 
-                // ── Room management ──────────────────────────────────────────
+                // ── Nhân sự: Manager CRUD Staff trong Location, Giám đốc CRUD Manager ──
+                .requestMatchers(HttpMethod.GET, "/users/me/**").authenticated()
+                .requestMatchers(HttpMethod.GET, "/users/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+                .requestMatchers("/users/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+
+                // ── Điều chuyển: Manager tạo, Giám đốc duyệt (BR-TRF-02) ─────
+                .requestMatchers("/transfers/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+
+                // ── Phòng ────────────────────────────────────────────────────
+                // Chỉ Giám đốc CRUD Phòng (BR-ROOM-04).
                 .requestMatchers(HttpMethod.GET, "/rooms/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "HOUSEKEEPING")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
+                // Lễ tân đổi trạng thái khi khách đặt/check-in/check-out (BR-PERM-04).
+                .requestMatchers(HttpMethod.PATCH, "/rooms/*/status")
+                    .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
+                        hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + MANAGER, "POSITION_RECEPTION")))
+                .requestMatchers(HttpMethod.POST, "/rooms/**", "/rooms")
+                    .hasAnyRole(ADMIN, DIRECTOR)
+                .requestMatchers(HttpMethod.DELETE, "/rooms/**")
+                    .hasAnyRole(ADMIN, DIRECTOR)
                 .requestMatchers("/rooms/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "RECEPTIONIST")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
 
-                // ── Scheduling (work-schedule policy, shifts, shift-change requests, housekeeping) ──
-                // Housekeeping may complete their own cleaning assignment (self-ownership
-                // checked in CleaningAssignmentService), but nothing else under /scheduling/**.
-                .requestMatchers(HttpMethod.PATCH, "/scheduling/cleaning-assignments/*/status")
-                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "HOUSEKEEPING")
-                // Any staff role may submit a shift-change request for their own shift
-                // (self-ownership checked in ShiftChangeRequestService).
-                .requestMatchers(HttpMethod.POST, "/scheduling/shift-change-requests")
-                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER", "RECEPTIONIST", "HOUSEKEEPING")
+                // ── Housekeeping ─────────────────────────────────────────────
+                // Nhân viên dọn bấm hoàn thành task của chính mình (BR-PERM-05);
+                // quyền sở hữu kiểm tra ở service.
+                .requestMatchers(HttpMethod.PATCH, "/housekeeping/tasks/*/complete")
+                    .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
+                        hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + MANAGER, "POSITION_HOUSEKEEPING")))
+                .requestMatchers(HttpMethod.GET, "/housekeeping/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
+                .requestMatchers("/housekeeping/**")
+                    .hasAnyRole(ADMIN, MANAGER)
+
+                // ── Lịch làm việc ────────────────────────────────────────────
+                // Schedule Policy và Shift Template do Giám đốc quản lý (BR-SCH-01, BR-SCH-04).
+                .requestMatchers("/scheduling/policy/**", "/scheduling/shift-templates/**")
+                    .hasAnyRole(ADMIN, DIRECTOR)
+                // Mọi người lao động đều xin nghỉ / đổi ca / check-in-out được (BR-PERM-06).
+                .requestMatchers("/scheduling/leave-requests/**", "/scheduling/shift-swap-requests/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
+                .requestMatchers(HttpMethod.POST, "/scheduling/shifts/*/check-in", "/scheduling/shifts/*/check-out")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers(HttpMethod.GET, "/scheduling/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "HOUSEKEEPING")
-                // Director sets work-schedule policy (Milestone-2 addition — previously
-                // policy writes were Manager-only, which didn't match the intended workflow).
-                .requestMatchers("/scheduling/policies/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers("/scheduling/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
+                    .hasAnyRole(ADMIN, MANAGER)
 
-                // ── Assets ───────────────────────────────────────────────────
+                // ── Tài sản ──────────────────────────────────────────────────
+                // Cả Lễ tân và Dọn dẹp đều báo hỏng được (BR-ASSET-05).
+                .requestMatchers(HttpMethod.POST, "/assets/damage-reports")
+                    .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
+                        hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + MANAGER,
+                            "POSITION_RECEPTION", "POSITION_HOUSEKEEPING")))
                 .requestMatchers(HttpMethod.GET, "/assets/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER", "RECEPTIONIST", "HOUSEKEEPING")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers("/assets/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "MANAGER")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
 
-                // ── Reports / dashboard ──────────────────────────────────────
-                .requestMatchers("/dashboard/**", "/analytics/**")
-                    .hasAnyRole("ADMIN_PLATFORM", "DIRECTOR", "MANAGER")
+                // ── Dashboard (BR-DASH-02, BR-DASH-03) ───────────────────────
+                .requestMatchers("/dashboard/**").hasAnyRole(ADMIN, DIRECTOR, MANAGER)
 
                 .anyRequest().authenticated()
             )
@@ -127,7 +174,6 @@ public class SecurityConfig {
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             )
 
-            // ── Google OAuth2 ────────────────────────────────────────────────
             .oauth2Login(oauth2 -> oauth2
                 .authorizationEndpoint(e -> e.baseUri("/auth/login"))
                 .redirectionEndpoint(e -> e.baseUri("/auth/callback/google"))
@@ -135,7 +181,6 @@ public class SecurityConfig {
                 .failureHandler(failureHandler)
             )
 
-            // ── Local username/password login ───────────────────────────────
             .formLogin(form -> form
                 .loginProcessingUrl("/auth/login")
                 .successHandler((req, res, auth) -> res.setStatus(HttpStatus.OK.value()))
@@ -143,7 +188,6 @@ public class SecurityConfig {
                 .permitAll()
             )
 
-            // ── Logout ───────────────────────────────────────────────────────
             .logout(logout -> logout
                 .logoutUrl("/auth/logout")
                 .invalidateHttpSession(true)
@@ -152,6 +196,23 @@ public class SecurityConfig {
             );
 
         return http.build();
+    }
+
+    private static boolean hasAnyAuthority(
+            java.util.function.Supplier<org.springframework.security.core.Authentication> authn,
+            String... required) {
+        org.springframework.security.core.Authentication auth = authn.get();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        for (var granted : auth.getAuthorities()) {
+            for (String r : required) {
+                if (r.equals(granted.getAuthority())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Bean

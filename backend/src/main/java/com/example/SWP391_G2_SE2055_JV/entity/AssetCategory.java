@@ -1,42 +1,63 @@
 package com.example.SWP391_G2_SE2055_JV.entity;
 
+import com.example.SWP391_G2_SE2055_JV.enums.AssetKind;
+import com.example.SWP391_G2_SE2055_JV.enums.AssetPurpose;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.experimental.SuperBuilder;
 
-import java.time.LocalDateTime;
+import java.util.UUID;
 
+/**
+ * Danh mục tài sản — danh mục cấp TENANT, dùng chung cho mọi Location.
+ *
+ * <p>Một bảng duy nhất cho CẢ HAI loại tài sản, phân biệt bằng {@code assetKind}
+ * (BR-ASSET-08, BR-ASSET-09): FIXED quản lý theo cá thể, CONSUMABLE quản lý tồn kho.
+ */
 @Entity
 @Table(name = "asset_categories")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class AssetCategory {
+@Getter
+@Setter
+@NoArgsConstructor
+@SuperBuilder
+public class AssetCategory extends AuditableEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", length = 36, nullable = false, updatable = false)
+    private UUID id;
 
-    @Column(name = "location_id", nullable = false)
-    private Long locationId;
+    @Column(name = "tenant_id", length = 36, nullable = false)
+    private UUID tenantId;
 
-    @Column(nullable = false)
+    /** Unique trong phạm vi Tenant, không phải toàn hệ thống — BR-ORG-13. */
+    @Column(name = "name", length = 100, nullable = false)
     private String name;
 
-    private String type;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "asset_kind", length = 20, nullable = false)
+    private AssetKind assetKind;
 
-    private String description;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "purpose", length = 30, nullable = false)
+    private AssetPurpose purpose;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    /** Đơn vị tính — bắt buộc khi CONSUMABLE, phải NULL khi FIXED (BR-ASSET-08). */
+    @Column(name = "unit", length = 20)
+    private String unit;
 
-    @Column(name = "created_by")
-    private Long createdBy;
+    /** BR-ORG-14 — ẩn thay vì xóa, vì BR-ORG-10 chặn xóa cứng danh mục đang được dùng. */
+    @Column(name = "is_active", nullable = false)
+    @lombok.Builder.Default
+    private boolean active = true;
 
-    @Column(name = "is_deleted", nullable = false)
-    @Builder.Default
-    private boolean deleted = false;
+    public boolean isFixed() {
+        return assetKind == AssetKind.FIXED;
+    }
 
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
-
-    @Column(name = "deleted_by")
-    private Long deletedBy;
+    public boolean isConsumable() {
+        return assetKind == AssetKind.CONSUMABLE;
+    }
 }
