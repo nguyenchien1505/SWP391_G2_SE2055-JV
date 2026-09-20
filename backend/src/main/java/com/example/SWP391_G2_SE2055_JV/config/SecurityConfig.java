@@ -9,6 +9,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -22,6 +24,11 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.session.HttpSessionEventPublisher;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 /**
  * Xác thực bằng session + Google OAuth2, phân quyền theo HAI trục — BR-PERM-01..06.
@@ -67,6 +74,10 @@ public class SecurityConfig {
         "/auth/register-tenant"
     };
 
+    /** Origin của frontend. Dev: Vite chạy cổng 3000; đổi khi deploy bằng biến môi trường. */
+    @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}")
+    private String allowedOriginPatterns;
+
     private static final String ADMIN    = "PLATFORM_ADMIN";
     private static final String DIRECTOR = "DIRECTOR";
     private static final String MANAGER  = "MANAGER";
@@ -81,6 +92,11 @@ public class SecurityConfig {
 
         http
             .csrf(AbstractHttpConfigurer::disable)
+            // CORS phải đặt Ở ĐÂY, không phải ở WebMvcConfigurer: đăng nhập, đăng xuất và
+            // mọi lỗi 401/403 đều do filter của Spring Security trả về, không đi tới tầng
+            // Spring MVC, nên cấu hình CORS bên MVC không gắn được header cho chúng —
+            // trình duyệt sẽ chặn response và frontend báo "không kết nối được máy chủ".
+            .cors(Customizer.withDefaults())
             .authenticationProvider(provider)
             .sessionManagement(session -> session
                 .maximumSessions(1)
@@ -242,6 +258,23 @@ public class SecurityConfig {
             }
         }
         return false;
+    }
+
+    /** Nguồn cấu hình CORS dùng chung cho cả security chain lẫn Spring MVC. */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of(allowedOriginPatterns.split(",")));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        // Phiên đăng nhập đi bằng cookie nên bắt buộc allowCredentials = true; khi đó KHÔNG
+        // được dùng allowedOrigins("*") — phải dùng pattern để server trả đúng origin đã gọi.
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 
     /**

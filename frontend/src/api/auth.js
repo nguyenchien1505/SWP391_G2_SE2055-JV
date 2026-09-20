@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, API_BASE_URL } from './client';
 
 /**
  * Backend dùng formLogin của Spring Security: body phải là
@@ -15,9 +15,25 @@ export async function login(email, password) {
   });
 }
 
+/**
+ * Đăng nhập Google phải là ĐIỀU HƯỚNG CẢ TRANG, không gọi bằng axios: luồng OAuth2 đi
+ * qua chuỗi redirect sang accounts.google.com rồi quay về backend, XHR không theo được.
+ *
+ * <p>Backend KHÔNG tự tạo tài khoản từ Google — email phải được Manager/Giám đốc cấp
+ * trước (BR-USER-03). Email lạ sẽ bị đẩy về `/dang-nhap?error=oauth_unauthorized`.
+ */
+export function startGoogleLogin() {
+  window.location.href = `${API_BASE_URL}/auth/login/google`;
+}
+
 export async function fetchCurrentUser() {
   const { data } = await api.get('/auth/me');
   return data;
+}
+
+/** BR-USER-07: đổi mật khẩu tạm ở lần đăng nhập đầu tiên. */
+export async function changePassword(currentPassword, newPassword) {
+  await api.post('/auth/change-password', { currentPassword, newPassword });
 }
 
 export async function logout() {

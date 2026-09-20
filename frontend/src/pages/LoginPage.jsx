@@ -1,22 +1,35 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { readErrorMessage } from '../api/client';
+import { startGoogleLogin } from '../api/auth';
 import Logo from '../components/Logo';
 
 const REMEMBERED_EMAIL_KEY = 'saomai.rememberedEmail';
 
+/** Backend đẩy về đây kèm query khi luồng Google kết thúc — xem app.frontend.* trong application.yaml. */
+const REDIRECT_MESSAGES = {
+  oauth_unauthorized:
+    'Tài khoản Google này chưa được cấp quyền truy cập. Liên hệ Quản lý hoặc Giám đốc để được tạo tài khoản (BR-USER-03).',
+  oauth_failed: 'Đăng nhập Google không thành công. Vui lòng thử lại.',
+};
+
+const REDIRECT_NOTICES = {
+  password_changed: 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại bằng mật khẩu mới.',
+};
+
 export default function LoginPage() {
   const { signIn } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const remembered = localStorage.getItem(REMEMBERED_EMAIL_KEY) ?? '';
   const [email, setEmail] = useState(remembered);
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(Boolean(remembered));
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [hint, setHint] = useState('');
+  const [error, setError] = useState(REDIRECT_MESSAGES[searchParams.get('error')] ?? '');
+  const [hint, setHint] = useState(REDIRECT_NOTICES[searchParams.get('notice')] ?? '');
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event) {
@@ -35,11 +48,7 @@ export default function LoginPage() {
       }
 
       // BR-USER-07: tài khoản còn mật khẩu tạm phải đổi trước khi vào hệ thống.
-      // Màn đổi mật khẩu chưa nằm trong phạm vi lần này nên chỉ cảnh báo, không chặn.
-      if (me.mustChangePassword) {
-        setHint('Tài khoản đang dùng mật khẩu tạm. Bạn nên đổi mật khẩu sớm (BR-USER-07).');
-      }
-      navigate('/khach-san', { replace: true });
+      navigate(me.mustChangePassword ? '/doi-mat-khau' : '/khach-san', { replace: true });
     } catch (err) {
       setError(
         err?.response?.status === 401
@@ -156,6 +165,27 @@ export default function LoginPage() {
               {!submitting && <span aria-hidden="true"> →</span>}
             </button>
           </form>
+
+          <div className="or-divider">
+            <span>hoặc</span>
+          </div>
+
+          {/* Điều hướng cả trang sang backend: luồng OAuth2 đi qua redirect, axios không theo được. */}
+          <button
+            type="button"
+            className="btn btn--ghost btn--block btn--google"
+            onClick={startGoogleLogin}
+            disabled={submitting}
+          >
+            <span className="btn__g" aria-hidden="true">
+              G
+            </span>
+            Đăng nhập bằng Google
+          </button>
+          <p className="field__help">
+            <span aria-hidden="true">ⓘ</span> Chỉ dùng được với email đã được cấp tài khoản trong
+            hệ thống.
+          </p>
 
           <div className="support-box">
             <span className="support-box__icon" aria-hidden="true">

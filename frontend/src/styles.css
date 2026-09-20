@@ -792,3 +792,96 @@ p {
     padding: 24px 20px 16px;
   }
 }
+
+/* ── Đăng nhập Google + màn đổi mật khẩu lần đầu ─────────────────────────── */
+
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.btn--google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn__g {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--border);
+  color: #4285f4;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.pw-strength {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pw-strength__bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.pw-strength__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.pw-strength__fill--0 { width: 0; }
+.pw-strength__fill--1 { width: 25%;  background: var(--danger); }
+.pw-strength__fill--2 { width: 50%;  background: var(--orange); }
+.pw-strength__fill--3 { width: 75%;  background: var(--blue); }
+.pw-strength__fill--4 { width: 100%; background: var(--green); }
+
+.pw-rules {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--page-bg);
+}
+
+.pw-rule {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.9;
+}
+
+.pw-rule--ok {
+  color: var(--green);
+}
+
+.field__help--error {
+  color: var(--danger);
+}

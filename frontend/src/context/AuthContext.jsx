@@ -9,11 +9,15 @@ export function AuthProvider({ children }) {
   // hình đăng nhập với người đang có phiên hợp lệ.
   const [loading, setLoading] = useState(true);
 
+  /** Trả về user vừa đọc được để nơi gọi dùng ngay, không phải chờ state cập nhật. */
   const refresh = useCallback(async () => {
     try {
-      setUser(await authApi.fetchCurrentUser());
+      const me = await authApi.fetchCurrentUser();
+      setUser(me);
+      return me;
     } catch {
       setUser(null);
+      return null;
     } finally {
       setLoading(false);
     }

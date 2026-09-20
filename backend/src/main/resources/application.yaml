@@ -72,12 +72,15 @@ server:
 # OAuth2LoginSuccessHandler nên không đổi được theo môi trường.
 app:
   frontend:
-    success-redirect: http://localhost:3000/dashboard
-    unauthorized-redirect: http://localhost:3000/unauthorized
+    # Phải khớp route thật của FE (frontend/src/App.jsx), nếu không người dùng rơi vào
+    # catch-all và mất luôn thông báo lỗi.
+    success-redirect: http://localhost:3000/khach-san
+    unauthorized-redirect: http://localhost:3000/dang-nhap?error=oauth_unauthorized
+    failure-redirect: http://localhost:3000/dang-nhap?error=oauth_failed
     # BR-USER-07: tài khoản còn mật khẩu tạm phải đổi trước khi vào hệ thống.
-    change-password-redirect: http://localhost:3000/change-password
+    change-password-redirect: http://localhost:3000/doi-mat-khau
     # Link đăng nhập đặt trong email gửi mật khẩu tạm.
-    login-url: http://localhost:3000/login
+    login-url: http://localhost:3000/dang-nhap
 
   mail:
     # Gửi email mật khẩu tạm khi tạo / cấp lại mật khẩu tài khoản. TẮT mặc định — chỉ bật
