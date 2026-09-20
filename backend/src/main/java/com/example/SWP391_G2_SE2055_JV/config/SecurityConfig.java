@@ -113,6 +113,14 @@ public class SecurityConfig {
                 .requestMatchers("/locations/**")
                     .hasAnyRole(ADMIN, DIRECTOR)
 
+                // ── Khu vực: ngoại lệ của nhóm /organization — cấp LOCATION, Manager CRUD
+                // (BR-ORG-12, BR-PERM-03). Phải đứng TRƯỚC rule danh mục cấp Tenant bên dưới
+                // vì rule khớp đầu tiên thắng.
+                .requestMatchers(HttpMethod.GET, "/organization/areas/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+                .requestMatchers("/organization/areas/**")
+                    .hasAnyRole(ADMIN, MANAGER)
+
                 // ── Danh mục cấp Tenant: chỉ Giám đốc tạo (BR-ORG-06, BR-ORG-11, BR-ASSET-09) ──
                 .requestMatchers(HttpMethod.GET, "/organization/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)

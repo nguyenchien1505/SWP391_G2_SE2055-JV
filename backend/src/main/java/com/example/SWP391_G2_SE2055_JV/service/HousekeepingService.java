@@ -209,11 +209,14 @@ public class HousekeepingService {
      * BR-HK-07: người làm bị gỡ ca tương lai (nghỉ việc, điều chuyển, duyệt đơn nghỉ) thì
      * task đã gán cho họ ở những ngày đó cũng về Chưa phân công, kèm lý do. "Tương lai"
      * theo BR-SCH-17: ngày LỚN HƠN hôm nay — task của chính hôm nay giữ nguyên.
+     *
+     * @param today mốc "hôm nay" theo múi giờ Location, do nơi gọi tính để ca và task dùng
+     *              CHUNG một mốc (xem {@code UserService.terminateUser}).
      */
     @Transactional
-    public int releaseFutureTasks(UUID staffId, UnassignedReason reason) {
+    public int releaseFutureTasks(UUID staffId, UnassignedReason reason, LocalDate today) {
         List<HousekeepingTask> tasks = taskRepository.findByAssignedStaffIdAndStatusAndAssignedDateGreaterThan(
-            staffId, HousekeepingTaskStatus.IN_PROGRESS, ShiftTimeUtils.todayInHanoi());
+            staffId, HousekeepingTaskStatus.IN_PROGRESS, today);
 
         for (HousekeepingTask task : tasks) {
             requireRoomIntegration(task);   // CHECKOUT: phòng Đang dọn → Chờ dọn (BR-HK-07)

@@ -2,6 +2,8 @@ package com.example.SWP391_G2_SE2055_JV.repository;
 
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -19,10 +21,22 @@ public interface PositionRepository extends JpaRepository<Position, UUID> {
      */
     List<Position> findByTenantIdAndActiveTrue(UUID tenantId);
 
+    /**
+     * Thứ tự sắp xếp do {@code Pageable} quyết định nên KHÔNG đặt {@code OrderBy} vào tên
+     * method — hai nguồn sắp xếp gặp nhau sẽ khiến tham số {@code sort} của client bị bỏ qua.
+     */
+    Page<Position> findByTenantId(UUID tenantId, Pageable pageable);
+
+    /** BR-ORG-14: danh sách chọn chỉ lấy mục đang hiện. */
+    Page<Position> findByTenantIdAndActiveTrue(UUID tenantId, Pageable pageable);
+
     Optional<Position> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /** BR-ORG-13: tên Position unique trong phạm vi Tenant. */
     boolean existsByTenantIdAndName(UUID tenantId, String name);
+
+    /** Dùng khi đổi tên: bỏ qua chính bản ghi đang sửa. */
+    boolean existsByTenantIdAndNameAndIdNot(UUID tenantId, String name, UUID id);
 
     List<Position> findByTenantIdAndPositionType(UUID tenantId, PositionType positionType);
 

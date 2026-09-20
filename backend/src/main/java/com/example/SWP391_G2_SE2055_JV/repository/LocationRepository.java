@@ -4,6 +4,9 @@ import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,4 +18,13 @@ public interface LocationRepository extends JpaRepository<Location, UUID> {
      * đảm bảo Location TỒN TẠI, không đảm bảo nó thuộc cùng Tenant với người thao tác.
      */
     Optional<Location> findByIdAndTenantId(UUID id, UUID tenantId);
+
+    /**
+     * Thứ tự sắp xếp do {@code Pageable} quyết định nên KHÔNG đặt {@code OrderBy} vào tên
+     * method — hai nguồn sắp xếp gặp nhau sẽ khiến tham số {@code sort} của client bị bỏ qua.
+     *
+     * <p>Màn hình cần đủ danh sách để đổ dropdown thì gọi với {@code size} lớn; số Location
+     * vốn bị chặn bởi quota gói dịch vụ (BR-SAAS-02) nên luôn là tập nhỏ.
+     */
+    Page<Location> findByTenantId(UUID tenantId, Pageable pageable);
 }

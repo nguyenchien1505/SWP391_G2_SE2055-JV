@@ -29,6 +29,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -188,8 +189,12 @@ public class UserService {
         user.setTerminatedBy(SecurityUtils.getCurrentUserId());
         userRepository.save(user);
 
-        int released = releaseFutureShifts(user.getId(), UnassignedReason.TERMINATION);
-        int releasedTasks = housekeepingService.releaseFutureTasks(user.getId(), UnassignedReason.TERMINATION);
+        // BR-SCH-17 + BR-HK-07: ca và task dọn cùng dùng MỘT mốc "hôm nay" theo múi giờ
+        // Location, nếu không hai bên sẽ lệch nhau quanh thời điểm giao ngày.
+        LocalDate today = todayAtLocationOf(user);
+        int released = releaseFutureShifts(user, today, UnassignedReason.TERMINATION);
+        int releasedTasks = housekeepingService.releaseFutureTasks(
+            user.getId(), UnassignedReason.TERMINATION, today);
         log.info("Cho nghỉ việc {} — gỡ {} ca và {} task dọn tương lai",
             user.getEmail(), released, releasedTasks);
 
@@ -228,11 +233,13 @@ public class UserService {
 
     /**
      * BR-SCH-17: "ca tương lai" là ca có ngày LỚN HƠN hôm nay — ca của chính hôm nay
-     * KHÔNG bị gỡ tự động. "Hôm nay" tính theo giờ Hà Nội, không theo giờ server.
+     * KHÔNG bị gỡ tự động. "Hôm nay" tính theo MÚI GIỜ CỦA LOCATION người này trực thuộc,
+     * không theo giờ server và cũng không cố định giờ Hà Nội: một chuỗi khách sạn trải
+     * nhiều múi giờ thì mốc sang ngày ở mỗi cơ sở là khác nhau.
      */
-    private int releaseFutureShifts(UUID staffId, UnassignedReason reason) {
+    private int releaseFutureShifts(User staff, LocalDate today, UnassignedReason reason) {
         List<Shift> futureShifts =
-            shiftRepository.findByStaffIdAndShiftDateGreaterThan(staffId, ShiftTimeUtils.todayInHanoi());
+            shiftRepository.findByStaffIdAndShiftDateGreaterThan(staff.getId(), today);
         LocalDateTime now = LocalDateTime.now();
         for (Shift shift : futureShifts) {
             shift.setStaffId(null);
@@ -241,6 +248,16 @@ public class UserService {
         }
         shiftRepository.saveAll(futureShifts);
         return futureShifts.size();
+    }
+
+    /** "Hôm nay" theo múi giờ Location của nhân viên — BR-SCH-17. Không có Location thì lấy giờ Hà Nội. */
+    private LocalDate todayAtLocationOf(User staff) {
+        if (staff.getLocationId() == null) {
+            return ShiftTimeUtils.todayInHanoi();
+        }
+        return locationRepository.findById(staff.getLocationId())
+            .map(location -> ShiftTimeUtils.todayAt(location.getTimezone()))
+            .orElseGet(ShiftTimeUtils::todayInHanoi);
     }
 
     private User getOwnedUser(UUID id) {
