@@ -53,6 +53,7 @@ public class SecurityConfig {
     private final ObjectMapper              objectMapper;
     private final OAuth2LoginSuccessHandler successHandler;
     private final OAuth2LoginFailureHandler failureHandler;
+    private final TenantAccessPolicy        tenantAccessPolicy;
 
     // "/auth/login" công khai cho CẢ hai luồng:
     //   - formLogin  POST /auth/login
@@ -205,7 +206,10 @@ public class SecurityConfig {
             .formLogin(form -> form
                 .loginProcessingUrl("/auth/login")
                 .successHandler((req, res, auth) -> res.setStatus(HttpStatus.OK.value()))
-                .failureHandler((req, res, ex) -> res.setStatus(HttpStatus.UNAUTHORIZED.value()))
+                // 401; riêng tài khoản bị chặn vì trạng thái Tenant (và đã nhập đúng mật khẩu) thì
+                // kèm thông báo nêu lý do — xem FormLoginFailureHandler.
+                .failureHandler(new FormLoginFailureHandler(
+                    userRepository, passwordEncoder(), tenantAccessPolicy, objectMapper))
                 .permitAll()
             )
 

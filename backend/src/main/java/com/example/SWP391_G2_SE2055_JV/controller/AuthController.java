@@ -38,6 +38,9 @@ public class AuthController {
         body.put("positionType",       user.getPositionType() == null ? null : user.getPositionType().name());
         // BR-USER-07: frontend phải ép về màn hình đổi mật khẩu khi cờ này bật.
         body.put("mustChangePassword", user.isMustChangePassword());
+        // Tenant hết hạn dùng thử / thanh toán thất bại: Giám đốc chỉ được xem, frontend hiển thị
+        // thông báo và ẩn các nút thao tác ghi.
+        body.put("readOnly",           user.isReadOnly());
         return ResponseEntity.ok(body);
     }
 
