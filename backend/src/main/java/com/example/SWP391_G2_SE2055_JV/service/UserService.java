@@ -28,6 +28,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -184,7 +185,7 @@ public class UserService {
         user.setTerminatedBy(SecurityUtils.getCurrentUserId());
         userRepository.save(user);
 
-        int released = releaseFutureShifts(user.getId(), UnassignedReason.TERMINATION);
+        int released = releaseFutureShifts(user, UnassignedReason.TERMINATION);
         log.info("Cho nghỉ việc {} — gỡ {} ca tương lai", user.getEmail(), released);
 
         // DM-13: Location mất Manager thì quay về "Chưa vận hành" cho tới khi có Manager mới.
@@ -220,11 +221,19 @@ public class UserService {
 
     /**
      * BR-SCH-17: "ca tương lai" là ca có ngày LỚN HƠN hôm nay — ca của chính hôm nay
-     * KHÔNG bị gỡ tự động. "Hôm nay" tính theo giờ Hà Nội, không theo giờ server.
+     * KHÔNG bị gỡ tự động. "Hôm nay" tính theo MÚI GIỜ CỦA LOCATION người này trực thuộc,
+     * không theo giờ server và cũng không cố định giờ Hà Nội: một chuỗi khách sạn trải
+     * nhiều múi giờ thì mốc sang ngày ở mỗi cơ sở là khác nhau.
      */
-    private int releaseFutureShifts(UUID staffId, UnassignedReason reason) {
+    private int releaseFutureShifts(User staff, UnassignedReason reason) {
+        LocalDate today = staff.getLocationId() == null
+            ? ShiftTimeUtils.todayInHanoi()
+            : locationRepository.findById(staff.getLocationId())
+                .map(location -> ShiftTimeUtils.todayAt(location.getTimezone()))
+                .orElseGet(ShiftTimeUtils::todayInHanoi);
+
         List<Shift> futureShifts =
-            shiftRepository.findByStaffIdAndShiftDateGreaterThan(staffId, ShiftTimeUtils.todayInHanoi());
+            shiftRepository.findByStaffIdAndShiftDateGreaterThan(staff.getId(), today);
         LocalDateTime now = LocalDateTime.now();
         for (Shift shift : futureShifts) {
             shift.setStaffId(null);

@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-primary-fixed":"#001d35","primary-container":"#1f4e78","surface-card":"#FFFFFF","secondary-container":"#79b7fd","status-occupied-border":"#BBDEFB","status-available-bg":"#E8F5E9","status-inspecting":"#6A1B9A","surface":"#f9f9fd","primary-fixed":"#d0e4ff","primary":"#00375e","secondary-fixed":"#d1e4ff","status-available":"#2E7D32","surface-container-lowest":"#ffffff","surface-container-highest":"#e2e2e6","status-cleaning-border":"#FFF59D","border-subtle":"#DFE3E8","error-container":"#ffdad6","status-dirty-bg":"#FFF3E0","text-secondary":"#5B6472","secondary-fixed-dim":"#9ecaff","on-error":"#ffffff","status-available-border":"#C8E6C9","surface-container-low":"#f3f3f7","status-inspecting-bg":"#F3E5F5","status-cleaning":"#F9A825","status-oos-border":"#E0E0E0","on-tertiary-fixed-variant":"#624000","outline":"#72777f","outline-variant":"#c2c7cf","tertiary":"#4b2f00","on-surface-variant":"#42474e","inverse-primary":"#a0cafb","primary-fixed-dim":"#a0cafb","tertiary-fixed":"#ffddb3","status-dirty-border":"#FFE0B2","status-oos-bg":"#EEEEEE","surface-container-high":"#e8e8ec","surface-bright":"#f9f9fd","status-cleaning-bg":"#FFFDE7","on-primary-fixed-variant":"#194973","status-occupied":"#1565C0","tertiary-container":"#694400","on-tertiary":"#ffffff","on-background":"#1a1c1f","on-secondary-fixed":"#001d36","on-primary-container":"#95bff0","on-secondary-fixed-variant":"#00497d","surface-variant":"#e2e2e6","error":"#ba1a1a","surface-bg":"#F7F8FA","text-primary":"#1C2330","on-surface":"#1a1c1f","surface-tint":"#35618c","on-error-container":"#93000a","surface-dim":"#d9dade","status-occupied-bg":"#E3F2FD","inverse-surface":"#2f3034","status-oos":"#616161","on-secondary":"#ffffff","surface-container":"#ededf1","on-tertiary-fixed":"#291800","tertiary-fixed-dim":"#f3bd72","on-secondary-container":"#00477b","on-primary":"#ffffff","status-dirty":"#EF6C00","status-inspecting-border":"#E1BEE7","background":"#f9f9fd","secondary":"#0e61a1","inverse-on-surface":"#f0f0f4","on-tertiary-container":"#e7b369"},borderRadius:{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},spacing:{"space-md":"1rem","space-xl":"2rem","margin":"1.5rem","space-lg":"1.5rem","space-sm":"0.5rem","space-xs":"0.25rem","gutter":"1rem"},fontFamily:{"label-md":["Be Vietnam Pro"],"headline-lg":["Be Vietnam Pro"],"display-lg":["Be Vietnam Pro"],"body-sm":["Be Vietnam Pro"],"title-sm":["Be Vietnam Pro"],"headline-md":["Be Vietnam Pro"],"body-md":["Be Vietnam Pro"],"metric-val":["Be Vietnam Pro"],"body-lg":["Be Vietnam Pro"],"label-sm":["Be Vietnam Pro"]},fontSize:{"label-md":["13px",{"lineHeight":"18px","fontWeight":"600"}],"headline-lg":["22px",{"lineHeight":"28px","letterSpacing":"-0.015em","fontWeight":"700"}],"display-lg":["30px",{"lineHeight":"38px","letterSpacing":"-0.02em","fontWeight":"700"}],"body-sm":["12px",{"lineHeight":"16px","fontWeight":"400"}],"title-sm":["16px",{"lineHeight":"22px","fontWeight":"600"}],"headline-md":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"600"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"metric-val":["28px",{"lineHeight":"32px","letterSpacing":"-0.02em","fontWeight":"700"}],"body-lg":["16px",{"lineHeight":"24px","fontWeight":"400"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-64 bg-surface-card flex flex-col z-50 shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-space-md flex items-center gap-space-sm"><div class="w-9 h-9 rounded-lg bg-primary-container flex items-center justify-center flex-shrink-0 text-on-primary"><span class="material-symbols-outlined text-[20px]">corporate_fare</span></div><div class="min-w-0 flex-1"><div class="font-title-sm text-title-sm text-primary truncate leading-tight">Sao Mai Ops</div><div class="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">PMS Multi-tenant</div></div></div><div class="flex-1 overflow-y-auto px-space-sm py-space-sm"><nav class="space-y-space-xs" data-active-classes="bg-primary-container text-on-primary font-title-sm"><div class="px-space-sm pt-space-sm pb-space-xs font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">Vận hành chuỗi</div><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="dashboard-tong-quan" href="#"><span class="material-symbols-outlined text-[18px]">dashboard</span><span class="font-body-md text-body-md truncate">Dashboard tổng quan</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="so-do-phong" href="#"><span class="material-symbols-outlined text-[18px]">grid_view</span><span class="font-body-md text-body-md truncate">Sơ đồ phòng</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="danh-sach-phong" href="#"><span class="material-symbols-outlined text-[18px]">bed</span><span class="font-body-md text-body-md truncate">Danh sách phòng</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="xep-lich-lam-viec" href="#"><span class="material-symbols-outlined text-[18px]">calendar_month</span><span class="font-body-md text-body-md truncate">Xếp lịch làm việc</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="cong-viec-don-phong" href="#"><span class="material-symbols-outlined text-[18px]">cleaning_services</span><span class="font-body-md text-body-md truncate">Công việc dọn phòng</span></a><div class="px-space-sm pt-space-md pb-space-xs font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">Quản trị &amp; Hệ thống</div><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="danh-sach-khach-san" href="#"><span class="material-symbols-outlined text-[18px]">apartment</span><span class="font-body-md text-body-md truncate">Danh sách khách sạn</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="quan-ly-nhan-su" href="#"><span class="material-symbols-outlined text-[18px]">badge</span><span class="font-body-md text-body-md truncate">Manager &amp; Nhân sự</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="danh-muc-khu-vuc" href="#"><span class="material-symbols-outlined text-[18px]">domain</span><span class="font-body-md text-body-md truncate">Danh mục &amp; Khu vực</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="quy-dinh-mau-ca" href="#"><span class="material-symbols-outlined text-[18px]">schedule</span><span class="font-body-md text-body-md truncate">Quy định &amp; Mẫu ca</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="quan-ly-tai-san" href="#"><span class="material-symbols-outlined text-[18px]">inventory_2</span><span class="font-body-md text-body-md truncate">Quản lý tài sản</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="cau-hinh-he-thong" href="#"><span class="material-symbols-outlined text-[18px]">settings</span><span class="font-body-md text-body-md truncate">Cấu hình hệ thống</span></a><div class="px-space-sm pt-space-md pb-space-xs font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">Cá nhân</div><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="lich-ca-nhan-cham-cong" href="#"><span class="material-symbols-outlined text-[18px]">fingerprint</span><span class="font-body-md text-body-md truncate">Lịch cá nhân &amp; Chấm công</span></a></nav></div><div class="p-space-sm bg-surface-container-low"><div class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-status-available"></span><span class="font-label-sm text-label-sm text-status-available">Máy chủ hoạt động</span><span class="ml-auto font-label-sm text-label-sm text-text-secondary">v2.4.1</span></div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 h-16 bg-surface-card/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 px-space-lg flex items-center justify-between"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs px-space-sm py-space-xs bg-surface-container-low rounded-lg"><span class="material-symbols-outlined text-secondary text-[18px]">location_city</span><span class="font-title-sm text-title-sm text-text-primary">Sao Mai Nha Trang</span><span class="material-symbols-outlined text-text-secondary text-[16px]">expand_more</span></div><div class="hidden xl:flex items-center gap-space-xs text-text-secondary font-body-sm text-body-sm"><span class="material-symbols-outlined text-[16px]">schedule</span><span>Thứ Năm, 24/10/2024 - 09:30</span></div></div><div class="flex items-center gap-space-md"><button class="w-9 h-9 rounded-lg bg-surface-container-low flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors relative" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span></button><button class="w-9 h-9 rounded-lg bg-surface-container-low flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" type="button"><span class="material-symbols-outlined text-[20px]">help_outline</span></button><div class="flex items-center gap-space-sm pl-space-xs"><div class="text-right hidden sm:block"><div class="font-title-sm text-title-sm text-text-primary leading-snug">Lê Hoàng Phúc</div><div class="font-label-sm text-label-sm text-text-secondary">Quản lý / Giám đốc điều hành</div></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="relative pt-16 w-full px-space-lg bg-surface-bg min-h-screen"><div class="flex flex-col w-full pb-space-xl">
+<!-- Top Utility Bar & Breadcrumb -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-sm pt-space-md pb-space-lg">
+<div class="flex flex-col gap-space-xs">
+<nav class="flex items-center gap-space-xs font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">
+<span>CẤU HÌNH NHÂN SỰ</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="text-secondary font-semibold">Quy Định Xếp Ca Vận Hành</span>
+</nav>
+<div class="flex items-center gap-space-sm">
+<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight">
+          Thiết lập Quy Định Ràng Buộc Xếp Ca (Shift Rules)
+        </h1>
+<span class="inline-flex items-center gap-1 px-space-sm py-0.5 rounded-full bg-primary-container text-on-primary font-label-sm text-label-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary-fixed animate-pulse"></span>
+          Áp dụng toàn chuỗi
+        </span>
+</div>
+<p class="font-body-md text-body-md text-text-secondary max-w-3xl">
+        Cấu hình các hạn mức luật lao động Việt Nam và quy chuẩn vận hành nội bộ Sao Mai Group nhằm ngăn chặn vi phạm phân bổ ca tự động lẫn thủ công.
+      </p>
+</div>
+<!-- Quick Actions Top Sticky -->
+<div class="flex items-center gap-space-sm self-start md:self-auto">
+<button class="inline-flex items-center gap-space-xs px-space-md py-2 rounded-lg bg-surface-container-high text-text-primary hover:bg-surface-container-highest transition-colors font-label-md text-label-md shadow-sm" id="btn-reset-rules" type="button">
+<span class="material-symbols-outlined text-[18px]">history</span>
+<span>Khôi phục mặc định pháp luật</span>
+</button>
+<button class="inline-flex items-center gap-space-xs px-space-lg py-2 rounded-lg bg-primary-container text-on-primary hover:bg-primary transition-all font-label-md text-label-md shadow-sm active:scale-[0.98]" id="btn-save-rules" type="button">
+<span class="material-symbols-outlined text-[18px]">verified</span>
+<span>Lưu quy định áp dụng</span>
+</button>
+</div>
+</div>
+<!-- Main Bento Grid Layout -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg items-start">
+<!-- Left Column (8 cols): 6 Core Shift Rule Configuration Cards -->
+<div class="xl:col-span-8 flex flex-col gap-space-lg">
+<!-- Enforcement Status Callout -->
+<div class="p-space-lg rounded-xl bg-error-container/40 text-on-surface shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md">
+<div class="flex items-start gap-space-md">
+<div class="w-10 h-10 rounded-xl bg-error text-on-error flex items-center justify-center flex-shrink-0 shadow-sm">
+<span class="material-symbols-outlined text-[24px]">gavel</span>
+</div>
+<div>
+<div class="flex items-center gap-space-xs font-title-sm text-title-sm text-error">
+<span>RÀNG BUỘC CỨNG (BR-SHIFT ENFORCEMENT)</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-error text-on-error">Chặn lưu ca</span>
+</div>
+<p class="font-body-sm text-body-sm text-text-primary mt-1">
+              Khi Quản lý xếp ca vi phạm các tham số này, hệ thống sẽ BẬT THÔNG BÁO CHẶN (Block Alert) màu đỏ và kiên quyết không cho phép duyệt/lưu bảng ca trên toàn hệ thống.
+            </p>
+</div>
+</div>
+<div class="flex items-center gap-2 bg-surface-card px-space-sm py-1.5 rounded-lg shadow-sm flex-shrink-0">
+<span class="w-2.5 h-2.5 rounded-full bg-error animate-ping"></span>
+<span class="font-label-sm text-label-sm text-text-primary uppercase font-bold">Luật lao động 2019</span>
+</div>
+</div>
+<!-- Parameter Cards (2 Column Grid) -->
+<form class="grid grid-cols-1 md:grid-cols-2 gap-space-md" id="shift-rules-form">
+<!-- Parameter 1: Giờ làm việc tối đa trong một ngày -->
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+<div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Tham số 01 · BR-01</span>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-primary font-label-sm text-label-sm">Bộ luật LĐ Điều 105</span>
+</div>
+<div class="flex items-center gap-space-sm mt-space-xs">
+<div class="w-8 h-8 rounded-lg bg-surface-container-low flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">acute</span>
+</div>
+<h3 class="font-title-sm text-title-sm text-text-primary">Số giờ tối đa / ngày</h3>
+</div>
+<p class="font-body-sm text-body-sm text-text-secondary mt-space-xs">
+              Bao gồm cả giờ hành chính và giờ làm thêm tối đa theo quy định pháp lý, tránh kiệt sức cho nhân sự lễ tân &amp; buồng phòng.
+            </p>
+</div>
+<div class="mt-space-md pt-space-sm bg-surface-container-low/50 p-space-sm rounded-lg">
+<div class="flex items-center justify-between gap-space-sm">
+<div class="flex items-baseline gap-1">
+<input class="w-20 px-3 py-1.5 font-metric-val text-metric-val text-primary bg-surface-card rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-secondary shadow-sm" id="param-daily-hours" max="16" min="4" step="0.5" type="number" value="10"/>
+<span class="font-title-sm text-title-sm text-text-secondary">giờ / ngày</span>
+</div>
+<div class="text-right">
+<div class="font-label-sm text-label-sm text-status-available font-semibold">Khuyến nghị: 8 - 10h</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Chuỗi Sao Mai: 10h</div>
+</div>
+</div>
+<div class="mt-2 text-[11px] text-text-secondary flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-primary">info</span>
+<span>Vượt quá 10h/ngày sẽ kích hoạt Block Alert vi phạm ca quá tải.</span>
+</div>
+</div>
+</div>
+<!-- Parameter 2: Giờ làm việc tối đa trong một tuần -->
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+<div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Tham số 02 · BR-02</span>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-primary font-label-sm text-label-sm">Giới hạn tuần</span>
+</div>
+<div class="flex items-center gap-space-sm mt-space-xs">
+<div class="w-8 h-8 rounded-lg bg-surface-container-low flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">date_range</span>
+</div>
+<h3 class="font-title-sm text-title-sm text-text-primary">Số giờ tối đa / tuần</h3>
+</div>
+<p class="font-body-sm text-body-sm text-text-secondary mt-space-xs">
+              Tổng số giờ được phân công cho 1 nhân viên trong chu kỳ thứ 2 đến chủ nhật, bảo đảm kiểm soát ngân sách quỹ lương OT.
+            </p>
+</div>
+<div class="mt-space-md pt-space-sm bg-surface-container-low/50 p-space-sm rounded-lg">
+<div class="flex items-center justify-between gap-space-sm">
+<div class="flex items-baseline gap-1">
+<input class="w-20 px-3 py-1.5 font-metric-val text-metric-val text-primary bg-surface-card rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-secondary shadow-sm" id="param-weekly-hours" max="60" min="20" step="1" type="number" value="48"/>
+<span class="font-title-sm text-title-sm text-text-secondary">giờ / tuần</span>
+</div>
+<div class="text-right">
+<div class="font-label-sm text-label-sm text-status-available font-semibold">Khuyến nghị: 40 - 48h</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Chuẩn khách sạn: 48h</div>
+</div>
+</div>
+<div class="mt-2 text-[11px] text-text-secondary flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-primary">info</span>
+<span>Tổng &gt; 48 giờ yêu cầu phê duyệt đặc biệt của Giám Đốc Vận Hành.</span>
+</div>
+</div>
+</div>
+<!-- Parameter 3: Số ca làm việc liên tiếp tối đa -->
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+<div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Tham số 03 · BR-03</span>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-primary font-label-sm text-label-sm">Chuỗi làm việc</span>
+</div>
+<div class="flex items-center gap-space-sm mt-space-xs">
+<div class="w-8 h-8 rounded-lg bg-surface-container-low flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">view_timeline</span>
+</div>
+<h3 class="font-title-sm text-title-sm text-text-primary">Số ca liên tiếp tối đa</h3>
+</div>
+<p class="font-body-sm text-body-sm text-text-secondary mt-space-xs">
+              Số ngày/ca tối đa được phép xếp liên tục không có ngày nghỉ ngắt quãng. Tránh tình trạng dồn dập ca khiến nhân sự kiệt sức.
+            </p>
+</div>
+<div class="mt-space-md pt-space-sm bg-surface-container-low/50 p-space-sm rounded-lg">
+<div class="flex items-center justify-between gap-space-sm">
+<div class="flex items-baseline gap-1">
+<input class="w-20 px-3 py-1.5 font-metric-val text-metric-val text-primary bg-surface-card rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-secondary shadow-sm" id="param-consecutive-shifts" max="10" min="3" step="1" type="number" value="6"/>
+<span class="font-title-sm text-title-sm text-text-secondary">ca liên tiếp</span>
+</div>
+<div class="text-right">
+<div class="font-label-sm text-label-sm text-status-available font-semibold">Khuyến nghị: 5 - 6 ca</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Mặc định: 6 ca</div>
+</div>
+</div>
+<div class="mt-2 text-[11px] text-text-secondary flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-status-dirty">warning</span>
+<span>Sau ca thứ 6 bắt buộc phải có tối thiểu 1 ca nghỉ (OFF/Day-off).</span>
+</div>
+</div>
+</div>
+<!-- Parameter 4: Giờ nghỉ tối thiểu giữa 2 ca -->
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+<div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Tham số 04 · BR-04</span>
+<span class="px-2 py-0.5 rounded bg-error-container text-error font-label-sm text-label-sm font-semibold">RẤT QUAN TRỌNG</span>
+</div>
+<div class="flex items-center gap-space-sm mt-space-xs">
+<div class="w-8 h-8 rounded-lg bg-surface-container-low flex items-center justify-center text-error flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">bedtime</span>
+</div>
+<h3 class="font-title-sm text-title-sm text-text-primary">Nghỉ tối thiểu giữa 2 ca</h3>
+</div>
+<p class="font-body-sm text-body-sm text-text-secondary mt-space-xs">
+              Khoảng giãn cách bắt buộc từ lúc kết thúc ca trước tới lúc bắt đầu ca kế tiếp. Triệt tiêu rủi ro xếp ca Đêm (Night Shift) liền Sáng hôm sau.
+            </p>
+</div>
+<div class="mt-space-md pt-space-sm bg-surface-container-low/50 p-space-sm rounded-lg">
+<div class="flex items-center justify-between gap-space-sm">
+<div class="flex items-baseline gap-1">
+<input class="w-20 px-3 py-1.5 font-metric-val text-metric-val text-primary bg-surface-card rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-secondary shadow-sm" id="param-min-rest" max="24" min="8" step="1" type="number" value="12"/>
+<span class="font-title-sm text-title-sm text-text-secondary">giờ nghỉ</span>
+</div>
+<div class="text-right">
+<div class="font-label-sm text-label-sm text-error font-semibold">Tiêu chuẩn: ≥ 12 giờ</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Khoảng đệm an toàn</div>
+</div>
+</div>
+<div class="mt-2 text-[11px] text-error flex items-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[14px]">block</span>
+<span>Chặn tuyệt đối phân công ca Sáng (06:00) nếu vừa rời ca Đêm (22:00-06:00).</span>
+</div>
+</div>
+</div>
+<!-- Parameter 5: Ngày nghỉ tối thiểu trong tuần -->
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+<div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Tham số 05 · BR-05</span>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-primary font-label-sm text-label-sm">Bộ luật LĐ Điều 111</span>
+</div>
+<div class="flex items-center gap-space-sm mt-space-xs">
+<div class="w-8 h-8 rounded-lg bg-surface-container-low flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">weekend</span>
+</div>
+<h3 class="font-title-sm text-title-sm text-text-primary">Ngày nghỉ tối thiểu / tuần</h3>
+</div>
+<p class="font-body-sm text-body-sm text-text-secondary mt-space-xs">
+              Mỗi tuần làm việc, người lao động được nghỉ liên tục ít nhất 24 giờ liên tục (1 ngày trọn vẹn không phân ca trực).
+            </p>
+</div>
+<div class="mt-space-md pt-space-sm bg-surface-container-low/50 p-space-sm rounded-lg">
+<div class="flex items-center justify-between gap-space-sm">
+<div class="flex items-baseline gap-1">
+<input class="w-20 px-3 py-1.5 font-metric-val text-metric-val text-primary bg-surface-card rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-secondary shadow-sm" id="param-min-weekly-off" max="3" min="1" step="1" type="number" value="1"/>
+<span class="font-title-sm text-title-sm text-text-secondary">ngày / tuần</span>
+</div>
+<div class="text-right">
+<div class="font-label-sm text-label-sm text-status-available font-semibold">Khuyến nghị: 1 - 2 ngày</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Mặc định: 1 ngày OFF</div>
+</div>
+</div>
+<div class="mt-2 text-[11px] text-text-secondary flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-primary">info</span>
+<span>Nếu tuần lễ không đủ 1 ngày OFF, hệ thống từ chối phát hành bảng phân ca.</span>
+</div>
+</div>
+</div>
+<!-- Parameter 6: Thời gian chờ phản hồi đổi ca -->
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+<div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Tham số 06 · BR-06</span>
+<span class="px-2 py-0.5 rounded bg-surface-container-high text-primary font-label-sm text-label-sm">Nghiệp vụ nội bộ</span>
+</div>
+<div class="flex items-center gap-space-sm mt-space-xs">
+<div class="w-8 h-8 rounded-lg bg-surface-container-low flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">swap_horiz</span>
+</div>
+<h3 class="font-title-sm text-title-sm text-text-primary">Phản hồi đổi ca tối đa</h3>
+</div>
+<p class="font-body-sm text-body-sm text-text-secondary mt-space-xs">
+              Hạn chót để Quản lý cơ sở hoặc đồng nghiệp xác nhận / từ chối yêu cầu đổi ca. Quá hạn hệ thống tự động hủy để đảm bảo ổn định ca trực.
+            </p>
+</div>
+<div class="mt-space-md pt-space-sm bg-surface-container-low/50 p-space-sm rounded-lg">
+<div class="flex items-center justify-between gap-space-sm">
+<div class="flex items-baseline gap-1">
+<input class="w-20 px-3 py-1.5 font-metric-val text-metric-val text-primary bg-surface-card rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-secondary shadow-sm" id="param-swap-timeout" max="72" min="2" step="2" type="number" value="24"/>
+<span class="font-title-sm text-title-sm text-text-secondary">giờ chờ</span>
+</div>
+<div class="text-right">
+<div class="font-label-sm text-label-sm text-status-available font-semibold">Khuyến nghị: 12 - 24h</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Tự động hủy sau 24h</div>
+</div>
+</div>
+<div class="mt-2 text-[11px] text-text-secondary flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-primary">info</span>
+<span>Gửi thông báo nhắc nhở (push) trước khi hết hạn 4 giờ.</span>
+</div>
+</div>
+</div>
+</form>
+<!-- Interactive Scenario Simulator / Live Verification Panel -->
+<div class="bg-surface-card p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md">
+<div class="flex items-center justify-between flex-wrap gap-2">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[22px]">troubleshoot</span>
+<h3 class="font-headline-md text-headline-md text-text-primary">Mô Phỏng Trạng Thái Ràng Buộc Thực Tế</h3>
+</div>
+<span class="text-label-sm font-label-sm text-text-secondary">Kiểm tra tự động trên dữ liệu xếp ca tuần này</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-sm">
+<!-- Simulation item 1 -->
+<div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-text-secondary">Ca Ca Đêm → Ca Sáng</span>
+<span class="px-1.5 py-0.5 rounded bg-error/10 text-error text-[10px] font-bold">Chặn 100%</span>
+</div>
+<div class="font-title-sm text-title-sm text-text-primary mt-1">22:00 - 06:00 → 07:00 - 15:00</div>
+<span class="font-body-sm text-body-sm text-error">Nghỉ 1h &lt; Ngưỡng tối thiểu 12h</span>
+</div>
+<!-- Simulation item 2 -->
+<div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-text-secondary">Làm việc 7 ngày liên tục</span>
+<span class="px-1.5 py-0.5 rounded bg-error/10 text-error text-[10px] font-bold">Cảnh báo đỏ</span>
+</div>
+<div class="font-title-sm text-title-sm text-text-primary mt-1">Chuỗi 7 ca không OFF</div>
+<span class="font-body-sm text-body-sm text-error">Vi phạm BR-03 (Tối đa 6 ca)</span>
+</div>
+<!-- Simulation item 3 -->
+<div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-text-secondary">Yêu cầu đổi ca muộn</span>
+<span class="px-1.5 py-0.5 rounded bg-status-cleaning-bg text-status-cleaning text-[10px] font-bold">Hết hạn • Tự huỷ</span>
+</div>
+<div class="font-title-sm text-title-sm text-text-primary mt-1">&gt; 24h chưa duyệt</div>
+<span class="font-body-sm text-body-sm text-text-secondary">Hủy yêu cầu, giữ nguyên ca gốc</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column (4 cols): Chain-wide Scope, Property Reference & Audit Log -->
+<div class="xl:col-span-4 flex flex-col gap-space-lg">
+<!-- Property Scope Card -->
+<div class="bg-surface-card p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<h3 class="font-title-sm text-title-sm text-text-primary">Phạm Vi Áp Dụng Quy Định</h3>
+<span class="material-symbols-outlined text-text-secondary text-[20px]">apartment</span>
+</div>
+<p class="font-body-sm text-body-sm text-text-secondary">
+          Quy định này thiết lập ở cấp Giám đốc điều hành toàn chuỗi và có hiệu lực bắt buộc trên toàn bộ 6 khách sạn thuộc hệ thống Sao Mai:
+        </p>
+<div class="space-y-space-xs">
+<div class="flex items-center justify-between p-2 rounded-lg bg-surface-container-low font-body-sm text-body-sm">
+<div class="flex items-center gap-space-xs text-text-primary">
+<span class="w-2 h-2 rounded-full bg-status-available"></span>
+<span class="font-medium">Sao Mai Nha Trang Central</span>
+</div>
+<span class="font-label-sm text-label-sm text-text-secondary">Đang tuân thủ (100%)</span>
+</div>
+<div class="flex items-center justify-between p-2 rounded-lg bg-surface-container-low font-body-sm text-body-sm">
+<div class="flex items-center gap-space-xs text-text-primary">
+<span class="w-2 h-2 rounded-full bg-status-available"></span>
+<span class="font-medium">Sao Mai Đà Nẵng Riverside</span>
+</div>
+<span class="font-label-sm text-label-sm text-text-secondary">Đang tuân thủ (100%)</span>
+</div>
+<div class="flex items-center justify-between p-2 rounded-lg bg-surface-container-low font-body-sm text-body-sm">
+<div class="flex items-center gap-space-xs text-text-primary">
+<span class="w-2 h-2 rounded-full bg-status-available"></span>
+<span class="font-medium">Sao Mai Phú Quốc Grand</span>
+</div>
+<span class="font-label-sm text-label-sm text-text-secondary">Đang tuân thủ (100%)</span>
+</div>
+<div class="flex items-center justify-between p-2 rounded-lg bg-surface-container-low font-body-sm text-body-sm">
+<div class="flex items-center gap-space-xs text-text-primary">
+<span class="w-2 h-2 rounded-full bg-status-cleaning"></span>
+<span class="font-medium">Sao Mai Vũng Tàu Sea</span>
+</div>
+<span class="font-label-sm text-label-sm text-status-cleaning">2 ca chạm ngưỡng 10h</span>
+</div>
+<div class="flex items-center justify-between p-2 rounded-lg bg-surface-container-low font-body-sm text-body-sm">
+<div class="flex items-center gap-space-xs text-text-primary">
+<span class="w-2 h-2 rounded-full bg-status-available"></span>
+<span class="font-medium">Sao Mai Đà Lạt Pine Hill</span>
+</div>
+<span class="font-label-sm text-label-sm text-text-secondary">Đang tuân thủ (100%)</span>
+</div>
+</div>
+<div class="pt-space-xs">
+<div class="flex items-center justify-between text-label-sm font-label-sm text-text-secondary mb-1">
+<span>Tỷ lệ tuân thủ giờ làm tuần này</span>
+<span class="font-bold text-primary">98.4%</span>
+</div>
+<div class="w-full bg-surface-container-high rounded-full h-2 overflow-hidden">
+<div class="bg-secondary h-2 rounded-full" style="width: 98.4%"></div>
+</div>
+</div>
+</div>
+<!-- Reference Image Section (Screenshot reference styling) -->
+<div class="bg-surface-card rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Ảnh Tham Chiếu Giao Diện Hệ Thống</span>
+<span class="material-symbols-outlined text-[18px] text-text-secondary">photo_camera</span>
+</div>
+<div class="rounded-lg overflow-hidden bg-surface-container-low relative max-h-72 flex items-center justify-center">
+<img alt="Shift Rules System Blueprint Reference" class="object-cover w-full h-full object-top" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC-gDAxZZAbOc1gr1mbGX8OKyxf_AcjiuDa3ChzLOwgt4sKvGfLATr5umFfANuiJD2ARATUL2h6QT7BRW5msuMaNbTeOyAHKjeucXugy_zIQLxiZaYU1VHqP55icsFbVYRYRvW-mcWOfjCmq_prMTc1GMT1AurB7g2w80tliGY7XJgn9aD_2g7DWsp4PE6MeCXaypNPjovOZv9b9uf_agu6ulYIM3qWJDs4d8JUqIRtdmx2r41rHp5DOTqtmPMXvcuqlA"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-space-sm">
+<p class="text-white text-xs font-medium">Bản thảo quy chuẩn phân ca &amp; phân quyền điều hành chuỗi</p>
+</div>
+</div>
+</div>
+<!-- Audit History Log -->
+<div class="bg-surface-card p-space-lg rounded-xl shadow-sm flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<h3 class="font-title-sm text-title-sm text-text-primary">Nhật Ký Cập Nhật Quy Định</h3>
+<span class="material-symbols-outlined text-[18px] text-text-secondary">history_edu</span>
+</div>
+<div class="space-y-space-sm relative before:absolute before:top-2 before:bottom-2 before:left-3 before:w-0.5 before:bg-surface-container-high">
+<!-- Log 1 -->
+<div class="flex items-start gap-space-md relative pl-6">
+<span class="absolute left-1.5 top-1.5 w-3 h-3 rounded-full bg-primary ring-4 ring-surface-card"></span>
+<div>
+<div class="font-label-md text-label-md text-text-primary">Cập nhật BR-04: Nghỉ 12 giờ</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Thực hiện bởi: <span class="font-semibold text-primary">Lê Hoàng Phúc (CEO)</span></div>
+<div class="font-label-sm text-label-sm text-text-secondary mt-0.5">14:20 - 15/10/2024</div>
+</div>
+</div>
+<!-- Log 2 -->
+<div class="flex items-start gap-space-md relative pl-6">
+<span class="absolute left-1.5 top-1.5 w-3 h-3 rounded-full bg-surface-container-highest ring-4 ring-surface-card"></span>
+<div>
+<div class="font-label-md text-label-md text-text-primary">Ban hành bộ quy định v2.4</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Thực hiện bởi: <span class="font-semibold text-primary">Ban Pháp chế Vận hành</span></div>
+<div class="font-label-sm text-label-sm text-text-secondary mt-0.5">09:00 - 01/09/2024</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Toast Notification System (Client micro-interaction) -->
+<div class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none flex items-center gap-space-sm px-space-md py-space-sm bg-primary text-on-primary rounded-xl shadow-xl" id="save-toast">
+<span class="material-symbols-outlined text-secondary-fixed text-[22px]">check_circle</span>
+<div>
+<div class="font-title-sm text-title-sm">Đã lưu quy định thành công</div>
+<div class="font-body-sm text-body-sm text-secondary-fixed">6 ràng buộc đã được đồng bộ đến toàn bộ 6 cơ sở khách sạn.</div>
+</div>
+</div>
+</div>
+<script>
+  // Simple interactive simulation for Save and Reset actions
+  const btnSave = document.getElementById('btn-save-rules');
+  const btnReset = document.getElementById('btn-reset-rules');
+  const toast = document.getElementById('save-toast');
+
+  const defaultValues = {
+    dailyHours: 10,
+    weeklyHours: 48,
+    consecutiveShifts: 6,
+    minRest: 12,
+    weeklyOff: 1,
+    swapTimeout: 24
+  };
+
+  btnReset?.addEventListener('click', () => {
+    document.getElementById('param-daily-hours').value = defaultValues.dailyHours;
+    document.getElementById('param-weekly-hours').value = defaultValues.weeklyHours;
+    document.getElementById('param-consecutive-shifts').value = defaultValues.consecutiveShifts;
+    document.getElementById('param-min-rest').value = defaultValues.minRest;
+    document.getElementById('param-min-weekly-off').value = defaultValues.weeklyOff;
+    document.getElementById('param-swap-timeout').value = defaultValues.swapTimeout;
+  });
+
+  btnSave?.addEventListener('click', () => {
+    // Show toast
+    toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+    toast.classList.add('translate-y-0', 'opacity-100');
+
+    setTimeout(() => {
+      toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+      toast.classList.remove('translate-y-0', 'opacity-100');
+    }, 3500);
+  });
+</script></main></div></body></html>

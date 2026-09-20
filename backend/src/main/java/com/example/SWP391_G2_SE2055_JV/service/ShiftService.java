@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.UUID;
 
 /**
@@ -88,17 +89,33 @@ public class ShiftService {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
         assertManagesLocation(request.getLocationId());
         assertLocationInTenant(request.getLocationId(), tenantId);
-        assertTemplateUsable(request.getSourceTemplateId(), tenantId);
+
+        // BR-SCH-04: hai cách tạo ca — theo mẫu hoặc tự nhập giờ.
+        LocalTime startTime = request.getStartTime();
+        LocalTime endTime   = request.getEndTime();
+
+        if (request.getSourceTemplateId() != null) {
+            if (startTime != null || endTime != null) {
+                throw new BusinessException(
+                    "Đã chọn mẫu ca thì không gửi kèm giờ: giờ lấy theo mẫu (BR-SCH-04).");
+            }
+            ShiftTemplate template = requireUsableTemplate(request.getSourceTemplateId(), tenantId);
+            startTime = template.getStartTime();
+            endTime   = template.getEndTime();
+        } else if (startTime == null || endTime == null) {
+            throw new BusinessException(
+                "Ca tự do phải có cả giờ bắt đầu và giờ kết thúc, hoặc chọn một mẫu ca (BR-SCH-04).");
+        }
 
         Shift shift = Shift.builder()
             .tenantId(tenantId)
             .locationId(request.getLocationId())
             .staffId(request.getStaffId())
             .shiftDate(request.getShiftDate())
-            .startTime(request.getStartTime())
-            .endTime(request.getEndTime())
-            .overnight(ShiftTimeUtils.isOvernight(request.getStartTime(), request.getEndTime()))
-            .durationHours(ShiftTimeUtils.durationHours(request.getStartTime(), request.getEndTime()))
+            .startTime(startTime)
+            .endTime(endTime)
+            .overnight(ShiftTimeUtils.isOvernight(startTime, endTime))
+            .durationHours(ShiftTimeUtils.durationHours(startTime, endTime))
             .sourceTemplateId(request.getSourceTemplateId())
             .build();
 
@@ -121,15 +138,29 @@ public class ShiftService {
         if (request.getShiftDate() != null) {
             shift.setShiftDate(request.getShiftDate());
         }
-        if (request.getStartTime() != null) {
-            shift.setStartTime(request.getStartTime());
-        }
-        if (request.getEndTime() != null) {
-            shift.setEndTime(request.getEndTime());
-        }
+
+        // Đổi sang mẫu khác thì giờ lấy theo mẫu, không nhận giờ tự nhập cùng lúc (BR-SCH-04).
         if (request.getSourceTemplateId() != null) {
-            assertTemplateUsable(request.getSourceTemplateId(), shift.getTenantId());
-            shift.setSourceTemplateId(request.getSourceTemplateId());
+            if (request.getStartTime() != null || request.getEndTime() != null) {
+                throw new BusinessException(
+                    "Đã chọn mẫu ca thì không gửi kèm giờ: giờ lấy theo mẫu (BR-SCH-04).");
+            }
+            ShiftTemplate template =
+                requireUsableTemplate(request.getSourceTemplateId(), shift.getTenantId());
+            shift.setSourceTemplateId(template.getId());
+            shift.setStartTime(template.getStartTime());
+            shift.setEndTime(template.getEndTime());
+        } else {
+            if (request.getStartTime() != null) {
+                shift.setStartTime(request.getStartTime());
+            }
+            if (request.getEndTime() != null) {
+                shift.setEndTime(request.getEndTime());
+            }
+            // Sửa giờ tay nghĩa là ca không còn khớp mẫu cũ — bỏ liên kết cho khỏi sai lịch sử.
+            if (request.getStartTime() != null || request.getEndTime() != null) {
+                shift.setSourceTemplateId(null);
+            }
         }
 
         // Giờ ca đổi thì độ dài và cờ qua đêm phải tính lại trước khi validate (BR-SCH-03).
@@ -249,18 +280,16 @@ public class ShiftService {
     }
 
     /**
-     * BR-SCH-04: template phải thuộc Tenant này. BR-SCH-22: template đã vô hiệu hóa chỉ
-     * còn để tra lịch sử, không dùng xếp ca mới. {@code null} = ca tự do, bỏ qua.
+     * BR-SCH-04: mẫu phải thuộc Tenant này. BR-SCH-22: mẫu đã vô hiệu hóa chỉ còn để tra
+     * lịch sử, không xếp ca mới được nữa.
      */
-    private void assertTemplateUsable(UUID templateId, UUID tenantId) {
-        if (templateId == null) {
-            return;
-        }
+    private ShiftTemplate requireUsableTemplate(UUID templateId, UUID tenantId) {
         ShiftTemplate template = shiftTemplateRepository.findByIdAndTenantId(templateId, tenantId)
             .orElseThrow(() -> new ResourceNotFoundException("ShiftTemplate", "id", templateId));
         if (!template.isActive()) {
             throw new BusinessException("Mẫu ca này đã bị vô hiệu hóa (BR-SCH-22).");
         }
+        return template;
     }
 
     private void assertIsOwnShift(Shift shift) {
