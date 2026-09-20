@@ -11,11 +11,14 @@ import java.util.Set;
  * <p>Ma trận là nguồn duy nhất quyết định một bước chuyển có hợp lệ hay không;
  * service layer gọi {@link #canTransitionTo(RoomStatus)} trước khi ghi.
  *
- * <p><b>Lưu ý về RESERVED:</b> BR-ROOM-02 chỉ định nghĩa đường ĐI VÀO trạng thái này
- * (AVAILABLE → RESERVED, do Lễ tân) mà không định nghĩa đường đi ra, nên theo đúng
- * văn bản thì phòng đã đặt sẽ kẹt vĩnh viễn. Hai bước chuyển RESERVED → OCCUPIED
- * (khách đến nhận phòng) và RESERVED → AVAILABLE (khách hủy) được bổ sung ở đây để
- * luồng chạy được; <b>cần chốt lại với BA rồi cập nhật BR-ROOM-02.</b>
+ * <p><b>Lưu ý về RESERVED:</b> bản đầu của BR-ROOM-02 chỉ định nghĩa đường ĐI VÀO
+ * trạng thái này (AVAILABLE → RESERVED, do Lễ tân) mà thiếu đường đi ra, nên phòng đã
+ * đặt sẽ kẹt vĩnh viễn. Hai bước chuyển RESERVED → OCCUPIED (khách đến nhận phòng) và
+ * RESERVED → AVAILABLE (khách hủy hoặc no-show) đã được bổ sung chính thức vào ma trận
+ * BR-ROOM-02 ngày 20/09/2026, nên enum này khớp đúng văn bản BR.
+ *
+ * <p>BR-ROOM-01: RESERVED là cờ giữ phòng cho khách đến TRONG NGÀY, không phải lịch đặt
+ * phòng — không có ngày đến/đi, không có thông tin khách.
  */
 public enum RoomStatus {
 
@@ -43,7 +46,7 @@ public enum RoomStatus {
     private static final Map<RoomStatus, Set<RoomStatus>> ALLOWED = Map.of(
         // BR-ROOM-02: Lễ tân đặt trước / check-in; Manager khóa phòng.
         AVAILABLE,   EnumSet.of(RESERVED, OCCUPIED, UNAVAILABLE),
-        // Bổ sung ngoài BR-ROOM-02 — xem javadoc ở đầu enum.
+        // BR-ROOM-02: khách đến nhận phòng, hoặc hủy đặt/no-show.
         RESERVED,    EnumSet.of(OCCUPIED, AVAILABLE, UNAVAILABLE),
         // BR-ROOM-03: phòng có khách KHÔNG được chuyển sang UNAVAILABLE.
         OCCUPIED,    EnumSet.of(DIRTY),
