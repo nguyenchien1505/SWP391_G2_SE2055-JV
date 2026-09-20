@@ -170,9 +170,7 @@ export function TenantDetailPage() {
                   <ResourceCard label="Phòng nghỉ" icon={<BedDouble className="size-4" />} metric={usage.rooms} />
                   <ResourceCard label="Tài khoản nhân viên" icon={<Users className="size-4" />} metric={usage.staff} />
                 </div>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Số liệu chụp tại thời điểm xem. Nhân viên chỉ tính Staff, không tính Giám đốc và Quản lý.
-                </p>
+               
               </>
             ) : (
               <p className="text-sm text-muted-foreground">Đang tải…</p>

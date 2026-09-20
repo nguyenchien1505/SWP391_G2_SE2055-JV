@@ -11,6 +11,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -81,6 +82,11 @@ public class SecurityConfig {
         provider.setPasswordEncoder(passwordEncoder());
 
         http
+            // Áp cấu hình CORS của WebConfig cho CẢ các phản hồi do Spring Security tạo (đăng nhập,
+            // đăng xuất, 401/403). Thiếu dòng này, CORS chỉ có hiệu lực với phản hồi đi qua Spring
+            // MVC: trình duyệt gọi từ http://localhost:3000 nhận được phản hồi đăng nhập/401 không
+            // có header CORS nên bị chặn và báo "Network Error".
+            .cors(Customizer.withDefaults())
             .csrf(AbstractHttpConfigurer::disable)
             .authenticationProvider(provider)
             .sessionManagement(session -> session

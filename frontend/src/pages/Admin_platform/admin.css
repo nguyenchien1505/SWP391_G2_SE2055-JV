@@ -1,0 +1,168 @@
+/*
+ * Bổ sung cho khu Quản trị nền tảng — CHỈ thêm những lớp mà styles.css chung chưa có.
+ * Màu và bán kính lấy từ biến :root của styles.css để giữ đồng nhất. Các lớp bố cục đều nằm
+ * dưới .admin-page để không ảnh hưởng tới các trang khác khi CSS này được nạp.
+ */
+
+/* Điều hướng dạng liên kết (styles.css chỉ có kiểu cho <button class="nav-item">). */
+a.nav-item {
+  text-decoration: none;
+}
+
+/* Huy hiệu bổ sung: styles.css mới có green và grey. */
+.badge--blue {
+  background: #e3effb;
+  color: var(--blue);
+}
+.badge--orange {
+  background: #fdf0dc;
+  color: var(--orange);
+}
+.badge--red {
+  background: #fdecec;
+  color: var(--danger);
+}
+
+/* Thông báo cảnh báo (styles.css có error, info, success). */
+.alert--warn {
+  background: #fff6e5;
+  border: 1px solid #f3d9a4;
+  color: #7a4a00;
+}
+
+.admin-page .breadcrumb a {
+  color: inherit;
+  text-decoration: none;
+}
+.admin-page .breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.admin-page .head-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-page .stack {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-page .panel--narrow {
+  max-width: 560px;
+}
+
+/* Cặp nhãn – giá trị. */
+.admin-page .kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px 20px;
+  margin: 0;
+}
+.admin-page .kv dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.admin-page .kv dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Thẻ mức sử dụng so với hạn mức. */
+.admin-page .meter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+}
+.admin-page .meter {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 14px;
+}
+.admin-page .meter__label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--muted);
+}
+.admin-page .meter__value {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 6px 0 8px;
+}
+.admin-page .meter__value small {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.admin-page .meter__bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #eceef1;
+  overflow: hidden;
+}
+.admin-page .meter__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.admin-page .meter__note {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.admin-page .meter--over .meter__value,
+.admin-page .meter--over .meter__note {
+  color: var(--danger);
+}
+.admin-page .meter--over .meter__fill {
+  background: var(--danger);
+}
+
+/* Khối gói dịch vụ hiện tại. */
+.admin-page .plan {
+  background: var(--primary);
+  color: #fff;
+  border-radius: var(--radius-card);
+  padding: 18px;
+}
+.admin-page .plan__label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.admin-page .plan__price {
+  font-size: 30px;
+  font-weight: 700;
+  margin: 6px 0 2px;
+}
+.admin-page .plan__note {
+  font-size: 13px;
+  opacity: 0.85;
+}
+.admin-page .plan__rows {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 14px;
+}
+.admin-page .plan__rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-page .plan__rows dt {
+  opacity: 0.85;
+}
+.admin-page .plan__rows dd {
+  margin: 0;
+  font-weight: 600;
+}
