@@ -33,6 +33,7 @@ build/
 .vscode/
 
 .env
+/frontend/node_modules/
 
 ### Project personal working docs (specs, notes) — không commit ###
 personal docs/
