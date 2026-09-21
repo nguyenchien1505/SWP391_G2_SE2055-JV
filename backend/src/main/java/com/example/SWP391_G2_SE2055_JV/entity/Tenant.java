@@ -56,7 +56,11 @@ public class Tenant extends AuditableEntity {
     @Column(name = "reactivated_at")
     private LocalDateTime reactivatedAt;
 
-    /** BR-SAAS-11: Tenant bị khóa thì chặn đăng nhập hoàn toàn, không có read-only. */
+    /**
+     * Đúng khi Tenant SUSPENDED — điều kiện CẦN để chặn đăng nhập (BR-SAAS-11). Mức chặn cụ thể do
+     * {@code TenantAccessPolicy} quyết định theo lý do khóa và vai trò: ADMIN_LOCKED chặn tất cả;
+     * TRIAL_EXPIRED / PAYMENT_FAILED chặn Manager, Staff nhưng Giám đốc vẫn vào được (chỉ đọc).
+     */
     public boolean isLoginBlocked() {
         return status == TenantStatus.SUSPENDED;
     }

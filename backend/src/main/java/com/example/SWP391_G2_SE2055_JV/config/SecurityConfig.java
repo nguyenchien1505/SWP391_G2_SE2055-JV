@@ -11,6 +11,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -53,6 +54,7 @@ public class SecurityConfig {
     private final ObjectMapper              objectMapper;
     private final OAuth2LoginSuccessHandler successHandler;
     private final OAuth2LoginFailureHandler failureHandler;
+    private final TenantAccessPolicy        tenantAccessPolicy;
 
     // "/auth/login" công khai cho CẢ hai luồng:
     //   - formLogin  POST /auth/login
@@ -80,6 +82,11 @@ public class SecurityConfig {
         provider.setPasswordEncoder(passwordEncoder());
 
         http
+            // Áp cấu hình CORS của WebConfig cho CẢ các phản hồi do Spring Security tạo (đăng nhập,
+            // đăng xuất, 401/403). Thiếu dòng này, CORS chỉ có hiệu lực với phản hồi đi qua Spring
+            // MVC: trình duyệt gọi từ http://localhost:3000 nhận được phản hồi đăng nhập/401 không
+            // có header CORS nên bị chặn và báo "Network Error".
+            .cors(Customizer.withDefaults())
             .csrf(AbstractHttpConfigurer::disable)
             .authenticationProvider(provider)
             .sessionManagement(session -> session
@@ -205,7 +212,10 @@ public class SecurityConfig {
             .formLogin(form -> form
                 .loginProcessingUrl("/auth/login")
                 .successHandler((req, res, auth) -> res.setStatus(HttpStatus.OK.value()))
-                .failureHandler((req, res, ex) -> res.setStatus(HttpStatus.UNAUTHORIZED.value()))
+                // 401; riêng tài khoản bị chặn vì trạng thái Tenant (và đã nhập đúng mật khẩu) thì
+                // kèm thông báo nêu lý do — xem FormLoginFailureHandler.
+                .failureHandler(new FormLoginFailureHandler(
+                    userRepository, passwordEncoder(), tenantAccessPolicy, objectMapper))
                 .permitAll()
             )
 
