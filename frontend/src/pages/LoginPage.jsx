@@ -48,12 +48,22 @@ export default function LoginPage() {
       }
 
       // BR-USER-07: tài khoản còn mật khẩu tạm phải đổi trước khi vào hệ thống.
-      navigate(me.mustChangePassword ? '/doi-mat-khau' : '/khach-san', { replace: true });
+      // Màn đổi mật khẩu chưa nằm trong phạm vi lần này nên chỉ cảnh báo, không chặn.
+      if (me.mustChangePassword) {
+        setHint('Tài khoản đang dùng mật khẩu tạm. Bạn nên đổi mật khẩu sớm (BR-USER-07).');
+      }
+      // Admin Platform vào khu quản trị; các vai trò khác giữ nguyên đích cũ /khach-san.
+      navigate(homePathFor(me), { replace: true });
     } catch (err) {
+      // Khi Tenant bị khóa (hết hạn dùng thử, thanh toán lỗi, Admin khóa) backend trả 401 kèm
+      // thông báo nêu rõ lý do — hiện thông báo đó. Sai mật khẩu thì body rỗng nên vẫn dùng
+      // câu cũ.
       setError(
-        err?.response?.status === 401
-          ? 'Email hoặc mật khẩu không đúng.'
-          : readErrorMessage(err, 'Đăng nhập không thành công.'),
+        err?.response?.data?.message
+          ? err.response.data.message
+          : err?.response?.status === 401
+            ? 'Email hoặc mật khẩu không đúng.'
+            : readErrorMessage(err, 'Đăng nhập không thành công.'),
       );
     } finally {
       setSubmitting(false);
