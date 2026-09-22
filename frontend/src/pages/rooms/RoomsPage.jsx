@@ -183,7 +183,7 @@ export default function RoomsPage() {
           <div className="state state--empty">
             <p>{hasFilter ? 'Không có phòng nào khớp bộ lọc.' : 'Chưa có phòng nào.'}</p>
             {!hasFilter && isDirector && (
-              <p className="muted">Phòng do Giám đốc tạo cho từng khách sạn (BR-ROOM-04).</p>
+              <p className="muted">Phòng do Giám đốc tạo cho từng khách sạn.</p>
             )}
           </div>
         )}
@@ -270,9 +270,9 @@ export default function RoomsPage() {
           <b>Quy định về phòng</b>
           <p>
             Chỉ Giám đốc được thêm, sửa, xóa phòng; Quản lý chi nhánh chỉ cập nhật thông tin vận
-            hành (BR-ROOM-04). Phòng mới tạo luôn ở trạng thái <b>Chờ dọn</b> và tự sinh việc dọn
-            phòng (BR-ROOM-10). Trạng thái phòng chỉ thay đổi theo đúng quy trình: Lễ tân nhận / trả
-            phòng, Quản lý khóa phòng và kiểm tra phòng sau khi dọn (BR-ROOM-02).
+            hành. Phòng mới tạo luôn ở trạng thái <b>Chờ dọn</b> và tự sinh việc dọn
+            phòng. Trạng thái phòng chỉ thay đổi theo đúng quy trình: Lễ tân nhận / trả
+            phòng, Quản lý khóa phòng và kiểm tra phòng sau khi dọn.
           </p>
         </div>
       </div>

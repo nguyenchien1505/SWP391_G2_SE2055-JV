@@ -97,14 +97,14 @@ public class ShiftService {
         if (request.getSourceTemplateId() != null) {
             if (startTime != null || endTime != null) {
                 throw new BusinessException(
-                    "Đã chọn mẫu ca thì không gửi kèm giờ: giờ lấy theo mẫu (BR-SCH-04).");
+                    "Đã chọn mẫu ca thì không gửi kèm giờ: giờ lấy theo mẫu.");
             }
             ShiftTemplate template = requireUsableTemplate(request.getSourceTemplateId(), tenantId);
             startTime = template.getStartTime();
             endTime   = template.getEndTime();
         } else if (startTime == null || endTime == null) {
             throw new BusinessException(
-                "Ca tự do phải có cả giờ bắt đầu và giờ kết thúc, hoặc chọn một mẫu ca (BR-SCH-04).");
+                "Ca tự do phải có cả giờ bắt đầu và giờ kết thúc, hoặc chọn một mẫu ca.");
         }
 
         Shift shift = Shift.builder()
@@ -143,7 +143,7 @@ public class ShiftService {
         if (request.getSourceTemplateId() != null) {
             if (request.getStartTime() != null || request.getEndTime() != null) {
                 throw new BusinessException(
-                    "Đã chọn mẫu ca thì không gửi kèm giờ: giờ lấy theo mẫu (BR-SCH-04).");
+                    "Đã chọn mẫu ca thì không gửi kèm giờ: giờ lấy theo mẫu.");
             }
             ShiftTemplate template =
                 requireUsableTemplate(request.getSourceTemplateId(), shift.getTenantId());
@@ -287,7 +287,7 @@ public class ShiftService {
         ShiftTemplate template = shiftTemplateRepository.findByIdAndTenantId(templateId, tenantId)
             .orElseThrow(() -> new ResourceNotFoundException("ShiftTemplate", "id", templateId));
         if (!template.isActive()) {
-            throw new BusinessException("Mẫu ca này đã bị vô hiệu hóa (BR-SCH-22).");
+            throw new BusinessException("Mẫu ca này đã bị vô hiệu hóa.");
         }
         return template;
     }
@@ -304,11 +304,11 @@ public class ShiftService {
             .orElseThrow(() -> new ResourceNotFoundException("User", "id", staffId));
 
         if (staff.isTerminated()) {
-            throw new BusinessException("Không xếp ca cho nhân viên đã nghỉ việc (BR-USER-04).");
+            throw new BusinessException("Không xếp ca cho nhân viên đã nghỉ việc.");
         }
         if (!locationId.equals(staff.getLocationId())) {
             throw new BusinessException(
-                "Nhân viên không thuộc Location của ca này (BR-SCH-05).");
+                "Nhân viên không thuộc Location của ca này.");
         }
     }
 }

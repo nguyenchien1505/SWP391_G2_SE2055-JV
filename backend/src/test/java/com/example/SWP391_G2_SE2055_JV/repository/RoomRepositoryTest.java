@@ -16,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -27,6 +28,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Kiểm tra các {@code @Query} tự viết của module phòng trên MySQL THẬT (profile "test",
@@ -147,7 +149,46 @@ class RoomRepositoryTest {
                           Map.entry(RoomStatus.OCCUPIED, 1L));
     }
 
+    // ── Ràng buộc DB ck_rooms_unavailable_reason — BR-ROOM-07 (F2) ──────────
+    // Lưu ý đã chạy thử: MySQL báo vi phạm CHECK bằng mã 3819 / SQLState HY000, nên Spring KHÔNG
+    // xếp vào DataIntegrityViolationException (→ 409) mà ra JpaSystemException (→ 500). Vì vậy test
+    // chỉ khẳng định "DB từ chối, đúng ràng buộc này"; service phải tự chặn trước (RoomStatusService).
+
+    /** Lưới an toàn của BR-ROOM-07: dù service quên kiểm tra, DB vẫn không nhận phòng khóa thiếu lý do. */
+    @Test
+    void shouldRejectUnavailableRoomWithoutReasonAtDbLevel() {
+        Room locked = newRoom("301", RoomStatus.UNAVAILABLE, null);
+
+        assertThatThrownBy(() -> roomRepository.saveAndFlush(locked))
+            .isInstanceOf(DataAccessException.class)
+            .hasMessageContaining("ck_rooms_unavailable_reason");
+    }
+
+    /** Chiều ngược lại — lý do do RoomStatusService tự xóa khi mở khóa; quên xóa thì DB chặn. */
+    @Test
+    void shouldRejectReasonOnRoomThatIsNotUnavailable() {
+        Room available = newRoom("302", RoomStatus.AVAILABLE, "Lý do còn sót");
+
+        assertThatThrownBy(() -> roomRepository.saveAndFlush(available))
+            .isInstanceOf(DataAccessException.class)
+            .hasMessageContaining("ck_rooms_unavailable_reason");
+    }
+
+    @Test
+    void shouldAcceptUnavailableRoomWithReason() {
+        Room locked = roomRepository.saveAndFlush(newRoom("303", RoomStatus.UNAVAILABLE, "Hỏng điều hòa"));
+
+        assertThat(roomRepository.findByIdAndTenantIdAndActiveTrue(locked.getId(), tenantId))
+            .get().extracting(Room::getUnavailableReason).isEqualTo("Hỏng điều hòa");
+    }
+
     // ── Dữ liệu ─────────────────────────────────────────────────────────────
+
+    private Room newRoom(String number, RoomStatus status, String unavailableReason) {
+        return Room.builder()
+            .tenantId(tenantId).locationId(locationA).roomNumber(number).floor("3")
+            .roomTypeId(standard).capacity(2).status(status).unavailableReason(unavailableReason).build();
+    }
 
     private UUID persistTenant(String name) {
         return em.persist(Tenant.builder()

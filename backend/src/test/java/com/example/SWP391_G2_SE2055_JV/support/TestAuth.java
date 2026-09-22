@@ -38,8 +38,17 @@ public final class TestAuth {
 
     public static CustomUserDetails loginAs(Role role, UUID tenantId, UUID locationId,
                                             PositionType positionType) {
+        return loginAs(UUID.randomUUID(), role, tenantId, locationId, positionType);
+    }
+
+    /**
+     * Đăng nhập bằng id của một user CÓ THẬT trong DB — dùng cho test chạy trên MySQL, nơi khóa
+     * ngoại ({@code changed_by}, {@code updated_by}…) đòi người thực hiện phải tồn tại.
+     */
+    public static CustomUserDetails loginAs(UUID userId, Role role, UUID tenantId, UUID locationId,
+                                            PositionType positionType) {
         CustomUserDetails user = CustomUserDetails.builder()
-            .id(UUID.randomUUID())
+            .id(userId)
             .username(role.name().toLowerCase() + "@test.local")
             .role(role)
             .tenantId(tenantId)

@@ -308,7 +308,7 @@ export default function TenantDetailPage() {
             pendingAction === 'suspend' ? (
               <>
                 Bạn sắp khóa <b>{tenant.name}</b>. Toàn bộ người dùng của Tenant sẽ bị chặn đăng
-                nhập và phiên đang mở bị ngắt ngay (BR-SAAS-11).
+                nhập và phiên đang mở bị ngắt ngay.
               </>
             ) : (
               <>

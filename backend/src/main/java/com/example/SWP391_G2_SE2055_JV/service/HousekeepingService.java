@@ -117,11 +117,11 @@ public class HousekeepingService {
         assertManagesLocation(room.getLocationId());
 
         if (room.getStatus() != RoomStatus.OCCUPIED) {
-            throw new BusinessException("Chỉ tạo task dọn hằng ngày cho phòng đang có khách (BR-HK-05).");
+            throw new BusinessException("Chỉ tạo task dọn hằng ngày cho phòng đang có khách.");
         }
         if (taskRepository.existsByRoomIdAndTaskTypeAndStatusIn(
                 room.getId(), HousekeepingTaskType.STAYOVER, OPEN)) {
-            throw new BusinessException("Phòng này đã có task dọn hằng ngày đang mở (BR-HK-11).");
+            throw new BusinessException("Phòng này đã có task dọn hằng ngày đang mở.");
         }
 
         HousekeepingTask saved = taskRepository.save(HousekeepingTask.builder()
@@ -251,14 +251,14 @@ public class HousekeepingService {
             .orElse(false);
         if (!housekeeping) {
             throw new BusinessException(
-                "Chỉ nhân viên có Position loại Dọn dẹp mới nhận task dọn phòng (BR-PERM-05).");
+                "Chỉ nhân viên có Position loại Dọn dẹp mới nhận task dọn phòng.");
         }
 
         // BR-HK-03: có ca trong ngày là đủ, không cần khớp khung giờ. BR-HK-02: không giới
         // hạn số task mỗi người.
         if (!shiftRepository.existsByStaffIdAndShiftDate(staffId, date)) {
             throw new BusinessException(String.format(
-                "Nhân viên không có ca làm việc ngày %s — chỉ gán task cho người có ca trong ngày (BR-HK-03).",
+                "Nhân viên không có ca làm việc ngày %s — chỉ gán task cho người có ca trong ngày.",
                 date));
         }
     }
@@ -272,8 +272,8 @@ public class HousekeepingService {
     private static void requireRoomIntegration(HousekeepingTask task) {
         if (task.getTaskType() == HousekeepingTaskType.CHECKOUT) {
             throw new BusinessException(
-                "Task CHECKOUT chưa xử lý được: cần module Quản lý phòng đổi trạng thái phòng "
-                + "(BR-ROOM-02). Hiện chỉ hỗ trợ task STAYOVER.");
+                "Task CHECKOUT chưa xử lý được: cần module Quản lý phòng đổi trạng thái phòng. "
+                + "Hiện chỉ hỗ trợ task STAYOVER.");
         }
     }
 

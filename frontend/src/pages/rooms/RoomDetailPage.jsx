@@ -3,17 +3,27 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
 import { fetchRoom } from '../../api/rooms';
+import LockRoomModal from '../../components/rooms/LockRoomModal';
+import RoomHistoryList from '../../components/rooms/RoomHistoryList';
 import RoomStatusBadge from '../../components/rooms/RoomStatusBadge';
 import { formatDateTime } from './format';
+import { roomActionsFor, statusChangedMessage } from './roomActions';
 import { useTenantLocations } from './useRoomLookups';
 import './rooms.css';
+
+const TABS = [
+  { key: 'info', label: 'Thông tin phòng' },
+  { key: 'history', label: 'Lịch sử trạng thái' },
+];
 
 /**
  * S-04 Chi tiết phòng — mọi vai trò trong Tenant xem được, trong phạm vi Location của mình
  * (backend trả 404 nếu ngoài phạm vi). RM-06.
  *
- * Các khu "Lịch sử trạng thái" (S-05) và nút đổi trạng thái sẽ gắn thêm vào trang này ở các
- * tính năng sau; F1 chỉ hiển thị thông tin phòng.
+ * F2 thêm:
+ *   - Tab "Lịch sử trạng thái" (S-05, RM-07, BR-ROOM-09) cho mọi vai trò.
+ *   - Nút khóa / mở khóa (S-08, RM-11, RM-12) — chỉ hiện khi `room.allowedTargets` cho phép,
+ *     tức chỉ Manager. Sau khi đổi, phòng lấy thẳng từ response và lịch sử nạp lại từ đầu.
  */
 export default function RoomDetailPage() {
   const { id } = useParams();
@@ -27,6 +37,12 @@ export default function RoomDetailPage() {
   const [room, setRoom] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+
+  const [tab, setTab] = useState('info');
+  const [banner, setBanner] = useState(null); // { type, text }
+  const [activeAction, setActiveAction] = useState(null);
+  // Tăng lên sau mỗi lần đổi trạng thái → RoomHistoryList dựng lại, nạp từ trang đầu.
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,7 +66,15 @@ export default function RoomDetailPage() {
     };
   }, [id]);
 
+  function handleStatusChanged(updated) {
+    setBanner({ type: 'success', text: statusChangedMessage(room, updated) });
+    setRoom(updated);
+    setActiveAction(null);
+    setHistoryVersion((v) => v + 1);
+  }
+
   const locationName = (locations ?? []).find((location) => location.id === room?.locationId)?.name;
+  const actions = roomActionsFor(room);
 
   return (
     <div className="page">
@@ -75,57 +99,114 @@ export default function RoomDetailPage() {
             <RoomStatusBadge status={room.status} large />
           </div>
 
-          <section className="panel">
-            <div className="panel__head">
-              <h2>Thông tin phòng</h2>
+          {banner && (
+            <div className={`alert alert--${banner.type === 'error' ? 'error' : 'success'}`} role="status">
+              {banner.text}
+              <button type="button" className="alert__close" onClick={() => setBanner(null)} aria-label="Đóng">
+                ×
+              </button>
             </div>
+          )}
 
-            <dl className="room-facts">
-              <div>
-                <dt>Số phòng</dt>
-                <dd>{room.roomNumber}</dd>
-              </div>
-              <div>
-                <dt>Tầng</dt>
-                <dd>{room.floor}</dd>
-              </div>
-              <div>
-                <dt>Loại phòng</dt>
-                <dd>{room.roomTypeName ?? '—'}</dd>
-              </div>
-              <div>
-                <dt>Sức chứa</dt>
-                <dd>{room.capacity} người</dd>
-              </div>
-              {isDirector && (
-                <div>
-                  <dt>Khách sạn</dt>
-                  <dd>{locationName ?? '—'}</dd>
-                </div>
-              )}
-              <div>
-                <dt>Cập nhật lần cuối</dt>
-                <dd>{formatDateTime(room.updatedAt ?? room.createdAt)}</dd>
-              </div>
-            </dl>
+          {actions.length > 0 && (
+            <div className="room-actions">
+              {actions.map((action) => (
+                <button
+                  key={action.key}
+                  type="button"
+                  className={`btn ${action.danger ? 'btn--danger' : 'btn--primary'}`}
+                  onClick={() => setActiveAction(action.key)}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
 
-            {room.status === 'UNAVAILABLE' && (
-              <div className="readonly-box room-detail__note">
-                <b>Lý do không khả dụng</b>
-                <p>{room.unavailableReason}</p>
-                <small className="muted">
-                  Chỉ Quản lý chi nhánh đưa phòng vào hoặc ra khỏi trạng thái này (BR-ROOM-03).
-                </small>
-              </div>
+          <div className="room-tabs" role="tablist" aria-label="Nội dung phòng">
+            {TABS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                role="tab"
+                id={`room-tab-${item.key}`}
+                aria-selected={tab === item.key}
+                aria-controls={`room-panel-${item.key}`}
+                className={`room-tab ${tab === item.key ? 'is-active' : ''}`}
+                onClick={() => setTab(item.key)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <section className="panel" role="tabpanel" id={`room-panel-${tab}`} aria-labelledby={`room-tab-${tab}`}>
+            {tab === 'info' ? (
+              <RoomInfo room={room} locationName={isDirector ? locationName ?? '—' : null} />
+            ) : (
+              <RoomHistoryList key={`${room.id}-${historyVersion}`} roomId={room.id} />
             )}
-
-            <div className="readonly-box room-detail__note">
-              <b>Ghi chú vận hành</b>
-              <p>{room.note || 'Chưa có ghi chú.'}</p>
-            </div>
           </section>
+
+          {activeAction && (
+            <LockRoomModal room={room} onClose={() => setActiveAction(null)} onChanged={handleStatusChanged} />
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Phần thông tin của S-04 (F1).
+ * @param locationName chỉ Giám đốc thấy dòng "Khách sạn" (null = ẩn dòng này)
+ */
+function RoomInfo({ room, locationName }) {
+  return (
+    <>
+      <dl className="room-facts">
+        <div>
+          <dt>Số phòng</dt>
+          <dd>{room.roomNumber}</dd>
+        </div>
+        <div>
+          <dt>Tầng</dt>
+          <dd>{room.floor}</dd>
+        </div>
+        <div>
+          <dt>Loại phòng</dt>
+          <dd>{room.roomTypeName ?? '—'}</dd>
+        </div>
+        <div>
+          <dt>Sức chứa</dt>
+          <dd>{room.capacity} người</dd>
+        </div>
+        {locationName !== null && (
+          <div>
+            <dt>Khách sạn</dt>
+            <dd>{locationName}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Cập nhật lần cuối</dt>
+          <dd>{formatDateTime(room.updatedAt ?? room.createdAt)}</dd>
+        </div>
+      </dl>
+
+      {room.status === 'UNAVAILABLE' && (
+        <div className="readonly-box room-detail__note">
+          <b>Lý do không khả dụng</b>
+          <p>{room.unavailableReason}</p>
+          <small className="muted">
+            Chỉ Quản lý chi nhánh đưa phòng vào hoặc ra khỏi trạng thái này.
+          </small>
+        </div>
+      )}
+
+      <div className="readonly-box room-detail__note">
+        <b>Ghi chú vận hành</b>
+        <p>{room.note || 'Chưa có ghi chú.'}</p>
+      </div>
+    </>
   );
 }

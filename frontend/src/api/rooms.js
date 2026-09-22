@@ -64,3 +64,24 @@ export async function fetchRoomTypes({ includeInactive = false } = {}) {
   const { data } = await api.get('/organization/room-types', { params: { includeInactive } });
   return data;
 }
+
+/**
+ * GET /rooms/{id}/history — Page của lịch sử trạng thái (BR-ROOM-09), luôn mới nhất trước.
+ * Mỗi dòng: { fromStatus, toStatus, changedByName, changedAt, changeSource, reason, relatedTaskId }.
+ */
+export async function fetchRoomHistory(id, { page = 0, size = 10 } = {}) {
+  const { data } = await api.get(`/rooms/${id}/history`, { params: { page, size } });
+  return data;
+}
+
+/**
+ * PATCH /rooms/{id}/status — một endpoint cho mọi bước người bấm được (BR-ROOM-02).
+ * Trả về phòng SAU khi đổi, kèm `allowedTargets` mới: màn hình cập nhật ngay từ response, không
+ * phải tải lại. Lỗi (400/403/404) mang câu tiếng Việt của backend — đọc bằng `readErrorMessage`.
+ *
+ * @param reason bắt buộc khi khóa phòng (`targetStatus = 'UNAVAILABLE'`, BR-ROOM-07)
+ */
+export async function changeRoomStatus(id, { targetStatus, reason }) {
+  const { data } = await api.patch(`/rooms/${id}/status`, withoutEmpty({ targetStatus, reason }));
+  return data;
+}

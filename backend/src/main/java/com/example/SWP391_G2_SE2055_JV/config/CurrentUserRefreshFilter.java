@@ -108,7 +108,7 @@ public class CurrentUserRefreshFilter extends OncePerRequestFilter {
         if (fresh.isMustChangePassword()
                 && !ALLOWED_WHILE_MUST_CHANGE_PASSWORD.contains(pathWithinApplication(request))) {
             writeError(request, response, HttpStatus.FORBIDDEN,
-                "Bạn phải đổi mật khẩu tạm trước khi sử dụng hệ thống (BR-USER-07).");
+                "Bạn phải đổi mật khẩu tạm trước khi sử dụng hệ thống.");
             return;
         }
 

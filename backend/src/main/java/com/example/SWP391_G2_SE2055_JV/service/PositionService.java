@@ -112,7 +112,7 @@ public class PositionService {
         if (changingType && userRepository.existsByPositionId(position.getId())) {
             throw new BusinessException(
                 "Không đổi được Loại chức danh khi đã có nhân viên được gán: quyền nghiệp vụ "
-                + "đi theo Loại (BR-ORG-08). Hãy tạo chức danh mới.");
+                + "đi theo Loại. Hãy tạo chức danh mới.");
         }
 
         position.setName(name);
@@ -144,7 +144,7 @@ public class PositionService {
         if (userRepository.existsByPositionId(position.getId())) {
             throw new BusinessException(
                 "Không xóa được Chức danh: vẫn còn nhân viên được gán (tính cả người đã nghỉ việc). "
-                + "Hãy ẩn chức danh thay vì xóa (BR-ORG-10, BR-ORG-14).");
+                + "Hãy ẩn chức danh thay vì xóa.");
         }
 
         positionRepository.delete(position);

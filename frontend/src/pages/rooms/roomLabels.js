@@ -36,6 +36,21 @@ export function roomStatusMeta(status) {
 }
 
 /**
+ * Nguồn của một bước chuyển trạng thái — cột "Người/nguồn thực hiện" của BR-ROOM-02, hiện trên
+ * S-05 Lịch sử trạng thái. SYSTEM không có người thực hiện nên màn hình ghi "Hệ thống".
+ */
+export const CHANGE_SOURCE = {
+  RECEPTION: 'Lễ tân',
+  HOUSEKEEPING: 'Nhân viên dọn',
+  MANAGER: 'Quản lý',
+  SYSTEM: 'Hệ thống',
+};
+
+export function changeSourceLabel(source) {
+  return CHANGE_SOURCE[source] ?? source ?? '—';
+}
+
+/**
  * So sánh tầng / số phòng: tầng là TEXT (G, M, B1 — BR-ROOM-05) nên so kiểu "tự nhiên"
  * để "2" đứng trước "10", thay vì so chuỗi thuần.
  */

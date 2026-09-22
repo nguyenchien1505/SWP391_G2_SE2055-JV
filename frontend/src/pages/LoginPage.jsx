@@ -10,7 +10,7 @@ const REMEMBERED_EMAIL_KEY = 'saomai.rememberedEmail';
 /** Backend đẩy về đây kèm query khi luồng Google kết thúc — xem app.frontend.* trong application.yaml. */
 const REDIRECT_MESSAGES = {
   oauth_unauthorized:
-    'Tài khoản Google này chưa được cấp quyền truy cập. Liên hệ Quản lý hoặc Giám đốc để được tạo tài khoản (BR-USER-03).',
+    'Tài khoản Google này chưa được cấp quyền truy cập. Liên hệ Quản lý hoặc Giám đốc để được tạo tài khoản.',
   oauth_failed: 'Đăng nhập Google không thành công. Vui lòng thử lại.',
 };
 
@@ -50,7 +50,7 @@ export default function LoginPage() {
       // BR-USER-07: tài khoản còn mật khẩu tạm phải đổi trước khi vào hệ thống.
       // Màn đổi mật khẩu chưa nằm trong phạm vi lần này nên chỉ cảnh báo, không chặn.
       if (me.mustChangePassword) {
-        setHint('Tài khoản đang dùng mật khẩu tạm. Bạn nên đổi mật khẩu sớm (BR-USER-07).');
+        setHint('Tài khoản đang dùng mật khẩu tạm. Bạn nên đổi mật khẩu sớm.');
       }
       // Admin Platform vào khu quản trị; các vai trò khác giữ nguyên đích cũ /khach-san.
       navigate(homePathFor(me), { replace: true });
@@ -119,7 +119,7 @@ export default function LoginPage() {
                   className="link-button"
                   onClick={() =>
                     setHint(
-                      'Hệ thống chưa có chức năng tự đặt lại mật khẩu. Liên hệ Quản lý hoặc Giám đốc để được cấp mật khẩu tạm (BR-USER-03).',
+                      'Hệ thống chưa có chức năng tự đặt lại mật khẩu. Liên hệ Quản lý hoặc Giám đốc để được cấp mật khẩu tạm.',
                     )
                   }
                 >

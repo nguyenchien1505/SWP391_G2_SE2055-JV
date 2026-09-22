@@ -90,7 +90,7 @@ public class SchedulePolicyValidator {
             }
             if (candStart.isBefore(endOf(s)) && startOf(s).isBefore(candEnd)) {
                 throw new BusinessException(String.format(
-                    "Trùng ca: nhân viên đã có ca %s %s–%s tại Location này (BR-SCH-05).",
+                    "Trùng ca: nhân viên đã có ca %s %s–%s tại Location này.",
                     s.getShiftDate(), s.getStartTime(), s.getEndTime()));
             }
         }
@@ -106,7 +106,7 @@ public class SchedulePolicyValidator {
         }
         if (total.compareTo(policy.getMaxHoursPerDay()) > 0) {
             throw new BusinessException(String.format(
-                "Vượt giờ làm tối đa/ngày: tổng %s giờ ngày %s, giới hạn %s giờ (BR-SCH-02).",
+                "Vượt giờ làm tối đa/ngày: tổng %s giờ ngày %s, giới hạn %s giờ.",
                 total.toPlainString(), candidate.getShiftDate(), policy.getMaxHoursPerDay().toPlainString()));
         }
     }
@@ -122,7 +122,7 @@ public class SchedulePolicyValidator {
         }
         if (total.compareTo(policy.getMaxHoursPerWeek()) > 0) {
             throw new BusinessException(String.format(
-                "Vượt giờ làm tối đa/tuần: tổng %s giờ trong tuần %s–%s, giới hạn %s giờ (BR-SCH-02).",
+                "Vượt giờ làm tối đa/tuần: tổng %s giờ trong tuần %s–%s, giới hạn %s giờ.",
                 total.toPlainString(), weekStart, weekEnd, policy.getMaxHoursPerWeek().toPlainString()));
         }
     }
@@ -147,7 +147,7 @@ public class SchedulePolicyValidator {
 
         if (run > policy.getMaxConsecutiveShifts()) {
             throw new BusinessException(String.format(
-                "Vượt số ngày làm liên tiếp tối đa: chuỗi %d ngày liên tiếp có ca, giới hạn %d (BR-SCH-02, BR-SCH-14).",
+                "Vượt số ngày làm liên tiếp tối đa: chuỗi %d ngày liên tiếp có ca, giới hạn %d.",
                 run, policy.getMaxConsecutiveShifts()));
         }
     }
@@ -171,7 +171,7 @@ public class SchedulePolicyValidator {
             long restMinutes = Duration.between(endOf(prev), startOf(next)).toMinutes();
             if (restMinutes < minRestMinutes) {
                 throw new BusinessException(String.format(
-                    "Không đủ thời gian nghỉ giữa 2 ca: chỉ %.1f giờ, tối thiểu %s giờ (BR-SCH-02).",
+                    "Không đủ thời gian nghỉ giữa 2 ca: chỉ %.1f giờ, tối thiểu %s giờ.",
                     restMinutes / 60.0, policy.getMinRestHoursBetweenShifts().toPlainString()));
             }
         }
@@ -192,7 +192,7 @@ public class SchedulePolicyValidator {
         if (workDays.size() > maxWorkDays) {
             throw new BusinessException(String.format(
                 "Không đủ ngày nghỉ trong tuần %s–%s: đã có ca %d ngày, tối đa %d ngày "
-                + "(tối thiểu %d ngày nghỉ — BR-SCH-02, BR-SCH-15).",
+                + "(tối thiểu %d ngày nghỉ).",
                 weekStart, weekEnd, workDays.size(), maxWorkDays, policy.getMinDaysOffPerWeek()));
         }
     }

@@ -1,9 +1,14 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.dto.ChangeRoomStatusRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.RoomStatusHistoryResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomStatusSummaryResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
+import com.example.SWP391_G2_SE2055_JV.entity.RoomStatusHistory;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
+import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.ChangeSource;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
@@ -11,7 +16,9 @@ import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.exception.UnauthorizedException;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository.RoomStatusCount;
+import com.example.SWP391_G2_SE2055_JV.repository.RoomStatusHistoryRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomTypeRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.support.TestAuth;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
@@ -26,9 +33,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
+import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,8 +52,10 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * F1 — xem phòng (RM-06). Trọng tâm là LỚP PHẠM VI DỮ LIỆU: ai được thấy phòng nào.
- * Mọi repository đều mock; người đăng nhập dựng bằng {@link TestAuth}.
+ * F1 — xem phòng (RM-06) và F2 — đổi trạng thái, lịch sử (RM-07, RM-11, RM-12). Trọng tâm là LỚP
+ * PHẠM VI DỮ LIỆU: ai được thấy / thao tác phòng nào. Mọi phụ thuộc đều mock (luật đổi trạng
+ * thái đã test ở {@code RoomStatusServiceTest}, {@code RoomTransitionPolicyTest}); người đăng
+ * nhập dựng bằng {@link TestAuth}.
  */
 @ExtendWith(MockitoExtension.class)
 class RoomServiceTest {
@@ -53,8 +66,12 @@ class RoomServiceTest {
     private static final UUID     ROOM_TYPE_ID      = UUID.randomUUID();
     private static final Pageable PAGE              = PageRequest.of(0, 20);
 
-    @Mock RoomRepository     roomRepository;
-    @Mock RoomTypeRepository roomTypeRepository;
+    @Mock RoomRepository              roomRepository;
+    @Mock RoomTypeRepository          roomTypeRepository;
+    @Mock RoomStatusHistoryRepository historyRepository;
+    @Mock UserRepository              userRepository;
+    @Mock RoomStatusService           roomStatusService;
+    @Mock RoomTransitionPolicy        transitionPolicy;
 
     @InjectMocks RoomService roomService;
 
@@ -142,6 +159,22 @@ class RoomServiceTest {
 
             assertThat(result.getContent()).singleElement()
                 .satisfies(r -> assertThat(r.getRoomTypeName()).isEqualTo("Hạng sang"));
+        }
+
+        /** allowedTargets tính theo người đang đăng nhập cho TỪNG phòng, từ trạng thái của phòng đó. */
+        @Test
+        void shouldAttachAllowedTargetsOfCurrentUserToEveryRoom() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            stubSearchReturning(List.of(room(LOCATION_ID, RoomStatus.AVAILABLE), room(LOCATION_ID, RoomStatus.OCCUPIED)));
+            when(transitionPolicy.allowedTargetsForCurrentUser(RoomStatus.AVAILABLE))
+                .thenReturn(EnumSet.of(RoomStatus.UNAVAILABLE));
+            when(transitionPolicy.allowedTargetsForCurrentUser(RoomStatus.OCCUPIED))
+                .thenReturn(EnumSet.noneOf(RoomStatus.class));
+
+            List<RoomResponse> rooms = roomService.getRooms(null, null, null, null, PAGE).getContent();
+
+            assertThat(rooms.get(0).getAllowedTargets()).containsExactly(RoomStatus.UNAVAILABLE);
+            assertThat(rooms.get(1).getAllowedTargets()).isEmpty();
         }
 
         @Test
@@ -274,7 +307,149 @@ class RoomServiceTest {
         }
     }
 
+
+    // ── Đổi trạng thái: PATCH /rooms/{id}/status (F2) ───────────────────────
+
+    @Nested
+    class ChangeStatus {
+
+        @Test
+        void shouldDelegateToRoomStatusServiceAndReturnNewAllowedTargets() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            Room room = stubOwnedRoom(LOCATION_ID, RoomStatus.UNAVAILABLE);
+            ChangeRoomStatusRequest request = new ChangeRoomStatusRequest();
+            request.setTargetStatus(RoomStatus.UNAVAILABLE);
+            request.setReason("Hỏng điều hòa");
+            when(transitionPolicy.allowedTargetsForCurrentUser(RoomStatus.UNAVAILABLE))
+                .thenReturn(EnumSet.of(RoomStatus.AVAILABLE, RoomStatus.DIRTY));
+
+            RoomResponse response = roomService.changeStatus(room.getId(), request);
+
+            verify(roomStatusService).changeStatusByUser(room, request);
+            // Nút cho trạng thái MỚI của phòng — màn hình vẽ lại ngay, không phải gọi thêm API.
+            assertThat(response.getAllowedTargets()).containsExactly(RoomStatus.AVAILABLE, RoomStatus.DIRTY);
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenChangingStatusOfRoomInAnotherLocation() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            Room otherLocationRoom = stubOwnedRoom(OTHER_LOCATION_ID, RoomStatus.AVAILABLE);
+
+            assertThatThrownBy(() -> roomService.changeStatus(otherLocationRoom.getId(), new ChangeRoomStatusRequest()))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(roomStatusService);
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenChangingStatusOfRoomInAnotherTenant() {
+            TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.RECEPTION);
+            UUID foreignRoomId = UUID.randomUUID();
+            when(roomRepository.findByIdAndTenantIdAndActiveTrue(foreignRoomId, TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> roomService.changeStatus(foreignRoomId, new ChangeRoomStatusRequest()))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(roomStatusService);
+        }
+    }
+
+    // ── Lịch sử trạng thái: GET /rooms/{id}/history (F2, BR-ROOM-09) ────────
+
+    @Nested
+    class GetHistory {
+
+        @Test
+        void shouldReturnHistoryNewestFirstWithChangedByNames() {
+            TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            Room room = stubOwnedRoom(LOCATION_ID, RoomStatus.UNAVAILABLE);
+            UUID managerId = UUID.randomUUID();
+            RoomStatusHistory locked = history(room, RoomStatus.AVAILABLE, RoomStatus.UNAVAILABLE, ChangeSource.MANAGER, managerId);
+            RoomStatusHistory created = history(room, null, RoomStatus.DIRTY, ChangeSource.SYSTEM, null);
+            stubHistoryPage(room, PageRequest.of(0, 20), List.of(locked, created));
+            when(userRepository.findAllById(Set.of(managerId)))
+                .thenReturn(List.of(User.builder().id(managerId).fullName("Trần Quản Lý").build()));
+
+            List<RoomStatusHistoryResponse> rows = roomService.getHistory(room.getId(), PageRequest.of(0, 20)).getContent();
+
+            assertThat(rows).extracting(RoomStatusHistoryResponse::getToStatus)
+                .containsExactly(RoomStatus.UNAVAILABLE, RoomStatus.DIRTY);
+            assertThat(rows.get(0).getChangedByName()).isEqualTo("Trần Quản Lý");
+            assertThat(rows.get(1).getChangedByName()).isNull();   // hệ thống — FE hiện "Hệ thống"
+            assertThat(rows.get(1).getFromStatus()).isNull();      // dòng đầu của phòng mới (BR-ROOM-10)
+        }
+
+        /** Lịch sử luôn mới nhất trước: sort client gửi bị bỏ, trang và cỡ trang được giữ. */
+        @Test
+        void shouldIgnoreClientSortButKeepPaging() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            Room room = stubOwnedRoom(LOCATION_ID, RoomStatus.AVAILABLE);
+            stubHistoryPage(room, PageRequest.of(2, 5), List.of());
+
+            roomService.getHistory(room.getId(), PageRequest.of(2, 5, Sort.by("reason")));
+
+            verify(historyRepository).findByTenantIdAndRoomIdOrderByChangedAtDesc(TENANT_ID, room.getId(), PageRequest.of(2, 5));
+        }
+
+        @Test
+        void shouldNotLookUpUsersWhenPageHasOnlySystemRows() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            Room room = stubOwnedRoom(LOCATION_ID, RoomStatus.CLEANING);
+            stubHistoryPage(room, PageRequest.of(0, 20),
+                List.of(history(room, RoomStatus.DIRTY, RoomStatus.CLEANING, ChangeSource.SYSTEM, null)));
+
+            roomService.getHistory(room.getId(), PageRequest.of(0, 20));
+
+            verifyNoInteractions(userRepository);
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenReadingHistoryOfRoomInAnotherTenant() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            UUID foreignRoomId = UUID.randomUUID();
+            when(roomRepository.findByIdAndTenantIdAndActiveTrue(foreignRoomId, TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> roomService.getHistory(foreignRoomId, PageRequest.of(0, 20)))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(historyRepository);
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenStaffReadsHistoryOfRoomInAnotherLocation() {
+            TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.RECEPTION);
+            Room otherLocationRoom = stubOwnedRoom(OTHER_LOCATION_ID, RoomStatus.AVAILABLE);
+
+            assertThatThrownBy(() -> roomService.getHistory(otherLocationRoom.getId(), PageRequest.of(0, 20)))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(historyRepository);
+        }
+
+        private void stubHistoryPage(Room room, Pageable pageable, List<RoomStatusHistory> rows) {
+            when(historyRepository.findByTenantIdAndRoomIdOrderByChangedAtDesc(TENANT_ID, room.getId(), pageable))
+                .thenReturn(new PageImpl<>(rows, pageable, rows.size()));
+        }
+    }
+
     // ── Dữ liệu mẫu ─────────────────────────────────────────────────────────
+
+    /** Phòng thuộc Tenant hiện tại, repository trả về khi tra theo id. */
+    private Room stubOwnedRoom(UUID locationId, RoomStatus status) {
+        Room room = room(locationId, status);
+        when(roomRepository.findByIdAndTenantIdAndActiveTrue(room.getId(), TENANT_ID)).thenReturn(Optional.of(room));
+        return room;
+    }
+
+    private static RoomStatusHistory history(Room room, RoomStatus from, RoomStatus to,
+                                             ChangeSource source, UUID changedBy) {
+        return RoomStatusHistory.builder()
+            .id(UUID.randomUUID())
+            .tenantId(TENANT_ID)
+            .roomId(room.getId())
+            .fromStatus(from)
+            .toStatus(to)
+            .changeSource(source)
+            .changedBy(changedBy)
+            .changedAt(LocalDateTime.now())
+            .build();
+    }
 
     private static Room room(UUID locationId, RoomStatus status) {
         return Room.builder()

@@ -3,9 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
 import { fetchAllRooms } from '../../api/rooms';
+import LockRoomModal from '../../components/rooms/LockRoomModal';
+import RoomActionSheet from '../../components/rooms/RoomActionSheet';
 import RoomCard from '../../components/rooms/RoomCard';
 import RoomStatusFilter from '../../components/rooms/RoomStatusFilter';
 import { formatClock } from './format';
+import { roomActionsFor, statusChangedMessage } from './roomActions';
 import { compareNatural } from './roomLabels';
 import { useTenantLocations } from './useRoomLookups';
 import './rooms.css';
@@ -40,7 +43,11 @@ function countByStatus(rooms) {
  * (design.md màn 30 ⭐). Người dùng chính: Manager và Lễ tân; Dọn dẹp cũng xem được.
  *
  * Khác S-02: tải TẤT CẢ phòng một lần rồi lọc trạng thái ngay trên trình duyệt, vì sơ đồ cần
- * thấy cả khách sạn cùng lúc và lọc phải tức thì. F1 chỉ xem; bấm thẻ mở chi tiết phòng.
+ * thấy cả khách sạn cùng lúc và lọc phải tức thì.
+ *
+ * Bấm thẻ: nếu người dùng có thao tác trên phòng đó (F2: Manager khóa / mở khóa, theo
+ * `room.allowedTargets`) thì mở bảng thao tác; không có thì vào thẳng trang chi tiết như F1.
+ * Đổi trạng thái xong chỉ thay đúng thẻ đó bằng phòng trong response — không tải lại cả sơ đồ.
  */
 export default function RoomBoardPage() {
   const { user } = useAuth();
@@ -56,6 +63,10 @@ export default function RoomBoardPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [updatedAt, setUpdatedAt] = useState(null);
+
+  const [banner, setBanner] = useState(null); // { type, text }
+  const [sheetRoom, setSheetRoom] = useState(null); // phòng đang mở bảng thao tác
+  const [actionRoom, setActionRoom] = useState(null); // phòng đang mở hộp thoại khóa / mở khóa
 
   // Giám đốc: mặc định mở khách sạn đầu tiên — sơ đồ luôn là của MỘT khách sạn.
   useEffect(() => {
@@ -84,6 +95,25 @@ export default function RoomBoardPage() {
     load();
   }, [load]);
 
+  function handleSelectRoom(room) {
+    if (roomActionsFor(room).length === 0) {
+      navigate(`/phong/${room.id}`);
+      return;
+    }
+    setSheetRoom(room);
+  }
+
+  function handlePickAction() {
+    setActionRoom(sheetRoom);
+    setSheetRoom(null);
+  }
+
+  function handleStatusChanged(updated) {
+    setBanner({ type: 'success', text: statusChangedMessage(actionRoom, updated) });
+    setRooms((prev) => prev.map((room) => (room.id === updated.id ? updated : room)));
+    setActionRoom(null);
+  }
+
   const counts = useMemo(() => countByStatus(rooms), [rooms]);
   const floors = useMemo(
     () => groupByFloor(statusFilter ? rooms.filter((room) => room.status === statusFilter) : rooms),
@@ -98,6 +128,15 @@ export default function RoomBoardPage() {
           <h1>Sơ đồ phòng</h1>
         </div>
       </div>
+
+      {banner && (
+        <div className={`alert alert--${banner.type === 'error' ? 'error' : 'success'}`} role="status">
+          {banner.text}
+          <button type="button" className="alert__close" onClick={() => setBanner(null)} aria-label="Đóng">
+            ×
+          </button>
+        </div>
+      )}
 
       <RoomStatusFilter
         variant="chips"
@@ -153,12 +192,26 @@ export default function RoomBoardPage() {
             </h2>
             <div className="room-grid">
               {floorRooms.map((room) => (
-                <RoomCard key={room.id} room={room} onSelect={() => navigate(`/phong/${room.id}`)} />
+                <RoomCard key={room.id} room={room} onSelect={handleSelectRoom} />
               ))}
             </div>
           </section>
         ))}
       </section>
+
+      {sheetRoom && (
+        <RoomActionSheet
+          room={sheetRoom}
+          actions={roomActionsFor(sheetRoom)}
+          onPick={handlePickAction}
+          onOpenDetail={() => navigate(`/phong/${sheetRoom.id}`)}
+          onClose={() => setSheetRoom(null)}
+        />
+      )}
+
+      {actionRoom && (
+        <LockRoomModal room={actionRoom} onClose={() => setActionRoom(null)} onChanged={handleStatusChanged} />
+      )}
     </div>
   );
 }

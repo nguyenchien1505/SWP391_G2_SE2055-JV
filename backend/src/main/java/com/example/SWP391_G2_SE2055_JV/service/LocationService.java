@@ -131,7 +131,7 @@ public class LocationService {
 
         if (SecurityUtils.hasRole(Role.MANAGER)
                 && !SecurityUtils.getCurrentLocationId().equals(location.getId())) {
-            throw new BusinessException("Manager chỉ sửa được thông tin Location của mình (BR-ORG-03).");
+            throw new BusinessException("Manager chỉ sửa được thông tin Location của mình.");
         }
 
         if (request.getAddress() != null && !request.getAddress().isBlank()) {
@@ -162,11 +162,10 @@ public class LocationService {
 
         if (userRepository.existsByLocationId(location.getId())) {
             throw new BusinessException(
-                "Không xóa được Location: vẫn còn nhân sự trực thuộc (tính cả người đã nghỉ việc) "
-                + "— BR-ORG-05.");
+                "Không xóa được Location: vẫn còn nhân sự trực thuộc (tính cả người đã nghỉ việc).");
         }
         if (roomRepository.existsByLocationIdAndActiveTrue(location.getId())) {
-            throw new BusinessException("Không xóa được Location: vẫn còn phòng đang hoạt động (BR-ORG-05).");
+            throw new BusinessException("Không xóa được Location: vẫn còn phòng đang hoạt động.");
         }
         if (areaRepository.existsByLocationId(location.getId())) {
             throw new BusinessException(

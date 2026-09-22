@@ -23,25 +23,40 @@ import java.util.Set;
 public enum RoomStatus {
 
     /** Đã đặt — cờ thủ công do Lễ tân bật khi khách đặt qua SĐT/email. */
-    RESERVED,
+    RESERVED("Đã đặt"),
 
     /** Trống / Sẵn sàng. */
-    AVAILABLE,
+    AVAILABLE("Trống / Sẵn sàng"),
 
     /** Đang sử dụng (có khách). */
-    OCCUPIED,
+    OCCUPIED("Đang sử dụng"),
 
     /** Chờ dọn. Vào trạng thái này là sinh task dọn — BR-HK-01. */
-    DIRTY,
+    DIRTY("Chờ dọn"),
 
     /** Đang dọn. */
-    CLEANING,
+    CLEANING("Đang dọn"),
 
     /** Chờ Manager kiểm tra. */
-    INSPECTION,
+    INSPECTION("Chờ kiểm tra"),
 
     /** Không khả dụng — gộp Bảo trì + Khóa phòng, bắt buộc kèm lý do (BR-ROOM-07). */
-    UNAVAILABLE;
+    UNAVAILABLE("Không khả dụng");
+
+    /**
+     * Nhãn tiếng Việt CHỈ để ghép vào câu báo lỗi của backend (design.md mục 1: lỗi phải là
+     * câu tiếng Việt nêu rõ vi phạm gì). Màn hình KHÔNG đọc trường này — nhãn hiển thị nằm ở
+     * frontend ({@code pages/rooms/roomLabels.js}); sửa nhãn thì sửa cả hai nơi.
+     */
+    private final String label;
+
+    RoomStatus(String label) {
+        this.label = label;
+    }
+
+    public String label() {
+        return label;
+    }
 
     private static final Map<RoomStatus, Set<RoomStatus>> ALLOWED = Map.of(
         // BR-ROOM-02: Lễ tân đặt trước / check-in; Manager khóa phòng.
