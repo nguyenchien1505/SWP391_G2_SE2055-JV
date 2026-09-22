@@ -11,6 +11,9 @@ import TenantsPage from './pages/Admin_platform/TenantsPage';
 import TenantDetailPage from './pages/Admin_platform/TenantDetailPage';
 import PricingPage from './pages/Admin_platform/PricingPage';
 import SystemConfigPage from './pages/Admin_platform/SystemConfigPage';
+import RoomsPage from './pages/rooms/RoomsPage';
+import RoomDetailPage from './pages/rooms/RoomDetailPage';
+import RoomBoardPage from './pages/rooms/RoomBoardPage';
 import { homePathFor } from './homePath';
 
 function RequireAuth({ children }) {
@@ -49,6 +52,25 @@ function RequireAdmin({ children }) {
   return user.role === 'PLATFORM_ADMIN' ? children : <Navigate to="/khach-san" replace />;
 }
 
+/**
+ * Màn quản trị của Giám đốc / Manager. Staff bị đưa về trang chủ của mình thay vì thấy màn lỗi
+ * 403 — áp cho cả các lối vào cứng /khach-san (đăng nhập Google, sau khi đổi mật khẩu). Chỉ là
+ * lớp giao diện; quyền thật do backend quyết định. Dùng BÊN TRONG RequireAuth.
+ */
+function RequireManagementRole({ children }) {
+  const { user } = useAuth();
+  return user?.role === 'STAFF' ? <Navigate to={homePathFor(user)} replace /> : children;
+}
+
+/** Trang nghiệp vụ trong khung AppLayout, bắt buộc đã đăng nhập (và đã đổi mật khẩu tạm). */
+function inShell(page) {
+  return (
+    <RequireAuth>
+      <AppLayout>{page}</AppLayout>
+    </RequireAuth>
+  );
+}
+
 export default function App() {
   const { user, loading } = useAuth();
 
@@ -78,12 +100,18 @@ export default function App() {
         path="/khach-san"
         element={
           <RequireAuth>
-            <AppLayout>
-              <LocationsPage />
-            </AppLayout>
+            <RequireManagementRole>
+              <AppLayout>
+                <LocationsPage />
+              </AppLayout>
+            </RequireManagementRole>
           </RequireAuth>
         }
       />
+      {/* Quản lý phòng — BR-ROOM-*. S-02 dành cho Giám đốc/Manager; chi tiết và sơ đồ phòng mọi vai trò. */}
+      <Route path="/phong" element={inShell(<RequireManagementRole><RoomsPage /></RequireManagementRole>)} />
+      <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />
+      <Route path="/so-do-phong" element={inShell(<RoomBoardPage />)} />
       <Route
         element={
           <RequireAdmin>
@@ -96,7 +124,8 @@ export default function App() {
         <Route path="/quan-tri/bang-gia" element={<PricingPage />} />
         <Route path="/quan-tri/cau-hinh" element={<SystemConfigPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/khach-san" replace />} />
+      {/* Chưa đăng nhập: homePathFor(null) = /khach-san → RequireAuth đưa về /dang-nhap như cũ. */}
+      <Route path="*" element={<Navigate to={homePathFor(user)} replace />} />
     </Routes>
   );
 }

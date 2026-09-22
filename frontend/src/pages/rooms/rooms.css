@@ -1,0 +1,249 @@
+/*
+ * Bổ sung cho module Quản lý phòng — CHỈ thêm những lớp mà styles.css chung chưa có
+ * (cùng cách làm với pages/Admin_platform/admin.css). Bán kính, viền, bóng lấy biến :root
+ * của styles.css để giao diện đồng nhất.
+ */
+
+/* ── Tông màu trạng thái phòng — design.md mục 3 ────────────────────────
+ * Mỗi lớp room-tone--* đặt 3 biến; badge, thẻ phòng, thẻ số liệu, chip lọc đều đọc lại
+ * 3 biến này nên chỉ khai báo màu MỘT lần ở đây.
+ *   --tone      màu nhận diện (viền, vạch màu)
+ *   --tone-bg   nền nhạt
+ *   --tone-text chữ đậm trên nền nhạt
+ * "Đang dọn" dùng chữ vàng sẫm: vàng #F9A825 làm chữ trên nền nhạt gần như không đọc được.
+ * "Đã đặt" chưa có trong design.md (tài liệu viết cho 6 trạng thái) — dùng teal #00838F (Q9).
+ */
+.room-tone--available   { --tone: #2e7d32; --tone-bg: #e9f5ea; --tone-text: #2e7d32; }
+.room-tone--reserved    { --tone: #00838f; --tone-bg: #e0f4f5; --tone-text: #00707a; }
+.room-tone--occupied    { --tone: #1565c0; --tone-bg: #e3effb; --tone-text: #1565c0; }
+.room-tone--dirty       { --tone: #ef6c00; --tone-bg: #fdf0dc; --tone-text: #b85300; }
+.room-tone--cleaning    { --tone: #f9a825; --tone-bg: #fff5d6; --tone-text: #7a5a00; }
+.room-tone--inspection  { --tone: #6a1b9a; --tone-bg: #f3e5f5; --tone-text: #6a1b9a; }
+.room-tone--unavailable { --tone: #616161; --tone-bg: #eceef1; --tone-text: #4a4a4a; }
+
+/* Huy hiệu: nền nhạt + chữ đậm, luôn có chữ (design.md mục 3). */
+.badge--room {
+  background: var(--tone-bg);
+  color: var(--tone-text);
+}
+.badge--lg {
+  font-size: 14px;
+  padding: 7px 14px;
+}
+
+/* ── Thẻ số liệu bấm để lọc (design.md mục 5 — "Bấm được để lọc") ──────── */
+.room-stat-grid {
+  display: grid;
+  /* 120px để đủ 7 thẻ trên MỘT hàng ở màn 1280px (vùng nội dung ~980px). */
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.room-stat {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 4px solid var(--tone);
+}
+.room-stat:hover {
+  background: var(--tone-bg);
+}
+.room-stat.is-selected {
+  background: var(--tone-bg);
+  outline: 2px solid var(--tone);
+  outline-offset: -1px;
+}
+.room-stat .stat-card__value {
+  color: var(--tone-text);
+}
+
+/* ── Chip lọc gọn (sơ đồ phòng) ────────────────────────────────────── */
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--tone-bg, #eceef1);
+  color: var(--tone-text, var(--text));
+}
+.status-chip b {
+  font-size: 15px;
+}
+.status-chip.is-selected {
+  border-color: var(--tone, var(--primary));
+  box-shadow: inset 0 0 0 1px var(--tone, var(--primary));
+}
+.status-chip--all {
+  background: #fff;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* ── Thanh lọc ─────────────────────────────────────────────────────── */
+.rooms-toolbar input {
+  width: 150px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 11px 12px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+.rooms-toolbar input:focus {
+  outline: 2px solid rgba(46, 116, 181, 0.35);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+/* ── Bảng phòng (desktop) ──────────────────────────────────────────── */
+.table tr.is-clickable {
+  cursor: pointer;
+}
+.table tr.is-clickable:hover {
+  background: #f3f8fd;
+}
+.room-number-link {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--primary);
+  text-decoration: none;
+}
+.room-number-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Thẻ phòng: lưới trên điện thoại (S-02) và sơ đồ phòng (S-06) ──── */
+.room-grid {
+  display: grid;
+  /* 130px để điện thoại 360px vẫn đủ 2 cột (vùng nội dung ~282px). */
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+.room-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 48px; /* vùng bấm tối thiểu — design.md mục 3 */
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--tone-bg);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--tone);
+  border-radius: var(--radius-card);
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.room-card:hover,
+.room-card:focus-visible {
+  box-shadow: 0 4px 12px rgba(28, 35, 48, 0.12);
+  transform: translateY(-1px);
+}
+.room-card__number {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.room-card__meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+.room-card .badge {
+  background: #fff;
+  color: var(--tone-text);
+  /* Thẻ hẹp (2 cột trên điện thoại): nhãn dài như "Trống / Sẵn sàng" được xuống dòng, không tràn. */
+  max-width: 100%;
+  white-space: normal;
+}
+
+/* ── Sơ đồ phòng: nhóm theo tầng ───────────────────────────────────── */
+.floor-group + .floor-group {
+  margin-top: 20px;
+}
+.floor-group__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 15px;
+}
+.floor-group__title small {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ── Chi tiết phòng ────────────────────────────────────────────────── */
+.room-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+.room-facts dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.room-facts dd {
+  margin: 4px 0 0;
+  font-weight: 600;
+}
+.room-detail__note {
+  margin-top: 16px;
+}
+.back-link {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* ── Responsive — BR-ROOM-06 ───────────────────────────────────────── */
+.rooms-cards {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  /* S-02: bảng → lưới thẻ trên điện thoại (design.md mục 4.4, màn 19). */
+  .rooms-table-wrap {
+    display: none;
+  }
+  .rooms-cards {
+    display: grid;
+  }
+  .rooms-toolbar select,
+  .rooms-toolbar input {
+    flex: 1 1 140px;
+    min-width: 0;
+    width: auto;
+  }
+  .room-stat .stat-card__value {
+    font-size: 24px;
+  }
+  /* Điện thoại: chữ phụ trên thẻ phòng lớn hơn một bậc (design.md mục 3). */
+  .room-card__meta {
+    font-size: 14px;
+  }
+}

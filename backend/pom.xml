@@ -152,6 +152,32 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
+            <!--
+              Đo độ phủ test (testing-guidelines: Service ≥ 90%, Controller ≥ 80%).
+              Chạy `./mvnw test` → mở target/site/jacoco/index.html.
+              Chỉ SINH BÁO CÁO, không chặn build khi độ phủ thấp — module khác chưa có test,
+              bật chặn sẽ làm đỏ build của cả nhóm. 0.8.15 để đọc được bytecode của JDK mới.
+            -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.15</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

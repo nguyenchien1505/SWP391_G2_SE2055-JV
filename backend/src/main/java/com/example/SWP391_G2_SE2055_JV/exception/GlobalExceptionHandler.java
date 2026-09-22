@@ -5,12 +5,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -59,6 +61,37 @@ public class GlobalExceptionHandler {
             .toList();
         return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, "Validation failed",
             request.getRequestURI(), fieldErrors);
+    }
+
+    /**
+     * Tham số trên URL sai kiểu — ví dụ {@code GET /rooms?status=FOO} hoặc id không phải UUID.
+     *
+     * <p>Đây là lỗi của client nên phải là 400. Thiếu handler này, Spring không kịp trả 400
+     * mặc định vì {@link #handleGeneral} (bắt {@code Exception}) chặn trước, và client nhận
+     * 500 "An unexpected error occurred" — không biết mình gửi sai ở đâu.
+     *
+     * <p>Không lặp lại giá trị client gửi vào câu thông báo, chỉ nêu tên tham số.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex,
+                                                       HttpServletRequest request) {
+        return buildResponse(HttpStatus.BAD_REQUEST,
+            "Giá trị của tham số '" + ex.getName() + "' không hợp lệ.",
+            request.getRequestURI(), null);
+    }
+
+    /**
+     * Body không đọc được: JSON hỏng, hoặc một trường có giá trị không map được — ví dụ
+     * {@code {"targetStatus": "FOO"}} trong khi trường là enum. Cùng lý do với
+     * {@link #handleTypeMismatch}: lỗi của client, không được rơi xuống 500.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleUnreadableBody(HttpMessageNotReadableException ex,
+                                                         HttpServletRequest request) {
+        log.warn("Unreadable request body: {}", ex.getMostSpecificCause().getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST,
+            "Dữ liệu gửi lên không đúng định dạng hoặc có giá trị không hợp lệ.",
+            request.getRequestURI(), null);
     }
 
     /**
