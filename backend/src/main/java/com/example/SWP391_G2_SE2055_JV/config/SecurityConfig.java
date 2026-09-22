@@ -9,8 +9,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -22,6 +25,11 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.session.HttpSessionEventPublisher;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 /**
  * Xác thực bằng session + Google OAuth2, phân quyền theo HAI trục — BR-PERM-01..06.
@@ -53,6 +61,7 @@ public class SecurityConfig {
     private final ObjectMapper              objectMapper;
     private final OAuth2LoginSuccessHandler successHandler;
     private final OAuth2LoginFailureHandler failureHandler;
+    private final TenantAccessPolicy        tenantAccessPolicy;
 
     // "/auth/login" công khai cho CẢ hai luồng:
     //   - formLogin  POST /auth/login
@@ -67,6 +76,10 @@ public class SecurityConfig {
         "/auth/register-tenant"
     };
 
+    /** Origin của frontend. Dev: Vite chạy cổng 3000; đổi khi deploy bằng biến môi trường. */
+    @Value("${app.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}")
+    private String allowedOriginPatterns;
+
     private static final String ADMIN    = "PLATFORM_ADMIN";
     private static final String DIRECTOR = "DIRECTOR";
     private static final String MANAGER  = "MANAGER";
@@ -80,7 +93,17 @@ public class SecurityConfig {
         provider.setPasswordEncoder(passwordEncoder());
 
         http
+            // Áp cấu hình CORS của WebConfig cho CẢ các phản hồi do Spring Security tạo (đăng nhập,
+            // đăng xuất, 401/403). Thiếu dòng này, CORS chỉ có hiệu lực với phản hồi đi qua Spring
+            // MVC: trình duyệt gọi từ http://localhost:3000 nhận được phản hồi đăng nhập/401 không
+            // có header CORS nên bị chặn và báo "Network Error".
+            .cors(Customizer.withDefaults())
             .csrf(AbstractHttpConfigurer::disable)
+            // CORS phải đặt Ở ĐÂY, không phải ở WebMvcConfigurer: đăng nhập, đăng xuất và
+            // mọi lỗi 401/403 đều do filter của Spring Security trả về, không đi tới tầng
+            // Spring MVC, nên cấu hình CORS bên MVC không gắn được header cho chúng —
+            // trình duyệt sẽ chặn response và frontend báo "không kết nối được máy chủ".
+            .cors(Customizer.withDefaults())
             .authenticationProvider(provider)
             .sessionManagement(session -> session
                 .maximumSessions(1)
@@ -112,6 +135,14 @@ public class SecurityConfig {
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
                 .requestMatchers("/locations/**")
                     .hasAnyRole(ADMIN, DIRECTOR)
+
+                // ── Khu vực: ngoại lệ của nhóm /organization — cấp LOCATION, Manager CRUD
+                // (BR-ORG-12, BR-PERM-03). Phải đứng TRƯỚC rule danh mục cấp Tenant bên dưới
+                // vì rule khớp đầu tiên thắng.
+                .requestMatchers(HttpMethod.GET, "/organization/areas/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+                .requestMatchers("/organization/areas/**")
+                    .hasAnyRole(ADMIN, MANAGER)
 
                 // ── Danh mục cấp Tenant: chỉ Giám đốc tạo (BR-ORG-06, BR-ORG-11, BR-ASSET-09) ──
                 .requestMatchers(HttpMethod.GET, "/organization/**")
@@ -205,7 +236,10 @@ public class SecurityConfig {
             .formLogin(form -> form
                 .loginProcessingUrl("/auth/login")
                 .successHandler((req, res, auth) -> res.setStatus(HttpStatus.OK.value()))
-                .failureHandler((req, res, ex) -> res.setStatus(HttpStatus.UNAUTHORIZED.value()))
+                // 401; riêng tài khoản bị chặn vì trạng thái Tenant (và đã nhập đúng mật khẩu) thì
+                // kèm thông báo nêu lý do — xem FormLoginFailureHandler.
+                .failureHandler(new FormLoginFailureHandler(
+                    userRepository, passwordEncoder(), tenantAccessPolicy, objectMapper))
                 .permitAll()
             )
 
@@ -234,6 +268,23 @@ public class SecurityConfig {
             }
         }
         return false;
+    }
+
+    /** Nguồn cấu hình CORS dùng chung cho cả security chain lẫn Spring MVC. */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of(allowedOriginPatterns.split(",")));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        // Phiên đăng nhập đi bằng cookie nên bắt buộc allowCredentials = true; khi đó KHÔNG
+        // được dùng allowedOrigins("*") — phải dùng pattern để server trả đúng origin đã gọi.
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 
     /**

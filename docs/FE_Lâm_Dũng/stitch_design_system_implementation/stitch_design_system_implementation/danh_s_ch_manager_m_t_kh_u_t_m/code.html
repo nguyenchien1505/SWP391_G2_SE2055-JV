@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-primary-fixed":"#001d35","primary-container":"#1f4e78","surface-card":"#FFFFFF","secondary-container":"#79b7fd","status-occupied-border":"#BBDEFB","status-available-bg":"#E8F5E9","status-inspecting":"#6A1B9A","surface":"#f9f9fd","primary-fixed":"#d0e4ff","primary":"#00375e","secondary-fixed":"#d1e4ff","status-available":"#2E7D32","surface-container-lowest":"#ffffff","surface-container-highest":"#e2e2e6","status-cleaning-border":"#FFF59D","border-subtle":"#DFE3E8","error-container":"#ffdad6","status-dirty-bg":"#FFF3E0","text-secondary":"#5B6472","secondary-fixed-dim":"#9ecaff","on-error":"#ffffff","status-available-border":"#C8E6C9","surface-container-low":"#f3f3f7","status-inspecting-bg":"#F3E5F5","status-cleaning":"#F9A825","status-oos-border":"#E0E0E0","on-tertiary-fixed-variant":"#624000","outline":"#72777f","outline-variant":"#c2c7cf","tertiary":"#4b2f00","on-surface-variant":"#42474e","inverse-primary":"#a0cafb","primary-fixed-dim":"#a0cafb","tertiary-fixed":"#ffddb3","status-dirty-border":"#FFE0B2","status-oos-bg":"#EEEEEE","surface-container-high":"#e8e8ec","surface-bright":"#f9f9fd","status-cleaning-bg":"#FFFDE7","on-primary-fixed-variant":"#194973","status-occupied":"#1565C0","tertiary-container":"#694400","on-tertiary":"#ffffff","on-background":"#1a1c1f","on-secondary-fixed":"#001d36","on-primary-container":"#95bff0","on-secondary-fixed-variant":"#00497d","surface-variant":"#e2e2e6","error":"#ba1a1a","surface-bg":"#F7F8FA","text-primary":"#1C2330","on-surface":"#1a1c1f","surface-tint":"#35618c","on-error-container":"#93000a","surface-dim":"#d9dade","status-occupied-bg":"#E3F2FD","inverse-surface":"#2f3034","status-oos":"#616161","on-secondary":"#ffffff","surface-container":"#ededf1","on-tertiary-fixed":"#291800","tertiary-fixed-dim":"#f3bd72","on-secondary-container":"#00477b","on-primary":"#ffffff","status-dirty":"#EF6C00","status-inspecting-border":"#E1BEE7","background":"#f9f9fd","secondary":"#0e61a1","inverse-on-surface":"#f0f0f4","on-tertiary-container":"#e7b369"},borderRadius:{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},spacing:{"space-md":"1rem","space-xl":"2rem","margin":"1.5rem","space-lg":"1.5rem","space-sm":"0.5rem","space-xs":"0.25rem","gutter":"1rem"},fontFamily:{"label-md":["Be Vietnam Pro"],"headline-lg":["Be Vietnam Pro"],"display-lg":["Be Vietnam Pro"],"body-sm":["Be Vietnam Pro"],"title-sm":["Be Vietnam Pro"],"headline-md":["Be Vietnam Pro"],"body-md":["Be Vietnam Pro"],"metric-val":["Be Vietnam Pro"],"body-lg":["Be Vietnam Pro"],"label-sm":["Be Vietnam Pro"]},fontSize:{"label-md":["13px",{"lineHeight":"18px","fontWeight":"600"}],"headline-lg":["22px",{"lineHeight":"28px","letterSpacing":"-0.015em","fontWeight":"700"}],"display-lg":["30px",{"lineHeight":"38px","letterSpacing":"-0.02em","fontWeight":"700"}],"body-sm":["12px",{"lineHeight":"16px","fontWeight":"400"}],"title-sm":["16px",{"lineHeight":"22px","fontWeight":"600"}],"headline-md":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"600"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"metric-val":["28px",{"lineHeight":"32px","letterSpacing":"-0.02em","fontWeight":"700"}],"body-lg":["16px",{"lineHeight":"24px","fontWeight":"400"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.02em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-64 bg-surface-card flex flex-col z-50 shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-space-md flex items-center gap-space-sm"><div class="w-9 h-9 rounded-lg bg-primary-container flex items-center justify-center flex-shrink-0 text-on-primary"><span class="material-symbols-outlined text-[20px]">corporate_fare</span></div><div class="min-w-0 flex-1"><div class="font-title-sm text-title-sm text-primary truncate leading-tight">Sao Mai Ops</div><div class="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">PMS Multi-tenant</div></div></div><div class="flex-1 overflow-y-auto px-space-sm py-space-sm"><nav class="space-y-space-xs" data-active-classes="bg-primary-container text-on-primary font-title-sm"><div class="px-space-sm pt-space-sm pb-space-xs font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">Vận hành chuỗi</div><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="dashboard-tong-quan" href="#"><span class="material-symbols-outlined text-[18px]">dashboard</span><span class="font-body-md text-body-md truncate">Dashboard tổng quan</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="so-do-phong" href="#"><span class="material-symbols-outlined text-[18px]">grid_view</span><span class="font-body-md text-body-md truncate">Sơ đồ phòng</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="danh-sach-phong" href="#"><span class="material-symbols-outlined text-[18px]">bed</span><span class="font-body-md text-body-md truncate">Danh sách phòng</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="xep-lich-lam-viec" href="#"><span class="material-symbols-outlined text-[18px]">calendar_month</span><span class="font-body-md text-body-md truncate">Xếp lịch làm việc</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="cong-viec-don-phong" href="#"><span class="material-symbols-outlined text-[18px]">cleaning_services</span><span class="font-body-md text-body-md truncate">Công việc dọn phòng</span></a><div class="px-space-sm pt-space-md pb-space-xs font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">Quản trị &amp; Hệ thống</div><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="danh-sach-khach-san" href="#"><span class="material-symbols-outlined text-[18px]">apartment</span><span class="font-body-md text-body-md truncate">Danh sách khách sạn</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="quan-ly-nhan-su" href="#"><span class="material-symbols-outlined text-[18px]">badge</span><span class="font-body-md text-body-md truncate">Manager &amp; Nhân sự</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="danh-muc-khu-vuc" href="#"><span class="material-symbols-outlined text-[18px]">domain</span><span class="font-body-md text-body-md truncate">Danh mục &amp; Khu vực</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="quy-dinh-mau-ca" href="#"><span class="material-symbols-outlined text-[18px]">schedule</span><span class="font-body-md text-body-md truncate">Quy định &amp; Mẫu ca</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="quan-ly-tai-san" href="#"><span class="material-symbols-outlined text-[18px]">inventory_2</span><span class="font-body-md text-body-md truncate">Quản lý tài sản</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="cau-hinh-he-thong" href="#"><span class="material-symbols-outlined text-[18px]">settings</span><span class="font-body-md text-body-md truncate">Cấu hình hệ thống</span></a><div class="px-space-sm pt-space-md pb-space-xs font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">Cá nhân</div><a class="flex items-center gap-space-sm px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="lich-ca-nhan-cham-cong" href="#"><span class="material-symbols-outlined text-[18px]">fingerprint</span><span class="font-body-md text-body-md truncate">Lịch cá nhân &amp; Chấm công</span></a></nav></div><div class="p-space-sm bg-surface-container-low"><div class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-status-available"></span><span class="font-label-sm text-label-sm text-status-available">Máy chủ hoạt động</span><span class="ml-auto font-label-sm text-label-sm text-text-secondary">v2.4.1</span></div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 h-16 bg-surface-card/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 px-space-lg flex items-center justify-between"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs px-space-sm py-space-xs bg-surface-container-low rounded-lg"><span class="material-symbols-outlined text-secondary text-[18px]">location_city</span><span class="font-title-sm text-title-sm text-text-primary">Sao Mai Nha Trang</span><span class="material-symbols-outlined text-text-secondary text-[16px]">expand_more</span></div><div class="hidden xl:flex items-center gap-space-xs text-text-secondary font-body-sm text-body-sm"><span class="material-symbols-outlined text-[16px]">schedule</span><span>Thứ Năm, 24/10/2024 - 09:30</span></div></div><div class="flex items-center gap-space-md"><button class="w-9 h-9 rounded-lg bg-surface-container-low flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors relative" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span></button><button class="w-9 h-9 rounded-lg bg-surface-container-low flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" type="button"><span class="material-symbols-outlined text-[20px]">help_outline</span></button><div class="flex items-center gap-space-sm pl-space-xs"><div class="text-right hidden sm:block"><div class="font-title-sm text-title-sm text-text-primary leading-snug">Lê Hoàng Phúc</div><div class="font-label-sm text-label-sm text-text-secondary">Quản lý / Giám đốc điều hành</div></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="relative pt-16 w-full px-space-lg bg-surface-bg min-h-screen"><div class="flex flex-col w-full">
+<!-- Dynamic Operational Stat Bar & Breadcrumb Header -->
+<div class="py-space-md space-y-space-sm">
+<!-- Breadcrumb & Multi-property Scope -->
+<div class="flex flex-wrap items-center justify-between gap-y-space-xs">
+<div class="flex items-center gap-space-xs font-label-sm text-label-sm tracking-wider uppercase text-text-secondary">
+<span class="hover:text-primary transition-colors cursor-pointer">QUẢN TRỊ NHÂN SỰ</span>
+<span class="text-outline-variant">/</span>
+<span class="text-primary font-semibold">BAN QUẢN LÝ CHI NHÁNH</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="inline-flex items-center gap-space-xs px-space-sm py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">
+<span class="w-2 h-2 rounded-full bg-status-available"></span>
+          Đồng bộ phân quyền LDAP/SSO: Thời gian thực
+        </span>
+<span class="inline-flex items-center gap-space-xs px-space-sm py-0.5 rounded-full bg-surface-container-high text-on-surface font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[14px] text-secondary">domain</span>
+          5 Chi nhánh toàn chuỗi
+        </span>
+</div>
+</div>
+<!-- Title & Primary CTA Area -->
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md pt-space-xs">
+<div class="space-y-1">
+<div class="flex items-center gap-space-sm">
+<h1 class="font-headline-lg text-headline-lg text-text-primary tracking-tight">Quản lý Danh sách Quản lý Khách sạn (Managers)</h1>
+<span class="px-space-xs py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed font-label-sm text-label-sm">7 Tổng tài khoản</span>
+</div>
+<p class="font-body-md text-body-md text-text-secondary">Phân bổ General Manager (GM) &amp; Trưởng bộ phận vận hành theo từng cơ sở lưu trú trong hệ thống Sao Mai Hospitality.</p>
+</div>
+<!-- Action Group -->
+<div class="flex items-center gap-space-sm shrink-0">
+<button class="h-10 px-space-md rounded-lg bg-surface-container-low text-text-primary hover:bg-surface-container hover:text-primary font-label-md text-label-md flex items-center gap-space-xs transition-colors shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px]">file_download</span>
+<span>Xuất danh sách</span>
+</button>
+<button class="h-10 px-space-lg rounded-lg bg-primary-container hover:bg-primary text-on-primary font-label-md text-label-md flex items-center gap-space-xs transition-all shadow-md active:scale-95" onclick="document.getElementById('create-manager-drawer').classList.toggle('hidden')" type="button">
+<span class="material-symbols-outlined text-[20px]">add</span>
+<span>+ Tạo tài khoản Quản lý mới</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Bento KPI Metrics Bar -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-md my-space-md">
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
+<div class="absolute -right-3 -top-3 w-16 h-16 bg-primary/5 rounded-full blur-lg"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Đang kích hoạt</span>
+<div class="w-8 h-8 rounded-lg bg-status-available-bg text-status-available flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">verified_user</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline justify-between">
+<span class="font-metric-val text-metric-val text-text-primary">05</span>
+<span class="font-label-sm text-label-sm text-status-available flex items-center">
+<span class="material-symbols-outlined text-[14px]">trending_up</span> 100% chỉ tiêu
+        </span>
+</div>
+<div class="mt-space-xs font-body-sm text-body-sm text-text-secondary">Trực tuyến 4/5 cơ sở chính</div>
+</div>
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
+<div class="absolute -right-3 -top-3 w-16 h-16 bg-status-dirty/5 rounded-full blur-lg"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Chờ đổi mật khẩu</span>
+<div class="w-8 h-8 rounded-lg bg-status-dirty-bg text-status-dirty flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">lock_reset</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline justify-between">
+<span class="font-metric-val text-metric-val text-text-primary">02</span>
+<span class="font-label-sm text-label-sm text-status-dirty">Mới tạo trong 24h</span>
+</div>
+<div class="mt-space-xs font-body-sm text-body-sm text-text-secondary">Chưa kích hoạt lần đầu</div>
+</div>
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
+<div class="absolute -right-3 -top-3 w-16 h-16 bg-secondary/5 rounded-full blur-lg"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Khách sạn bảo hộ</span>
+<div class="w-8 h-8 rounded-lg bg-status-occupied-bg text-status-occupied flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">hotel</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline justify-between">
+<span class="font-metric-val text-metric-val text-text-primary">05/05</span>
+<span class="font-label-sm text-label-sm text-secondary">Đầy đủ GM</span>
+</div>
+<div class="mt-space-xs font-body-sm text-body-sm text-text-secondary">Nha Trang, Đà Lạt, Phú Quốc, ...</div>
+</div>
+<div class="bg-surface-card p-space-md rounded-xl shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
+<div class="absolute -right-3 -top-3 w-16 h-16 bg-status-inspecting/5 rounded-full blur-lg"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">Bảo mật xác thực 2FA</span>
+<div class="w-8 h-8 rounded-lg bg-status-inspecting-bg text-status-inspecting flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">security</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline justify-between">
+<span class="font-metric-val text-metric-val text-text-primary">85%</span>
+<span class="font-label-sm text-label-sm text-status-available">Chuẩn ISO 27001</span>
+</div>
+<div class="mt-space-xs font-body-sm text-body-sm text-text-secondary">Bắt buộc đối với cấp GM</div>
+</div>
+</div>
+<!-- Workspace Filter & Search Utility Toolset -->
+<div class="bg-surface-card rounded-xl shadow-sm p-space-md mb-space-md">
+<div class="flex flex-col lg:flex-row items-center justify-between gap-space-md">
+<!-- Search input -->
+<div class="relative w-full lg:w-96">
+<span class="material-symbols-outlined absolute left-3 top-2.5 text-text-secondary text-[20px]">search</span>
+<input class="w-full h-10 pl-10 pr-space-md bg-surface-container-low text-text-primary placeholder:text-text-secondary rounded-lg font-body-md text-body-md focus:outline-none focus:ring-2 focus:ring-secondary/50 transition-all" placeholder="Tìm theo tên, email, sđt hoặc khách sạn..." type="text"/>
+</div>
+<!-- Filters Group -->
+<div class="flex flex-wrap items-center gap-space-sm w-full lg:w-auto">
+<div class="relative flex-1 sm:flex-none">
+<select class="appearance-none h-10 pl-space-md pr-9 bg-surface-container-low text-text-primary rounded-lg font-label-md text-label-md cursor-pointer focus:outline-none focus:bg-surface-container transition-colors w-full">
+<option>Tất cả cơ sở (5)</option>
+<option>Sao Mai Nha Trang</option>
+<option>Sao Mai Đà Lạt</option>
+<option>Sao Mai Phú Quốc Grand</option>
+<option>Sao Mai Đà Nẵng Riverside</option>
+<option>Sao Mai Sa Pa View</option>
+</select>
+<span class="material-symbols-outlined absolute right-2.5 top-2.5 text-text-secondary text-[20px] pointer-events-none">arrow_drop_down</span>
+</div>
+<div class="relative flex-1 sm:flex-none">
+<select class="appearance-none h-10 pl-space-md pr-9 bg-surface-container-low text-text-primary rounded-lg font-label-md text-label-md cursor-pointer focus:outline-none focus:bg-surface-container transition-colors w-full">
+<option>Trạng thái: Tất cả</option>
+<option>Đang hoạt động</option>
+<option>Chờ đổi mật khẩu lần đầu</option>
+<option>Đang tạm khóa</option>
+</select>
+<span class="material-symbols-outlined absolute right-2.5 top-2.5 text-text-secondary text-[20px] pointer-events-none">arrow_drop_down</span>
+</div>
+<button class="h-10 px-space-md bg-surface-container-low hover:bg-surface-container-high text-text-secondary hover:text-text-primary rounded-lg font-label-md text-label-md flex items-center gap-space-xs transition-colors" type="button">
+<span class="material-symbols-outlined text-[18px]">tune</span>
+<span>Bộ lọc nâng cao</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Manager Table & Creation Drawer Dual Split View -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-md items-start pb-space-xl">
+<!-- Main Managers Table (8 cols on XL when form is active, 12 when expanded) -->
+<div class="xl:col-span-8 bg-surface-card rounded-xl shadow-sm overflow-hidden flex flex-col">
+<div class="px-space-lg py-space-md bg-surface-container-lowest flex items-center justify-between border-b border-surface-container-high">
+<div>
+<h2 class="font-title-sm text-title-sm text-text-primary">Danh sách nhân sự cấp Quản trị Chi nhánh</h2>
+<p class="font-body-sm text-body-sm text-text-secondary">Hiển thị 7 quản lý được cấp quyền điều hành khách sạn trên hệ thống</p>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm text-text-secondary">Sắp xếp:</span>
+<button class="font-label-sm text-label-sm text-primary font-semibold flex items-center gap-0.5">
+            Mới cập nhật <span class="material-symbols-outlined text-[14px]">expand_more</span>
+</button>
+</div>
+</div>
+<!-- Responsive Table Container -->
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead>
+<tr class="bg-surface-container-low font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
+<th class="py-space-sm pl-space-lg pr-space-sm">Họ và tên / Vai trò</th>
+<th class="py-space-sm px-space-sm">Thông tin liên hệ</th>
+<th class="py-space-sm px-space-sm">Cơ sở phụ trách</th>
+<th class="py-space-sm px-space-sm">Đăng nhập gần nhất</th>
+<th class="py-space-sm px-space-sm">Trạng thái</th>
+<th class="py-space-sm pr-space-lg pl-space-sm text-right">Thao tác</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container-high font-body-md text-body-md">
+<!-- Row 1: Active Focus (Lê Hoàng Phúc - Newly issued account) -->
+<tr class="hover:bg-surface-container-lowest transition-colors bg-primary-fixed/20">
+<td class="py-space-md pl-space-lg pr-space-sm">
+<div class="flex items-center gap-space-sm">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-sm bg-primary text-on-primary flex items-center justify-center font-bold">
+<img class="w-full h-full object-cover" data-alt="Close-up professional portrait of a 35-year-old Vietnamese hotel general manager named Le Hoang Phuc wearing a crisp dark navy business suit and tie with a warm confident smile in a modern luxury hotel lobby with soft ambient lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBmmpCLsAPwzJU7NRSElNWBDQhNoZHzb_68FvF9PGIgl6OtnfBAQZLDdOys-rnK6PtvND1pV5nLUvoFzatTLe9sAEmIbIea1tdgURuXQVLdkPB1M0Ww3GFNfBRQ3eBS1_nprSasqIoqFzGtR2UPRN2XYZGuORb-VjkmW59I65RyQ9p8F2XsfKsXrfiTEn4SBW7I5eMdABTy-0_7Qc_Rg0vOiqPiCffq7hZFlqbspxYKdtJE2St-EJTB"/>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-space-xs">
+<span class="font-title-sm text-title-sm text-text-primary font-bold">Lê Hoàng Phúc</span>
+<span class="material-symbols-outlined text-secondary text-[16px]" title="Đã xác thực danh tính">verified</span>
+</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Tổng Quản Lý (General Manager)</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-text-primary font-medium">lephuc@saomaihotels.vn</div>
+<div class="font-body-sm text-body-sm text-text-secondary">0912 849 201</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="inline-flex items-center gap-space-xs font-label-md text-label-md text-primary">
+<span class="material-symbols-outlined text-[16px] text-primary">location_city</span>
+<span>Sao Mai Nha Trang</span>
+</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Khu nghỉ dưỡng 120 phòng</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-status-dirty font-medium font-label-sm text-label-sm">Chưa đăng nhập</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Tạo lúc: 09:15 - Hôm nay</div>
+</td>
+<td class="py-space-md px-space-sm">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-status-dirty-bg text-status-dirty font-label-sm text-label-sm whitespace-nowrap">
+<span class="material-symbols-outlined text-[14px]">schedule</span>
+                  Chờ đổi mật khẩu lần đầu
+                </span>
+</td>
+<td class="py-space-md pr-space-lg pl-space-sm text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-primary hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center" onclick="document.getElementById('temp-password-modal').classList.remove('hidden')" title="Hiển thị lại mật khẩu tạm" type="button">
+<span class="material-symbols-outlined text-[18px]">key</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-secondary hover:bg-surface-container-high hover:text-text-primary transition-colors flex items-center justify-center" title="Chỉnh sửa thông tin" type="button">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-error hover:bg-error-container hover:text-error transition-colors flex items-center justify-center" title="Khóa tài khoản" type="button">
+<span class="material-symbols-outlined text-[18px]">lock</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2: Trần Minh Tuấn -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="py-space-md pl-space-lg pr-space-sm">
+<div class="flex items-center gap-space-sm">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-sm bg-secondary text-on-secondary flex items-center justify-center font-bold">
+<img class="w-full h-full object-cover" data-alt="Portrait of a 40-year-old Asian male hospitality director Tran Minh Tuan with neat eyeglasses and a warm smile, wearing a dark gray executive blazer in an airy luxury hotel lobby background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDsEKGdHFnKw1uqYo9hOcNJs8mTToD3DjvvLHCx_KSN0jX0BOKCeGcwIiGREZViMJRWDJXeOG6cVXhRBJiY550WYlxwBxiVdGTOYtugGgaq6UltXuH-2v_6bTWFQ0-S_0PdL1ibv6h1fkHNiATIByiMXafC25hfCwwDkB01daAVa2kDdlX08-_Ls2lq9heehrp6qnf90iFVRCfKthpphdfrAt1BeL5GGauiDy9bnB71ugVix_163rCs"/>
+</div>
+<div class="min-w-0">
+<div class="font-title-sm text-title-sm text-text-primary">Trần Minh Tuấn</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Giám đốc Vận hành (COO)</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-text-primary">tuantran@saomaihotels.vn</div>
+<div class="font-body-sm text-body-sm text-text-secondary">0903 118 920</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="inline-flex items-center gap-space-xs font-label-md text-label-md text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-text-secondary">domain</span>
+<span>Sao Mai Đà Lạt</span>
+</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Chi nhánh Cao nguyên 85 phòng</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-text-primary">15 phút trước</div>
+<div class="font-body-sm text-body-sm text-text-secondary">IP: 14.161.22.84</div>
+</td>
+<td class="py-space-md px-space-sm">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-status-available-bg text-status-available font-label-sm text-label-sm whitespace-nowrap">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+                  Đang hoạt động
+                </span>
+</td>
+<td class="py-space-md pr-space-lg pl-space-sm text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-secondary hover:bg-primary-container hover:text-on-primary transition-colors flex items-center justify-center" title="Cấp lại mật khẩu tạm" type="button">
+<span class="material-symbols-outlined text-[18px]">lock_reset</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-secondary hover:bg-surface-container-high hover:text-text-primary transition-colors flex items-center justify-center" title="Chỉnh sửa thông tin" type="button">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-error hover:bg-error-container hover:text-error transition-colors flex items-center justify-center" title="Khóa tài khoản" type="button">
+<span class="material-symbols-outlined text-[18px]">lock</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3: Đỗ Thu Hà -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="py-space-md pl-space-lg pr-space-sm">
+<div class="flex items-center gap-space-sm">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-sm bg-tertiary-container text-on-tertiary-container flex items-center justify-center font-bold">
+<img class="w-full h-full object-cover" data-alt="Portrait of an elegant 32-year-old Vietnamese female hotel manager Do Thu Ha with hair tied back, wearing an ivory tailored collar vest against the soft light of a boutique hotel terrace." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB7yqvqjoKwXTJ3qMPIublB90lGfpILZQNNi_K3gedf2_L9XjCR9Vj8s51Vod1SbGL33zVB_ZLM6nRVJfNPM4q_IgjJ3qRqQi7hd4y-SYasQYdgySp-QUKV6aS5W09ZiHQ9eWrCHEirGsAgSoFLkfeks-EaLaqeMy01-z5vvFOwsXBhm9KamiU8ASIRpewS3Il_cmSNDgj76ebKVxSw0UjveQwKbYzhir5VhUAlEJXZwysKaUuhg9No"/>
+</div>
+<div class="min-w-0">
+<div class="font-title-sm text-title-sm text-text-primary">Đỗ Thu Hà</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Quản Lý Cơ Sở (Property Manager)</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-text-primary">hadothu@saomaihotels.vn</div>
+<div class="font-body-sm text-body-sm text-text-secondary">0978 443 112</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="inline-flex items-center gap-space-xs font-label-md text-label-md text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-text-secondary">domain</span>
+<span>Sao Mai Phú Quốc Grand</span>
+</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Tổ hợp Biệt thự biển 150 căn</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-text-primary">Hôm qua, 18:45</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Mobile iOS App</div>
+</td>
+<td class="py-space-md px-space-sm">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-status-available-bg text-status-available font-label-sm text-label-sm whitespace-nowrap">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+                  Đang hoạt động
+                </span>
+</td>
+<td class="py-space-md pr-space-lg pl-space-sm text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-secondary hover:bg-primary-container hover:text-on-primary transition-colors flex items-center justify-center" title="Cấp lại mật khẩu tạm" type="button">
+<span class="material-symbols-outlined text-[18px]">lock_reset</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-secondary hover:bg-surface-container-high hover:text-text-primary transition-colors flex items-center justify-center" title="Chỉnh sửa thông tin" type="button">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-error hover:bg-error-container hover:text-error transition-colors flex items-center justify-center" title="Khóa tài khoản" type="button">
+<span class="material-symbols-outlined text-[18px]">lock</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 4: Nguyễn Văn Hùng -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="py-space-md pl-space-lg pr-space-sm">
+<div class="flex items-center gap-space-sm">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-sm bg-status-inspecting text-on-primary flex items-center justify-center font-bold">
+<span class="font-title-sm">NH</span>
+</div>
+<div class="min-w-0">
+<div class="font-title-sm text-title-sm text-text-primary">Nguyễn Văn Hùng</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Quản Lý Tiền Sảnh (Front Office Manager)</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-text-primary">hungnguyen@saomaihotels.vn</div>
+<div class="font-body-sm text-body-sm text-text-secondary">0934 901 883</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="inline-flex items-center gap-space-xs font-label-md text-label-md text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-text-secondary">domain</span>
+<span>Sao Mai Đà Nẵng Riverside</span>
+</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Khách sạn thương gia 95 phòng</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-text-primary">22/10/2024 - 14:10</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Chrome on MacOS</div>
+</td>
+<td class="py-space-md px-space-sm">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-status-available-bg text-status-available font-label-sm text-label-sm whitespace-nowrap">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+                  Đang hoạt động
+                </span>
+</td>
+<td class="py-space-md pr-space-lg pl-space-sm text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-secondary hover:bg-primary-container hover:text-on-primary transition-colors flex items-center justify-center" title="Cấp lại mật khẩu tạm" type="button">
+<span class="material-symbols-outlined text-[18px]">lock_reset</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-secondary hover:bg-surface-container-high hover:text-text-primary transition-colors flex items-center justify-center" title="Chỉnh sửa thông tin" type="button">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-error hover:bg-error-container hover:text-error transition-colors flex items-center justify-center" title="Khóa tài khoản" type="button">
+<span class="material-symbols-outlined text-[18px]">lock</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 5: Vũ Đình Khoa -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="py-space-md pl-space-lg pr-space-sm">
+<div class="flex items-center gap-space-sm">
+<div class="relative w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-sm bg-surface-container-high text-text-secondary flex items-center justify-center font-bold">
+<span class="font-title-sm">VK</span>
+</div>
+<div class="min-w-0">
+<div class="font-title-sm text-title-sm text-text-primary">Vũ Đình Khoa</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Quản Lý Ca Đêm (Night Duty Manager)</div>
+</div>
+</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-text-primary">khoavu@saomaihotels.vn</div>
+<div class="font-body-sm text-body-sm text-text-secondary">0918 554 220</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="inline-flex items-center gap-space-xs font-label-md text-label-md text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-text-secondary">domain</span>
+<span>Sao Mai Sa Pa View</span>
+</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Khu nghỉ dưỡng 60 phòng</div>
+</td>
+<td class="py-space-md px-space-sm">
+<div class="text-status-dirty font-medium font-label-sm text-label-sm">Chờ xác minh</div>
+<div class="font-body-sm text-body-sm text-text-secondary">Tạo lúc: 14:00 - Hôm qua</div>
+</td>
+<td class="py-space-md px-space-sm">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-status-dirty-bg text-status-dirty font-label-sm text-label-sm whitespace-nowrap">
+<span class="material-symbols-outlined text-[14px]">schedule</span>
+                  Chờ đổi mật khẩu lần đầu
+                </span>
+</td>
+<td class="py-space-md pr-space-lg pl-space-sm text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-secondary hover:bg-primary-container hover:text-on-primary transition-colors flex items-center justify-center" title="Cấp lại mật khẩu tạm" type="button">
+<span class="material-symbols-outlined text-[18px]">lock_reset</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-secondary hover:bg-surface-container-high hover:text-text-primary transition-colors flex items-center justify-center" title="Chỉnh sửa thông tin" type="button">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-error hover:bg-error-container hover:text-error transition-colors flex items-center justify-center" title="Khóa tài khoản" type="button">
+<span class="material-symbols-outlined text-[18px]">lock</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Table Footer / Pagination -->
+<div class="px-space-lg py-space-sm bg-surface-container-lowest flex items-center justify-between border-t border-surface-container-high">
+<div class="font-body-sm text-body-sm text-text-secondary">
+          Hiển thị <span class="font-semibold text-text-primary">1 - 5</span> trên tổng số <span class="font-semibold text-text-primary">7</span> nhân sự
+        </div>
+<div class="flex items-center gap-space-xs">
+<button class="px-space-sm py-1 rounded-lg bg-surface-container-low text-text-secondary hover:bg-surface-container font-label-sm text-label-sm disabled:opacity-50" disabled="">
+            Trước
+          </button>
+<button class="w-8 h-8 rounded-lg bg-primary-container text-on-primary font-label-sm text-label-sm">1</button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-low text-text-primary hover:bg-surface-container font-label-sm text-label-sm">2</button>
+<button class="px-space-sm py-1 rounded-lg bg-surface-container-low text-text-primary hover:bg-surface-container font-label-sm text-label-sm">
+            Sau
+          </button>
+</div>
+</div>
+</div>
+<!-- Side Panel: Inline Create New Manager Form (Always visible or toggleable) -->
+<div class="xl:col-span-4 bg-surface-card rounded-xl shadow-sm p-space-lg flex flex-col space-y-space-md relative overflow-hidden" id="create-manager-drawer">
+<div class="flex items-center justify-between border-b border-surface-container pb-space-sm">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[22px]">person_add</span>
+<h3 class="font-title-sm text-title-sm text-text-primary">Cấp tài khoản Quản lý mới</h3>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-status-available-bg text-status-available font-label-sm text-label-sm">Form trực quan</span>
+</div>
+<p class="font-body-sm text-body-sm text-text-secondary">Hệ thống sẽ khởi tạo tài khoản phân quyền quản lý, tự sinh mã định danh và cấp mật khẩu tạm bảo mật.</p>
+<!-- Form Inputs -->
+<form class="space-y-space-md" onsubmit="event.preventDefault(); document.getElementById('temp-password-modal').classList.remove('hidden');">
+<!-- Field: Full Name -->
+<div class="space-y-1">
+<label class="block font-label-md text-label-md text-text-primary">
+            Họ và tên Quản lý <span class="text-error">*</span>
+</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-2.5 text-text-secondary text-[18px]">badge</span>
+<input class="w-full h-10 pl-10 pr-space-md bg-surface-container-low text-text-primary rounded-lg font-body-md text-body-md focus:outline-none focus:ring-2 focus:ring-secondary/50" placeholder="Nhập đầy đủ họ và tên..." required="" type="text" value="Lê Hoàng Phúc"/>
+</div>
+</div>
+<!-- Field: Corporate Email -->
+<div class="space-y-1">
+<label class="block font-label-md text-label-md text-text-primary">
+            Email cơ quan (Tên đăng nhập) <span class="text-error">*</span>
+</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-2.5 text-text-secondary text-[18px]">mail</span>
+<input class="w-full h-10 pl-10 pr-space-md bg-surface-container-low text-text-primary rounded-lg font-body-md text-body-md focus:outline-none focus:ring-2 focus:ring-secondary/50" placeholder="name@saomaihotels.vn" required="" type="email" value="lephuc@saomaihotels.vn"/>
+</div>
+</div>
+<!-- Field: Phone Number -->
+<div class="space-y-1">
+<label class="block font-label-md text-label-md text-text-primary">
+            Số điện thoại di động <span class="text-error">*</span>
+</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-2.5 text-text-secondary text-[18px]">call</span>
+<input class="w-full h-10 pl-10 pr-space-md bg-surface-container-low text-text-primary rounded-lg font-body-md text-body-md focus:outline-none focus:ring-2 focus:ring-secondary/50" placeholder="09xx xxx xxx" required="" type="tel" value="0912 849 201"/>
+</div>
+</div>
+<!-- Field: Assigned Hotel -->
+<div class="space-y-1">
+<label class="block font-label-md text-label-md text-text-primary">
+            Khách sạn điều hành chính <span class="text-error">*</span>
+</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-2.5 text-text-secondary text-[18px]">corporate_fare</span>
+<select class="w-full h-10 pl-10 pr-9 bg-surface-container-low text-text-primary rounded-lg font-body-md text-body-md appearance-none focus:outline-none focus:ring-2 focus:ring-secondary/50">
+<option selected="">Sao Mai Nha Trang (120 Phòng)</option>
+<option>Sao Mai Đà Lạt (85 Phòng)</option>
+<option>Sao Mai Phú Quốc Grand (150 Căn)</option>
+<option>Sao Mai Đà Nẵng Riverside (95 Phòng)</option>
+<option>Sao Mai Sa Pa View (60 Phòng)</option>
+</select>
+<span class="material-symbols-outlined absolute right-2.5 top-2.5 text-text-secondary text-[20px] pointer-events-none">arrow_drop_down</span>
+</div>
+</div>
+<!-- Field: Management Role Tier -->
+<div class="space-y-1">
+<label class="block font-label-md text-label-md text-text-primary">
+            Chức danh phân quyền (Role) <span class="text-error">*</span>
+</label>
+<div class="grid grid-cols-2 gap-space-xs">
+<label class="flex items-center gap-space-xs p-space-xs rounded-lg bg-surface-container-low hover:bg-surface-container cursor-pointer transition-colors">
+<input checked="" class="accent-primary" name="role_type" type="radio"/>
+<span class="font-body-sm text-body-sm text-text-primary">Tổng Quản Lý (GM)</span>
+</label>
+<label class="flex items-center gap-space-xs p-space-xs rounded-lg bg-surface-container-low hover:bg-surface-container cursor-pointer transition-colors">
+<input class="accent-primary" name="role_type" type="radio"/>
+<span class="font-body-sm text-body-sm text-text-primary">Phó Quản Lý (AGM)</span>
+</label>
+</div>
+</div>
+<!-- Auto-generate Password Notice -->
+<div class="p-space-sm rounded-lg bg-surface-container-low flex items-start gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[18px] shrink-0 mt-0.5">enhanced_encryption</span>
+<div class="font-body-sm text-body-sm text-text-secondary leading-snug">
+            Mật khẩu tạm thời có độ phức tạp cao (16 ký tự bao gồm chữ hoa, số &amp; ký tự đặc biệt) sẽ được hệ thống mã hóa tự động sinh ngay sau khi xác nhận.
+          </div>
+</div>
+<!-- Submit CTA -->
+<div class="pt-space-xs">
+<button class="w-full h-11 rounded-lg bg-primary-container hover:bg-primary text-on-primary font-label-md text-label-md flex items-center justify-center gap-space-xs shadow-md transition-all active:scale-[0.98]" type="submit">
+<span class="material-symbols-outlined text-[18px]">key</span>
+<span>Khởi tạo &amp; Cấp mật khẩu tạm</span>
+</button>
+</div>
+</form>
+</div>
+</div>
+<!-- ========================================================================= -->
+<!-- SPECIAL HIGHLIGHT MODAL: HIỂN THỊ MẬT KHẨU TẠM THỜI (THEO DESIGN.MD MỤC 5) -->
+<!-- Chỉ hiện đúng 1 lần, có nút sao chép, cảnh báo vàng viền cam, bảo mật tối ưu -->
+<!-- ========================================================================= -->
+<div class="fixed inset-0 z-50 flex items-center justify-center p-space-md bg-on-background/50 backdrop-blur-sm animate-[fadeIn_0.15s_ease-out]" id="temp-password-modal">
+<div class="bg-surface-card w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col transform transition-all animate-[scaleUp_0.2s_ease-out]">
+<!-- Modal Top Accent Band -->
+<div class="h-2 w-full bg-gradient-to-r from-primary via-secondary to-status-cleaning"></div>
+<div class="p-space-xl space-y-space-lg">
+<!-- Header with Success Icon -->
+<div class="flex items-start gap-space-md">
+<div class="w-12 h-12 rounded-xl bg-status-available-bg text-status-available flex items-center justify-center shrink-0 shadow-sm">
+<span class="material-symbols-outlined text-[28px]">check_circle</span>
+</div>
+<div class="space-y-1">
+<span class="px-2 py-0.5 rounded-full bg-status-available-bg text-status-available font-label-sm text-label-sm inline-block">
+              Hệ thống Sao Mai PMS
+            </span>
+<h3 class="font-headline-md text-headline-md text-text-primary">Cấp tài khoản Quản lý thành công!</h3>
+<p class="font-body-sm text-body-sm text-text-secondary">Tài khoản quản trị đã được thiết lập quyền Tổng Quản Lý thành công trong cơ sở dữ liệu chuỗi.</p>
+</div>
+</div>
+<!-- Target Account Information Card -->
+<div class="bg-surface-container-low rounded-xl p-space-md space-y-space-xs">
+<div class="flex items-center justify-between text-body-sm">
+<span class="text-text-secondary">Quản lý nhận tài khoản:</span>
+<span class="font-title-sm text-title-sm text-text-primary">Lê Hoàng Phúc</span>
+</div>
+<div class="flex items-center justify-between text-body-sm">
+<span class="text-text-secondary">Email đăng nhập:</span>
+<span class="font-medium text-primary">lephuc@saomaihotels.vn</span>
+</div>
+<div class="flex items-center justify-between text-body-sm">
+<span class="text-text-secondary">Cơ sở bổ nhiệm:</span>
+<span class="inline-flex items-center gap-1 font-semibold text-text-primary">
+<span class="material-symbols-outlined text-[15px] text-secondary">location_city</span>
+              Sao Mai Nha Trang
+            </span>
+</div>
+</div>
+<!-- Central Display: Temporary Password Box with Big Code Font & Instant Copy Button -->
+<div class="space-y-space-xs">
+<label class="block font-label-md text-label-md text-text-secondary uppercase tracking-wider">
+            Mật khẩu tạm thời được cấp
+          </label>
+<div class="flex items-center justify-between bg-surface-container-high rounded-xl p-space-sm pl-space-md shadow-inner gap-space-sm">
+<div class="flex items-center gap-space-sm overflow-x-auto py-1">
+<span class="material-symbols-outlined text-primary text-[20px] shrink-0">password</span>
+<code class="font-metric-val text-headline-lg font-bold tracking-widest text-primary selection:bg-primary-fixed select-all" id="temp-pwd-value">SM@NhaTrang2024!</code>
+</div>
+<!-- Quick Copy Action Button -->
+<button class="h-10 px-space-md rounded-lg bg-primary-container hover:bg-primary text-on-primary font-label-md text-label-md flex items-center gap-space-xs shrink-0 shadow transition-all active:scale-95" id="copy-btn" onclick="copyPassword()" type="button">
+<span class="material-symbols-outlined text-[18px]" id="copy-icon">content_copy</span>
+<span id="copy-text">Sao chép mật khẩu</span>
+</button>
+</div>
+</div>
+<!-- SPECIAL MANDATORY WARNING BOX: Cam/Vàng nổi bật theo chuẩn DESIGN.md -->
+<div class="rounded-xl p-space-md bg-status-dirty-bg text-on-surface flex items-start gap-space-sm shadow-sm">
+<div class="w-8 h-8 rounded-full bg-status-dirty/20 text-status-dirty flex items-center justify-center shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-[20px]">warning</span>
+</div>
+<div class="space-y-1">
+<div class="font-label-md text-label-md text-status-dirty uppercase tracking-wide">
+              LƯU Ý QUAN TRỌNG: CHỈ HIỂN THỊ ĐÚNG 1 LẦN!
+            </div>
+<p class="font-body-sm text-body-sm text-text-primary leading-relaxed">
+              Vì lý do an toàn thông tin theo tiêu chuẩn bảo mật dữ liệu, mật khẩu tạm thời này <span class="font-bold text-status-dirty">sẽ không được hiển thị lại</span> sau khi bạn đóng hộp thoại này. Hãy sao chép và gửi trực tiếp qua kênh liên lạc bảo mật cho Quản lý. 
+              <br/>Hệ thống sẽ <span class="font-semibold text-text-primary">bắt buộc đổi mật khẩu mới</span> ngay ở lần đăng nhập đầu tiên.
+            </p>
+</div>
+</div>
+<!-- Dialog Primary Action: Đã sao chép & Đóng -->
+<div class="flex items-center justify-end gap-space-sm pt-space-xs">
+<button class="w-full sm:w-auto h-11 px-space-xl rounded-lg bg-text-primary hover:bg-primary text-on-primary font-label-md text-label-md flex items-center justify-center gap-space-xs shadow transition-all active:scale-95" onclick="document.getElementById('temp-password-modal').classList.add('hidden')" type="button">
+<span class="material-symbols-outlined text-[18px]">check</span>
+<span>Đã sao chép &amp; Đóng hộp thoại</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script>
+  function copyPassword() {
+    const pwd = document.getElementById('temp-pwd-value').innerText.trim();
+    navigator.clipboard.writeText(pwd).then(() => {
+      const copyText = document.getElementById('copy-text');
+      const copyIcon = document.getElementById('copy-icon');
+      const copyBtn = document.getElementById('copy-btn');
+      
+      copyText.innerText = 'Đã sao chép!';
+      copyIcon.innerText = 'done';
+      copyBtn.classList.remove('bg-primary-container');
+      copyBtn.classList.add('bg-status-available');
+      
+      setTimeout(() => {
+        copyText.innerText = 'Sao chép mật khẩu';
+        copyIcon.innerText = 'content_copy';
+        copyBtn.classList.remove('bg-status-available');
+        copyBtn.classList.add('bg-primary-container');
+      }, 2500);
+    });
+  }
+</script></main></div></body></html>

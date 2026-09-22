@@ -49,6 +49,13 @@ public class CustomUserDetails implements UserDetails {
     private final boolean      enabled;
 
     /**
+     * Chỉ được xem, không được ghi. Bật với Giám đốc của Tenant bị khóa do hết hạn dùng thử /
+     * thanh toán thất bại (xem {@link TenantAccessPolicy}); {@link CurrentUserRefreshFilter}
+     * chặn mọi thao tác ghi khi cờ này bật.
+     */
+    private final boolean      readOnly;
+
+    /**
      * So mọi trường ảnh hưởng tới phân quyền — dùng để biết principal trong session có
      * cần thay bằng bản mới đọc từ DB hay không (xem {@link CurrentUserRefreshFilter}).
      */
@@ -58,6 +65,7 @@ public class CustomUserDetails implements UserDetails {
             && positionType == other.positionType
             && mustChangePassword == other.mustChangePassword
             && enabled == other.enabled
+            && readOnly == other.readOnly
             && Objects.equals(tenantId, other.tenantId)
             && Objects.equals(locationId, other.locationId)
             && Objects.equals(positionId, other.positionId);
