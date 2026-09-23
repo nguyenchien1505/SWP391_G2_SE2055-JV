@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
-import { fetchTasks, unassignTask } from '../../api/housekeeping';
+import { cancelTask, fetchTasks, unassignTask } from '../../api/housekeeping';
 import { fetchStaffDirectory } from '../../api/users';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import AssignTaskModal from '../../components/rooms/AssignTaskModal';
+import InspectTaskModal from '../../components/rooms/InspectTaskModal';
+import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import StayoverTaskModal from '../../components/rooms/StayoverTaskModal';
 import TaskCard from '../../components/rooms/TaskCard';
 import { todayIso } from './format';
@@ -46,6 +48,9 @@ export default function HousekeepingPage() {
   const [mobileTab, setMobileTab] = useState(COLUMNS[0]);
   const [assigning, setAssigning] = useState(null);      // việc đang mở hộp thoại phân công
   const [releasing, setReleasing] = useState(null);      // việc đang hỏi xác nhận gỡ người
+  const [inspecting, setInspecting] = useState(null);    // việc đang mở hộp thoại kiểm tra (S-13)
+  const [cancelling, setCancelling] = useState(null);    // việc đang hỏi xác nhận hủy (S-14)
+  const [previousOf, setPreviousOf] = useState(null);    // việc dọn lại đang xem biên bản của task cha
   const [stayoverOpen, setStayoverOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -115,6 +120,35 @@ export default function HousekeepingPage() {
     }
   }
 
+  /** S-14 — hủy tay một việc dọn hằng ngày. Phòng không đổi gì (BR-HK-05). */
+  async function handleConfirmCancel() {
+    const task = cancelling;
+    setCancelling(null);
+    try {
+      await cancelTask(task.id);
+      setBanner({ type: 'success', text: `Đã hủy việc dọn hằng ngày của phòng ${task.roomNumber}.` });
+      await load();
+    } catch (err) {
+      setBanner({ type: 'error', text: readErrorMessage(err, 'Không hủy được việc dọn.') });
+    }
+  }
+
+  /**
+   * Kiểm tra xong: hai kết quả dẫn tới hai tình huống khác hẳn nhau nên câu thông báo phải nói
+   * rõ điều gì vừa xảy ra với PHÒNG, chứ không chỉ "đã lưu".
+   */
+  function finishInspection(record) {
+    const room = inspecting.roomNumber;
+    setInspecting(null);
+    setBanner({
+      type: 'success',
+      text: record.result === 'PASS'
+        ? `Phòng ${room} đã Sẵn sàng.`
+        : `Đã tạo việc dọn lại cho phòng ${room}. Phòng quay về «Chờ dọn».`,
+    });
+    load();
+  }
+
   const sortedColumns = useMemo(
     () => Object.fromEntries(Object.entries(columns).map(([status, tasks]) => [
       status,
@@ -126,14 +160,23 @@ export default function HousekeepingPage() {
   /** Nút trên mỗi thẻ — chỉ Quản lý chi nhánh có; Giám đốc mở trang này chỉ để xem. */
   function actionsFor(task) {
     if (!canManage) return [];
+    const actions = [];
+
     if (task.status === 'UNASSIGNED') {
-      return [{ key: 'assign', label: 'Phân công', onClick: () => setAssigning(task) }];
+      actions.push({ key: 'assign', label: 'Phân công', onClick: () => setAssigning(task) });
     }
     if (task.status === 'IN_PROGRESS') {
-      return [{ key: 'unassign', label: 'Gỡ người', danger: true, onClick: () => setReleasing(task) }];
+      actions.push({ key: 'unassign', label: 'Gỡ người', danger: true, onClick: () => setReleasing(task) });
     }
-    // PENDING_INSPECTION: nút "Kiểm tra" thuộc F6, chưa có.
-    return [];
+    if (task.status === 'PENDING_INSPECTION') {
+      actions.push({ key: 'inspect', label: 'Kiểm tra', onClick: () => setInspecting(task) });
+    }
+    // Hủy tay chỉ dành cho việc dọn HẰNG NGÀY đang mở: hủy việc dọn sau trả phòng sẽ để
+    // phòng «Chờ dọn» mà không còn việc nào. Backend cũng chặn, ẩn nút chỉ để khỏi bấm nhầm.
+    if (task.taskType === 'STAYOVER' && COLUMNS.includes(task.status)) {
+      actions.push({ key: 'cancel', label: 'Hủy việc', danger: true, onClick: () => setCancelling(task) });
+    }
+    return actions;
   }
 
   const visibleTabs = [...COLUMNS, CLOSED];
@@ -217,6 +260,7 @@ export default function HousekeepingPage() {
                 staffName={staffNames[task.assignedStaffId]}
                 today={today}
                 actions={actionsFor(task)}
+                onShowPreviousInspection={setPreviousOf}
               />
             ))}
           </section>
@@ -256,6 +300,29 @@ export default function HousekeepingPage() {
             // Tạo xong thường là muốn giao luôn — mở tiếp hộp thoại phân công cho đỡ một bước.
             setAssigning(created);
           }}
+        />
+      )}
+
+      {inspecting && (
+        <InspectTaskModal
+          task={inspecting}
+          staffName={staffNames[inspecting.assignedStaffId]}
+          onClose={() => setInspecting(null)}
+          onInspected={finishInspection}
+        />
+      )}
+
+      {previousOf && (
+        <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />
+      )}
+
+      {cancelling && (
+        <ConfirmDialog
+          title={`Hủy việc dọn hằng ngày của phòng ${cancelling.roomNumber}?`}
+          message="Việc dọn đóng lại vĩnh viễn với lý do «Quản lý hủy». Phòng giữ nguyên «Đang sử dụng»."
+          confirmLabel="Hủy việc dọn"
+          onCancel={() => setCancelling(null)}
+          onConfirm={handleConfirmCancel}
         />
       )}
 

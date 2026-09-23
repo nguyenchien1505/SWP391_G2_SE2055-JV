@@ -66,3 +66,38 @@ export async function completeTask(id) {
   const { data } = await api.patch(`/housekeeping/tasks/${id}/complete`);
   return data;
 }
+
+/**
+ * POST .../inspection — Quản lý chi nhánh nghiệm thu phòng sau khi nhân viên báo dọn xong.
+ *
+ * Trả về BIÊN BẢN kiểm tra (không phải việc dọn). «Đạt» thì phòng sang «Trống / Sẵn sàng»;
+ * «Không đạt» thì phòng quay về «Chờ dọn», backend tự sinh việc dọn lại và trả id của nó ở
+ * `nextTaskId`. Lý do là BẮT BUỘC khi không đạt.
+ */
+export async function inspectTask(id, { result, reason }) {
+  const { data } = await api.post(`/housekeeping/tasks/${id}/inspection`, { result, reason });
+  return data;
+}
+
+/**
+ * GET .../inspection — biên bản kiểm tra của một việc dọn. Dùng cho liên kết "xem lần kiểm tra
+ * trước" trên thẻ việc dọn lại: truyền `parentTaskId`, không phải id của chính thẻ đó.
+ *
+ * Việc dọn chưa từng được kiểm tra thì trả 404 — nơi gọi tự hiện câu báo, không coi là lỗi hệ thống.
+ */
+export async function fetchInspection(taskId) {
+  const { data } = await api.get(`/housekeeping/tasks/${taskId}/inspection`);
+  return data;
+}
+
+/**
+ * PATCH .../cancel — hủy tay một việc dọn. Không có body: lý do luôn là "Quản lý hủy", hai lý
+ * do còn lại do hệ thống tự đặt khi phòng đổi trạng thái.
+ *
+ * Chỉ hủy được việc dọn HẰNG NGÀY. Việc dọn sau khi khách trả phòng mà hủy thì phòng sẽ kẹt ở
+ * «Chờ dọn» mà không còn việc nào, nên backend chặn — muốn dừng hẳn thì khóa phòng.
+ */
+export async function cancelTask(id) {
+  const { data } = await api.patch(`/housekeeping/tasks/${id}/cancel`);
+  return data;
+}

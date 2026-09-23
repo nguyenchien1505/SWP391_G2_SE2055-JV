@@ -4,6 +4,8 @@ import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateStayoverTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.service.HousekeepingService;
@@ -28,8 +30,7 @@ import java.util.UUID;
  * BR-PERM-05 (nhân viên Dọn dẹp nhận task và bấm hoàn thành).
  *
  * <p>Không có API tạo task CHECKOUT: hệ thống tự sinh khi phòng chuyển "Chờ dọn"
- * (BR-HK-01) — xem {@code HousekeepingRoomHooks}. API kiểm tra phòng sau dọn (BR-HK-06)
- * thuộc F6, chưa có.
+ * (BR-HK-01) — xem {@code HousekeepingRoomHooks}.
  *
  * <p>Rule URL trong {@code SecurityConfig}: {@code GET /housekeeping/**} cho cả 4 role,
  * {@code PATCH /housekeeping/tasks/*}{@code /complete} thêm {@code POSITION_HOUSEKEEPING},
@@ -106,5 +107,34 @@ public class HousekeepingTaskController {
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN') or hasAuthority('POSITION_HOUSEKEEPING')")
     public ResponseEntity<HousekeepingTaskResponse> completeTask(@PathVariable UUID id) {
         return ResponseEntity.ok(housekeepingService.completeTask(id));
+    }
+
+    /**
+     * S-13 — Manager nghiệm thu phòng sau khi nhân viên báo dọn xong (BR-HK-06, BR-HK-08).
+     * Trả <b>201</b> vì mỗi lần kiểm tra sinh ra một biên bản mới.
+     */
+    @PostMapping("/{id}/inspection")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
+    public ResponseEntity<InspectionRecordResponse> inspectTask(
+            @PathVariable UUID id,
+            @Valid @RequestBody InspectTaskRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(housekeepingService.inspectTask(id, request));
+    }
+
+    /** Biên bản kiểm tra của một task — hiện lý do «không đạt» trên thẻ việc dọn lại (BR-HK-12). */
+    @GetMapping("/{id}/inspection")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER','STAFF')")
+    public ResponseEntity<InspectionRecordResponse> getInspection(@PathVariable UUID id) {
+        return ResponseEntity.ok(housekeepingService.getInspection(id));
+    }
+
+    /**
+     * RM-20 — hủy tay một việc dọn. <b>Không có body</b>: lý do luôn là {@code MANAGER_MANUAL},
+     * hai lý do còn lại do hệ thống tự đặt khi phòng đổi trạng thái (BR-HK-09, BR-HK-10).
+     */
+    @PatchMapping("/{id}/cancel")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
+    public ResponseEntity<HousekeepingTaskResponse> cancelTask(@PathVariable UUID id) {
+        return ResponseEntity.ok(housekeepingService.cancelTask(id));
     }
 }

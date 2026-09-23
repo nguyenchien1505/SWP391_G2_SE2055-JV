@@ -136,3 +136,15 @@ export const taskCancelReasonLabel = (reason) => TASK_CANCEL_REASON[reason] ?? r
 export function compareNatural(a, b) {
   return String(a ?? '').localeCompare(String(b ?? ''), 'vi', { numeric: true });
 }
+
+// ── Kiểm tra phòng sau dọn (F6) — BR-HK-06, BR-HK-08 ───────────────────────
+
+/** Hai kết quả nghiệm thu. Tông màu mượn của trạng thái phòng mà mỗi kết quả dẫn tới. */
+export const INSPECTION_RESULT = {
+  PASS: { label: 'Đạt', tone: 'available' },
+  FAIL: { label: 'Không đạt', tone: 'dirty' },
+};
+
+export function inspectionResultMeta(result) {
+  return INSPECTION_RESULT[result] ?? { label: result ?? '—', tone: 'unavailable' };
+}

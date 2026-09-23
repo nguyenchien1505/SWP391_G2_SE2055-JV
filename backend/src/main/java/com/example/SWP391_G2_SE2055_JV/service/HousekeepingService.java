@@ -4,16 +4,21 @@ import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateStayoverTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
+import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
+import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
@@ -21,6 +26,7 @@ import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.AssignableStaffRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.InspectionRecordRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
@@ -34,6 +40,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -63,6 +70,8 @@ import java.util.stream.Collectors;
  * giờ để task và phòng lệch nhau.
  *
  * <p>Phản ứng khi PHÒNG đổi trạng thái (sinh/hủy task) nằm ở {@link HousekeepingRoomHooks}.
+ * Ngoại lệ DUY NHẤT đi ngược chiều đó là bước nghiệm thu không đạt (F6): lớp này tự sinh việc
+ * dọn lại để giữ đúng nguồn {@code INSPECTION_FAILED} — xem {@code createFollowUpTask}.
  *
  * <p>Mọi truy vấn đều lọc theo tenantId lấy từ session — không dùng {@code findAll()} trần.
  */
@@ -82,6 +91,7 @@ public class HousekeepingService {
     private final RoomRepository             roomRepository;
     private final LocationRepository         locationRepository;
     private final AssignableStaffRepository  assignableStaffRepository;
+    private final InspectionRecordRepository inspectionRepository;
     private final RoomStatusService          roomStatusService;
 
     /**
@@ -112,15 +122,7 @@ public class HousekeepingService {
     @Transactional(readOnly = true)
     public HousekeepingTaskResponse getTask(UUID id) {
         HousekeepingTask task = getOwnedTask(id);
-
-        boolean outOfScope =
-            (SecurityUtils.hasRole(Role.STAFF)
-                && !SecurityUtils.getCurrentUserId().equals(task.getAssignedStaffId()))
-            || (SecurityUtils.hasRole(Role.MANAGER)
-                && !SecurityUtils.getCurrentLocationId().equals(task.getLocationId()));
-        if (outOfScope) {
-            throw new ResourceNotFoundException("HousekeepingTask", "id", id);
-        }
+        assertCanView(task);
         return toResponse(task);
     }
 
@@ -283,6 +285,84 @@ public class HousekeepingService {
             .toList();
     }
 
+    /**
+     * S-13 — Manager nghiệm thu phòng sau khi nhân viên báo dọn xong (BR-HK-06, BR-HK-08,
+     * BR-HK-12). Chỉ task CHECKOUT đang «Chờ kiểm tra» mới đi qua bước này.
+     *
+     * <p>ĐẠT hay KHÔNG ĐẠT thì task gốc đều sang {@code COMPLETED} — không có trạng thái FAILED
+     * (BR-HK-06). Kết quả nằm ở {@link InspectionRecord}; không đạt thì sinh thêm việc dọn lại
+     * trỏ ngược về task gốc (BR-HK-12) và phòng quay về «Chờ dọn».
+     */
+    @Transactional
+    public InspectionRecordResponse inspectTask(UUID id, InspectTaskRequest request) {
+        HousekeepingTask task = getOwnedTask(id);
+        assertManagesLocation(task.getLocationId());
+        assertPendingInspection(task);
+
+        boolean failed = request.getResult() == InspectionResult.FAIL;
+        String reason = normalize(request.getReason());
+        if (failed && reason == null) {
+            throw new BusinessException("Kiểm tra không đạt thì bắt buộc nhập lý do.");
+        }
+        Room room = roomOf(task);
+
+        task.setStatus(HousekeepingTaskStatus.COMPLETED);
+        task.setCompletedAt(LocalDateTime.now());
+        taskRepository.saveAndFlush(task);          // BẮT BUỘC — xem javadoc createFollowUpTask
+
+        HousekeepingTask next = failed ? createFollowUpTask(task) : null;
+        roomStatusService.applyInspection(room, request.getResult(), reason, task.getId());
+
+        log.info("Kiểm tra phòng {} sau task {}: {}", room.getRoomNumber(), id, request.getResult());
+        return InspectionRecordResponse.fromEntity(
+            inspectionRepository.save(inspectionRecord(task, request.getResult(), reason, next)));
+    }
+
+    /**
+     * Biên bản kiểm tra của một task — dùng để hiện lý do «không đạt» trên thẻ việc dọn lại
+     * (BR-HK-12). Cùng phạm vi xem với {@link #getTask}.
+     */
+    @Transactional(readOnly = true)
+    public InspectionRecordResponse getInspection(UUID taskId) {
+        HousekeepingTask task = getOwnedTask(taskId);
+        assertCanView(task);
+
+        return inspectionRepository.findByTenantIdAndTaskId(task.getTenantId(), taskId)
+            .map(InspectionRecordResponse::fromEntity)
+            .orElseThrow(() -> new ResourceNotFoundException("InspectionRecord", "taskId", taskId));
+    }
+
+    /**
+     * RM-20 — Manager hủy tay một việc dọn đang mở. Lý do luôn là {@code MANAGER_MANUAL}: hai
+     * lý do còn lại do hệ thống tự đặt khi phòng đổi trạng thái (BR-HK-09, BR-HK-10), nên
+     * endpoint này không nhận body.
+     *
+     * <p>Q13 (chốt 22/09/2026): chỉ hủy được việc dọn hằng ngày. Hủy việc dọn sau khi khách trả
+     * phòng sẽ để lại phòng «Chờ dọn»/«Đang dọn» mà không còn việc nào — phá bất biến BR-HK-01.
+     * Muốn dừng hẳn thì chuyển phòng sang «Không khả dụng», lúc đó hệ thống tự hủy (BR-HK-09).
+     */
+    @Transactional
+    public HousekeepingTaskResponse cancelTask(UUID id) {
+        HousekeepingTask task = getOwnedTask(id);
+        assertManagesLocation(task.getLocationId());
+
+        if (!task.isOpen()) {
+            throw new BusinessException("Việc dọn này đã đóng, không hủy được nữa.");
+        }
+        if (isCheckout(task)) {
+            throw new BusinessException("Muốn dừng việc dọn sau khi khách trả phòng, "
+                + "hãy chuyển phòng sang «Không khả dụng».");
+        }
+
+        // Không đụng tới phòng: dọn hằng ngày vốn không kéo theo trạng thái phòng (BR-HK-05).
+        task.setStatus(HousekeepingTaskStatus.CANCELLED);
+        task.setCancelReason(TaskCancelReason.MANAGER_MANUAL);
+        task.setCancelledAt(LocalDateTime.now());
+
+        log.info("Hủy task {} theo yêu cầu của quản lý", id);
+        return toResponse(taskRepository.save(task));
+    }
+
     // ── Nội bộ ──────────────────────────────────────────────────────────────
 
     /**
@@ -327,6 +407,75 @@ public class HousekeepingService {
                 "Nhân viên không có ca làm việc ngày %s — chỉ gán task cho người có ca trong ngày.",
                 date));
         }
+    }
+
+    /**
+     * Ai được XEM một task — BR-PERM-05. Nhân viên chỉ thấy task của chính mình, Manager chỉ
+     * thấy task trong Location của mình, Giám đốc thấy cả Tenant. Ngoài phạm vi trả 404 để
+     * không lộ task có tồn tại. Dùng chung cho {@link #getTask} và {@link #getInspection}.
+     */
+    private void assertCanView(HousekeepingTask task) {
+        boolean outOfScope =
+            (SecurityUtils.hasRole(Role.STAFF)
+                && !SecurityUtils.getCurrentUserId().equals(task.getAssignedStaffId()))
+            || (SecurityUtils.hasRole(Role.MANAGER)
+                && !SecurityUtils.getCurrentLocationId().equals(task.getLocationId()));
+        if (outOfScope) {
+            throw new ResourceNotFoundException("HousekeepingTask", "id", task.getId());
+        }
+    }
+
+    /**
+     * BR-HK-06: chỉ việc dọn sau check-out mới có bước nghiệm thu, và chỉ nghiệm thu đúng MỘT
+     * lần — kiểm xong task sang COMPLETED nên không quay lại «Chờ kiểm tra» được.
+     */
+    private static void assertPendingInspection(HousekeepingTask task) {
+        if (!isCheckout(task) || task.getStatus() != HousekeepingTaskStatus.PENDING_INSPECTION) {
+            throw new BusinessException(
+                "Chỉ kiểm tra được việc dọn sau khi khách trả phòng và đang chờ kiểm tra.");
+        }
+    }
+
+    /**
+     * BR-HK-12: kiểm tra không đạt thì sinh việc dọn lại, trỏ ngược về task gốc qua
+     * {@code parentTaskId}. KHÔNG gọi {@code HousekeepingRoomHooks.onRoomBecameDirty}: hook đó
+     * sinh task nguồn {@code CHECKOUT_AUTO}, không phân biệt được với lần dọn đầu.
+     *
+     * <p>⚠️ Task gốc phải được {@code saveAndFlush} TRƯỚC khi gọi hàm này. Hai task cùng khóa
+     * {@code room:CHECKOUT} của unique {@code uk_hk_open_task_per_room_type} (BR-HK-11); id sinh
+     * kiểu UUID nên {@code save} chưa INSERT ngay, và khi flush thì Hibernate chạy INSERT trước
+     * UPDATE — task mới sẽ chào đời trong lúc task gốc vẫn đang mở → 409.
+     */
+    private HousekeepingTask createFollowUpTask(HousekeepingTask origin) {
+        return taskRepository.save(HousekeepingTask.builder()
+            .tenantId(origin.getTenantId())
+            .locationId(origin.getLocationId())
+            .roomId(origin.getRoomId())
+            .taskType(HousekeepingTaskType.CHECKOUT)
+            .status(HousekeepingTaskStatus.UNASSIGNED)
+            .createdSource(TaskCreatedSource.INSPECTION_FAILED)
+            .parentTaskId(origin.getId())
+            .build());
+    }
+
+    /** Biên bản nghiệm thu — người kiểm tra luôn là người đang đăng nhập (BR-ROOM-02). */
+    private static InspectionRecord inspectionRecord(HousekeepingTask task, InspectionResult result,
+                                                     String reason, HousekeepingTask next) {
+        return InspectionRecord.builder()
+            .tenantId(task.getTenantId())
+            .taskId(task.getId())
+            .roomId(task.getRoomId())
+            .inspectorId(SecurityUtils.getCurrentUserId())
+            .result(result)
+            .reason(reason)
+            .inspectedAt(LocalDateTime.now())
+            .nextTaskId(next == null ? null : next.getId())
+            .build();
+    }
+
+    /** Ô lý do để trống hoặc toàn khoảng trắng coi như không nhập. */
+    private static String normalize(String reason) {
+        return StringUtils.hasText(reason) ? reason.trim() : null;
     }
 
     /**

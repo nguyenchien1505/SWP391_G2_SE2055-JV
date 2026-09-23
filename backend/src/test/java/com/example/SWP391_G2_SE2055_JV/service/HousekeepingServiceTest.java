@@ -3,16 +3,21 @@ package com.example.SWP391_G2_SE2055_JV.service;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
+import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
+import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
@@ -20,11 +25,13 @@ import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.AssignableStaffRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.InspectionRecordRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
+import com.example.SWP391_G2_SE2055_JV.config.CustomUserDetails;
 import com.example.SWP391_G2_SE2055_JV.support.TestAuth;
 import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -32,11 +39,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -45,6 +55,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -80,6 +91,7 @@ class HousekeepingServiceTest {
     @Mock RoomRepository             roomRepository;
     @Mock LocationRepository         locationRepository;
     @Mock AssignableStaffRepository  assignableStaffRepository;
+    @Mock InspectionRecordRepository inspectionRepository;
     @Mock RoomStatusService          roomStatusService;
 
     @InjectMocks HousekeepingService service;
@@ -342,6 +354,240 @@ class HousekeepingServiceTest {
         }
     }
 
+    // ── Kiểm tra phòng sau dọn — BR-HK-06, BR-HK-08, BR-HK-12 ──────────
+
+    @Nested
+    class InspectTask {
+
+        private CustomUserDetails manager;
+
+        @BeforeEach
+        void loginAsManager() {
+            manager = TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+        }
+
+        /** BR-HK-06: ĐẠT → task xong hẳn, phòng sang «Trống / Sẵn sàng», KHÔNG sinh việc mới. */
+        @Test
+        void shouldCompleteTaskAndMakeRoomAvailableWhenInspectionPasses() {
+            HousekeepingTask task = pendingInspectionTask();
+            Room room = stubInspectReady(task);
+
+            InspectionRecordResponse record =
+                service.inspectTask(task.getId(), inspectRequest(InspectionResult.PASS, null));
+
+            assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.COMPLETED);
+            assertThat(task.getCompletedAt()).isNotNull();
+            assertThat(record.getNextTaskId()).isNull();
+            verify(roomStatusService).applyInspection(room, InspectionResult.PASS, null, task.getId());
+            verify(taskRepository, never()).save(any(HousekeepingTask.class));
+        }
+
+        /** BR-HK-08: không đạt mà bỏ trống lý do thì chặn trước khi đụng vào phòng. */
+        @Test
+        void shouldRequireReasonWhenInspectionFails() {
+            HousekeepingTask task = pendingInspectionTask();
+            stubTask(task);
+
+            assertThatThrownBy(() ->
+                service.inspectTask(task.getId(), inspectRequest(InspectionResult.FAIL, "   ")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("bắt buộc nhập lý do")
+                .hasMessageNotContaining("BR-");
+
+            assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.PENDING_INSPECTION);
+            verifyNoInteractions(roomStatusService, inspectionRepository);
+        }
+
+        /** BR-HK-12: việc dọn lại là task MỚI, nguồn INSPECTION_FAILED, trỏ ngược về task gốc. */
+        @Test
+        void shouldCreateFollowUpTaskLinkedToParentWhenInspectionFails() {
+            HousekeepingTask task = pendingInspectionTask();
+            Room room = stubInspectReady(task);
+
+            InspectionRecordResponse record =
+                service.inspectTask(task.getId(), inspectRequest(InspectionResult.FAIL, "Nhà tắm còn bẩn"));
+
+            ArgumentCaptor<HousekeepingTask> created = ArgumentCaptor.forClass(HousekeepingTask.class);
+            verify(taskRepository).save(created.capture());
+            HousekeepingTask next = created.getValue();
+            assertThat(next.getCreatedSource()).isEqualTo(TaskCreatedSource.INSPECTION_FAILED);
+            assertThat(next.getTaskType()).isEqualTo(HousekeepingTaskType.CHECKOUT);
+            assertThat(next.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
+            assertThat(next.getParentTaskId()).isEqualTo(task.getId());
+            assertThat(next.getRoomId()).isEqualTo(ROOM_ID);
+
+            // BR-HK-06: task gốc vẫn COMPLETED — không có trạng thái FAILED.
+            assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.COMPLETED);
+            assertThat(record.getNextTaskId()).isEqualTo(next.getId());
+            assertThat(record.getReason()).isEqualTo("Nhà tắm còn bẩn");
+            verify(roomStatusService)
+                .applyInspection(room, InspectionResult.FAIL, "Nhà tắm còn bẩn", task.getId());
+        }
+
+        /**
+         * BR-HK-11 + {@code uk_hk_open_task_per_room_type}: task gốc và việc dọn lại dùng chung
+         * khóa {@code phòng:CHECKOUT}. Phải đẩy UPDATE task gốc xuống DB TRƯỚC khi INSERT task
+         * mới, nếu không Hibernate gộp flush và INSERT chạy trước UPDATE → 409.
+         */
+        @Test
+        void shouldFlushOriginalTaskBeforeCreatingFollowUp() {
+            HousekeepingTask task = pendingInspectionTask();
+            stubInspectReady(task);
+
+            service.inspectTask(task.getId(), inspectRequest(InspectionResult.FAIL, "Còn tóc trên sàn"));
+
+            InOrder order = inOrder(taskRepository);
+            order.verify(taskRepository).saveAndFlush(task);
+            order.verify(taskRepository).save(any(HousekeepingTask.class));
+        }
+
+        @Test
+        void shouldRecordCurrentManagerAsInspector() {
+            HousekeepingTask task = pendingInspectionTask();
+            stubInspectReady(task);
+
+            service.inspectTask(task.getId(), inspectRequest(InspectionResult.PASS, null));
+
+            ArgumentCaptor<InspectionRecord> saved = ArgumentCaptor.forClass(InspectionRecord.class);
+            verify(inspectionRepository).save(saved.capture());
+            assertThat(saved.getValue().getInspectorId()).isEqualTo(manager.getId());
+            assertThat(saved.getValue().getTenantId()).isEqualTo(TENANT_ID);
+            assertThat(saved.getValue().getInspectedAt()).isNotNull();
+        }
+
+        /** BR-HK-06: dọn hằng ngày không đi qua bước nghiệm thu. */
+        @Test
+        void shouldRejectInspectingStayoverTask() {
+            HousekeepingTask task = task(HousekeepingTaskType.STAYOVER,
+                HousekeepingTaskStatus.IN_PROGRESS, STAFF_ID);
+            stubTask(task);
+
+            assertThatThrownBy(() ->
+                service.inspectTask(task.getId(), inspectRequest(InspectionResult.PASS, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("chờ kiểm tra")
+                .hasMessageNotContaining("BR-");
+            verifyNoInteractions(roomStatusService);
+        }
+
+        /** Nghiệm thu đúng MỘT lần: task đã COMPLETED thì không kiểm lại được. */
+        @Test
+        void shouldRejectInspectingTaskNotPendingInspection() {
+            HousekeepingTask task = pendingInspectionTask();
+            task.setStatus(HousekeepingTaskStatus.COMPLETED);
+            stubTask(task);
+
+            assertThatThrownBy(() ->
+                service.inspectTask(task.getId(), inspectRequest(InspectionResult.PASS, null)))
+                .isInstanceOf(BusinessException.class);
+            verifyNoInteractions(roomStatusService, inspectionRepository);
+        }
+
+        /** Q8: task ở Location khác trả 404 — không lộ task có tồn tại. */
+        @Test
+        void shouldThrowNotFoundWhenManagerInspectsTaskOfAnotherLocation() {
+            HousekeepingTask task = pendingInspectionTask();
+            task.setLocationId(OTHER_LOCATION_ID);
+            stubTask(task);
+
+            assertThatThrownBy(() ->
+                service.inspectTask(task.getId(), inspectRequest(InspectionResult.PASS, null)))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(roomStatusService, inspectionRepository);
+        }
+
+        /** BR-HK-12: thẻ việc dọn lại tra ngược biên bản của task cha để hiện lý do. */
+        @Test
+        void shouldReturnInspectionOfTask() {
+            HousekeepingTask task = pendingInspectionTask();
+            stubTask(task);
+            when(inspectionRepository.findByTenantIdAndTaskId(TENANT_ID, task.getId()))
+                .thenReturn(Optional.of(InspectionRecord.builder()
+                    .tenantId(TENANT_ID).taskId(task.getId()).roomId(ROOM_ID)
+                    .inspectorId(manager.getId()).result(InspectionResult.FAIL)
+                    .reason("Nhà tắm còn bẩn").inspectedAt(LocalDateTime.now()).build()));
+
+            assertThat(service.getInspection(task.getId()).getReason()).isEqualTo("Nhà tắm còn bẩn");
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenTaskHasNoInspection() {
+            HousekeepingTask task = pendingInspectionTask();
+            stubTask(task);
+            when(inspectionRepository.findByTenantIdAndTaskId(TENANT_ID, task.getId()))
+                .thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getInspection(task.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    // ── Hủy task — BR-HK-09, Q13 ─────────────────────────────
+
+    @Nested
+    class CancelTask {
+
+        @BeforeEach
+        void loginAsManager() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+        }
+
+        /** Hủy tay luôn mang lý do MANAGER_MANUAL, và KHÔNG đụng tới phòng (BR-HK-05). */
+        @Test
+        void shouldCancelOpenStayoverWithManagerManualReason() {
+            HousekeepingTask task = inProgressTask(HousekeepingTaskType.STAYOVER);
+            stubTask(task);
+            lenient().when(taskRepository.save(any(HousekeepingTask.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+            lenient().when(roomRepository.findByIdAndTenantIdAndActiveTrue(ROOM_ID, TENANT_ID))
+                .thenReturn(Optional.of(room()));
+
+            service.cancelTask(task.getId());
+
+            assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.CANCELLED);
+            assertThat(task.getCancelReason()).isEqualTo(TaskCancelReason.MANAGER_MANUAL);
+            assertThat(task.getCancelledAt()).isNotNull();
+            verifyNoInteractions(roomStatusService);
+        }
+
+        @Test
+        void shouldRejectCancellingClosedTask() {
+            HousekeepingTask task = inProgressTask(HousekeepingTaskType.STAYOVER);
+            task.setStatus(HousekeepingTaskStatus.COMPLETED);
+            stubTask(task);
+
+            assertThatThrownBy(() -> service.cancelTask(task.getId()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("đã đóng");
+        }
+
+        /**
+         * Q13: hủy tay việc dọn sau check-out sẽ để phòng «Chờ dọn»/«Đang dọn» mà không còn
+         * việc nào — câu lỗi phải chỉ ra lối đi đúng chứ không chỉ nói "không được".
+         */
+        @Test
+        void shouldRejectCancellingCheckoutTask() {
+            HousekeepingTask task = inProgressTask(HousekeepingTaskType.CHECKOUT);
+            stubTask(task);
+
+            assertThatThrownBy(() -> service.cancelTask(task.getId()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Không khả dụng")
+                .hasMessageNotContaining("BR-");
+            verifyNoInteractions(roomStatusService);
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenCancellingTaskOfAnotherLocation() {
+            HousekeepingTask task = inProgressTask(HousekeepingTaskType.STAYOVER);
+            task.setLocationId(OTHER_LOCATION_ID);
+            stubTask(task);
+
+            assertThatThrownBy(() -> service.cancelTask(task.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
     // ── Gỡ ca tương lai — BR-HK-07, BR-SCH-17 ───────────────────────────────
 
     @Nested
@@ -439,6 +685,40 @@ class HousekeepingServiceTest {
     }
 
     // ── Dữ liệu mẫu ─────────────────────────────────────────────────────────
+
+    /** Stub đủ để một lệnh nghiệm thu chạy trót lọt; trả về phòng để verify lời gọi RoomStatusService. */
+    private Room stubInspectReady(HousekeepingTask task) {
+        stubTask(task);
+        Room room = room();
+        room.setStatus(RoomStatus.INSPECTION);
+        when(roomRepository.findByIdAndTenantIdAndActiveTrue(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(taskRepository.saveAndFlush(any(HousekeepingTask.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(taskRepository.save(any(HousekeepingTask.class)))
+            .thenAnswer(invocation -> withId(invocation.getArgument(0)));
+        when(inspectionRepository.save(any(InspectionRecord.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        return room;
+    }
+
+    /** DB sinh id lúc INSERT; mock thì phải tự gán để test đối chiếu được nextTaskId. */
+    private static HousekeepingTask withId(HousekeepingTask task) {
+        if (task.getId() == null) {
+            task.setId(UUID.randomUUID());
+        }
+        return task;
+    }
+
+    private static InspectTaskRequest inspectRequest(InspectionResult result, String reason) {
+        InspectTaskRequest request = new InspectTaskRequest();
+        request.setResult(result);
+        request.setReason(reason);
+        return request;
+    }
+
+    private static HousekeepingTask pendingInspectionTask() {
+        return task(HousekeepingTaskType.CHECKOUT, HousekeepingTaskStatus.PENDING_INSPECTION, STAFF_ID);
+    }
 
     /** Stub đủ để một lệnh gán chạy trót lọt; trả về phòng để test verify lời gọi RoomStatusService. */
     private Room stubAssignReady(HousekeepingTask task) {
