@@ -13,6 +13,44 @@ export async function fetchStaffDirectory({ size = 200 } = {}) {
   return data.content ?? [];
 }
 
+/**
+ * Danh sách tài khoản theo vai trò. Số Manager bị chặn bởi số Location (mỗi Location 1
+ * Manager) nên lấy trọn một lần rồi lọc / phân trang phía client.
+ */
+export async function fetchUsersByRole(role, { size = 200 } = {}) {
+  const { data } = await api.get('/users', {
+    params: { role, page: 0, size, sort: 'createdAt,desc' },
+  });
+  return data.content ?? [];
+}
+
+/**
+ * BR-USER-03: tạo hồ sơ + tài khoản trong 1 bước. Response có `tempPassword` — chỉ hiển
+ * thị ĐÚNG MỘT LẦN (BR-USER-07), không lấy lại được.
+ */
+export async function createUser(payload) {
+  const { data } = await api.post('/users', payload);
+  return data; // { user, tempPassword }
+}
+
+/** Sửa hồ sơ; trường để null thì giữ nguyên. `enabled` dùng để khóa / mở khóa tạm. */
+export async function updateUser(id, payload) {
+  const { data } = await api.put(`/users/${id}`, payload);
+  return data;
+}
+
+/** BR-USER-04: cho nghỉ việc là xóa mềm — tài khoản chuyển TERMINATED, không hoàn tác. */
+export async function terminateUser(id) {
+  const { data } = await api.delete(`/users/${id}`);
+  return data;
+}
+
+/** Cấp lại mật khẩu tạm — response có `tempPassword`, hiển thị đúng một lần. */
+export async function resetUserPassword(id) {
+  const { data } = await api.post(`/users/${id}/reset-password`);
+  return data; // { user, tempPassword }
+}
+
 /** Gom nhân sự theo locationId: { [locationId]: { manager, staffCount } }. */
 export function groupStaffByLocation(users) {
   const result = {};

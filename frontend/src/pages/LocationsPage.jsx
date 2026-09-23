@@ -10,6 +10,7 @@ import {
 } from '../api/locations';
 import { fetchStaffDirectory, groupStaffByLocation } from '../api/users';
 import LocationForm from '../components/LocationForm';
+import FormModal from '../components/FormModal';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -36,9 +37,22 @@ export default function LocationsPage() {
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  const [editing, setEditing] = useState(null); // null = đang ở chế độ thêm mới
+  // Pop-up tạo / sửa: formOpen = đang mở; editing = null là tạo mới, có giá trị là đang sửa.
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [banner, setBanner] = useState(null); // { type, text }
   const [pendingDelete, setPendingDelete] = useState(null);
+
+  function openForm(row = null) {
+    setEditing(row);
+    setBanner(null);
+    setFormOpen(true);
+  }
+
+  function closeForm() {
+    setFormOpen(false);
+    setEditing(null);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -105,7 +119,7 @@ export default function LocationsPage() {
         });
         setBanner({ type: 'success', text: 'Đã cập nhật thông tin liên hệ.' });
       }
-      setEditing(null);
+      closeForm();
       await load();
       return null;
     } catch (err) {
@@ -141,10 +155,7 @@ export default function LocationsPage() {
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => {
-              setEditing(null);
-              setBanner(null);
-            }}
+            onClick={() => openForm()}
           >
             + Thêm khách sạn mới
           </button>
@@ -191,7 +202,7 @@ export default function LocationsPage() {
         </div>
       )}
 
-      <div className="split">
+      <div>
         <section className="panel">
           <div className="toolbar">
             <input
@@ -228,7 +239,7 @@ export default function LocationsPage() {
                   : 'Không có khách sạn nào khớp bộ lọc.'}
               </p>
               {rows.length === 0 && canManage && (
-                <p className="muted">Dùng biểu mẫu bên phải để thêm khách sạn đầu tiên.</p>
+                <p className="muted">Bấm "+ Thêm khách sạn mới" để thêm khách sạn đầu tiên.</p>
               )}
             </div>
           )}
@@ -288,10 +299,7 @@ export default function LocationsPage() {
                           <button
                             type="button"
                             className="btn btn--ghost btn--sm"
-                            onClick={() => {
-                              setEditing(row);
-                              setBanner(null);
-                            }}
+                            onClick={() => openForm(row)}
                           >
                             Sửa
                           </button>
@@ -340,16 +348,6 @@ export default function LocationsPage() {
             </div>
           </div>
         </section>
-
-        <aside className="panel panel--form">
-          <LocationForm
-            key={editing?.id ?? 'new'}
-            editing={editing}
-            canManage={canManage}
-            onCancel={() => setEditing(null)}
-            onSubmit={handleSubmit}
-          />
-        </aside>
       </div>
 
       <div className="note">
@@ -364,6 +362,18 @@ export default function LocationsPage() {
           </p>
         </div>
       </div>
+
+      {formOpen && (
+        <FormModal onClose={closeForm}>
+          <LocationForm
+            key={editing?.id ?? 'new'}
+            editing={editing}
+            canManage={canManage}
+            onCancel={closeForm}
+            onSubmit={handleSubmit}
+          />
+        </FormModal>
+      )}
 
       {pendingDelete && (
         <ConfirmDialog

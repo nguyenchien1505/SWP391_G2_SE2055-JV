@@ -26,3 +26,8 @@ export const SUSPEND_REASON_LABEL = {
   PAYMENT_FAILED: "Thanh toán thất bại",
   ADMIN_LOCKED: "Admin khóa",
 } as const;
+
+export const LOCATION_STATUS_LABEL = {
+  NOT_OPERATIONAL: "Chưa vận hành",
+  OPERATIONAL: "Đang vận hành",
+} as const;

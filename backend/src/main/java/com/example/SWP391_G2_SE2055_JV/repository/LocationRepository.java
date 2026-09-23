@@ -27,4 +27,10 @@ public interface LocationRepository extends JpaRepository<Location, UUID> {
      * vốn bị chặn bởi quota gói dịch vụ (BR-SAAS-02) nên luôn là tập nhỏ.
      */
     Page<Location> findByTenantId(UUID tenantId, Pageable pageable);
+
+    /**
+     * BR-SAAS-02: số Location đang chiếm quota. Location xóa là xóa cứng (không có cột xóa
+     * mềm) nên đếm toàn bộ bản ghi của Tenant.
+     */
+    long countByTenantId(UUID tenantId);
 }

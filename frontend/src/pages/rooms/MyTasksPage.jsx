@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
 import { completeTask, fetchTasks } from '../../api/housekeeping';
+import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import TaskStatusBadge from '../../components/rooms/TaskStatusBadge';
 import { formatDate, todayIso } from './format';
 import { compareNatural, taskTypeLabel } from './roomLabels';
@@ -32,6 +33,7 @@ export default function MyTasksPage() {
   const [loadError, setLoadError] = useState('');
   const [banner, setBanner] = useState(null);       // { type, text }
   const [submittingId, setSubmittingId] = useState(null);
+  const [previousOf, setPreviousOf] = useState(null);   // việc dọn lại đang xem lý do không đạt
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,6 +126,12 @@ export default function MyTasksPage() {
                 {task.assignedDate && task.assignedDate < today && (
                   <span className="task-card__flag">Tồn đọng từ {formatDate(task.assignedDate)}</span>
                 )}
+                {/* BR-HK-12: người dọn lại cần biết lần trước không đạt ở chỗ nào. */}
+                {task.parentTaskId && (
+                  <button type="button" className="link-btn" onClick={() => setPreviousOf(task)}>
+                    Xem lý do phải dọn lại
+                  </button>
+                )}
               </div>
               <button
                 type="button"
@@ -162,6 +170,10 @@ export default function MyTasksPage() {
           ))}
         </ul>
       </section>
+
+      {previousOf && (
+        <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />
+      )}
     </div>
   );
 }

@@ -166,3 +166,27 @@ a.nav-item {
   margin: 0;
   font-weight: 600;
 }
+
+/* Danh sách cơ sở (Location) của Tenant. */
+.admin-page .location-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.admin-page .location-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 14px;
+}
+.admin-page .location-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 600;
+}
+.admin-page .location-card__line {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
