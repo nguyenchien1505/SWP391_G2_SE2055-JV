@@ -1,9 +1,12 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.ChangeRoomStatusRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.CreateRoomRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomStatusHistoryResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomStatusSummaryResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.UpdateRoomOperationalRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.UpdateRoomRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomStatusHistory;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
@@ -12,6 +15,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.ChangeSource;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
+import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.exception.UnauthorizedException;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
@@ -26,6 +30,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -47,15 +53,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * F1 — xem phòng (RM-06) và F2 — đổi trạng thái, lịch sử (RM-07, RM-11, RM-12). Trọng tâm là LỚP
+ * F1 — xem phòng (RM-06), F2 — đổi trạng thái, lịch sử (RM-07, RM-11, RM-12) và F3 — tạo/sửa/xóa
+ * phòng (RM-02 → RM-05). Trọng tâm là LỚP
  * PHẠM VI DỮ LIỆU: ai được thấy / thao tác phòng nào. Mọi phụ thuộc đều mock (luật đổi trạng
- * thái đã test ở {@code RoomStatusServiceTest}, {@code RoomTransitionPolicyTest}); người đăng
- * nhập dựng bằng {@link TestAuth}.
+ * thái đã test ở {@code RoomStatusServiceTest}, {@code RoomTransitionPolicyTest}; điều kiện được
+ * phép ghi ở {@code RoomValidatorTest}); người đăng nhập dựng bằng {@link TestAuth}.
  */
 @ExtendWith(MockitoExtension.class)
 class RoomServiceTest {
@@ -72,6 +83,7 @@ class RoomServiceTest {
     @Mock UserRepository              userRepository;
     @Mock RoomStatusService           roomStatusService;
     @Mock RoomTransitionPolicy        transitionPolicy;
+    @Mock RoomValidator               validator;
 
     @InjectMocks RoomService roomService;
 
@@ -428,7 +440,331 @@ class RoomServiceTest {
         }
     }
 
+    // ── F3: tạo phòng — POST /rooms (RM-02) ────────────────────────────────
+
+    @Nested
+    class CreateRoom {
+
+        /** BR-ROOM-10: phòng mới vào «Chờ dọn», và bước ghi lịch sử + sinh việc dọn phải chạy. */
+        @Test
+        void shouldCreateRoomInDirtyStatusAndRecordInitialStatus() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            stubCreateDependencies("Hạng sang");
+
+            RoomResponse response = roomService.createRoom(request("301", "3", 2, null));
+
+            Room saved = capturedSavedRoom();
+            assertThat(saved.getStatus()).isEqualTo(RoomStatus.DIRTY);
+            assertThat(saved.getTenantId()).isEqualTo(TENANT_ID);
+            assertThat(saved.getLocationId()).isEqualTo(LOCATION_ID);
+            assertThat(saved.isActive()).isTrue();
+            assertThat(response.getRoomTypeName()).isEqualTo("Hạng sang");
+            verify(roomStatusService).recordInitialStatus(saved);
+        }
+
+        /** Thứ tự kiểm tra cố định: phạm vi dữ liệu trước, nghiệp vụ sau. */
+        @Test
+        void shouldValidateInFixedOrderBeforeSaving() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            stubCreateDependencies("Đôi");
+
+            roomService.createRoom(request("301", "3", 2, null));
+
+            InOrder order = inOrder(validator, roomRepository, roomStatusService);
+            order.verify(validator).assertLocationInTenant(LOCATION_ID, TENANT_ID);
+            order.verify(validator).requireActiveRoomType(ROOM_TYPE_ID, TENANT_ID);
+            order.verify(validator).assertRoomNumberFree(LOCATION_ID, "301", null);
+            order.verify(validator).assertRoomQuotaAvailable(TENANT_ID);
+            order.verify(roomRepository).save(any(Room.class));
+            order.verify(roomStatusService).recordInitialStatus(any(Room.class));
+        }
+
+        @Test
+        void shouldTrimRoomNumberAndFloor() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            stubCreateDependencies("Đôi");
+
+            roomService.createRoom(request("  301 ", " B1 ", 2, "  Phòng góc  "));
+
+            Room saved = capturedSavedRoom();
+            assertThat(saved.getRoomNumber()).isEqualTo("301");
+            assertThat(saved.getFloor()).isEqualTo("B1");
+            assertThat(saved.getNote()).isEqualTo("Phòng góc");
+            // Số phòng đưa đi kiểm tra trùng cũng phải là bản đã cắt khoảng trắng.
+            verify(validator).assertRoomNumberFree(LOCATION_ID, "301", null);
+        }
+
+        @Test
+        void shouldStoreBlankNoteAsNull() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            stubCreateDependencies("Đôi");
+
+            roomService.createRoom(request("301", "3", 2, "   "));
+
+            assertThat(capturedSavedRoom().getNote()).isNull();
+        }
+
+        /** Khách sạn của chuỗi khác: dừng ở bước đầu, không lưu gì. */
+        @Test
+        void shouldNotSaveWhenLocationBelongsToAnotherTenant() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            doThrow(new ResourceNotFoundException("Location", "id", LOCATION_ID))
+                .when(validator).assertLocationInTenant(LOCATION_ID, TENANT_ID);
+
+            assertThatThrownBy(() -> roomService.createRoom(request("301", "3", 2, null)))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(roomRepository, roomStatusService);
+        }
+
+        /** Hết hạn mức: đã qua 3 bước kiểm tra trước đó nhưng vẫn không được lưu. */
+        @Test
+        void shouldNotSaveWhenRoomQuotaReached() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            when(validator.requireActiveRoomType(ROOM_TYPE_ID, TENANT_ID)).thenReturn(roomType("Đôi"));
+            doThrow(new BusinessException("Đã dùng hết hạn mức 10 phòng của gói dịch vụ."))
+                .when(validator).assertRoomQuotaAvailable(TENANT_ID);
+
+            assertThatThrownBy(() -> roomService.createRoom(request("301", "3", 2, null)))
+                .isInstanceOf(BusinessException.class);
+            verifyNoInteractions(roomRepository, roomStatusService);
+        }
+
+        private void stubCreateDependencies(String roomTypeName) {
+            when(validator.requireActiveRoomType(ROOM_TYPE_ID, TENANT_ID)).thenReturn(roomType(roomTypeName));
+            when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        }
+
+        private CreateRoomRequest request(String roomNumber, String floor, Integer capacity, String note) {
+            CreateRoomRequest request = new CreateRoomRequest();
+            request.setLocationId(LOCATION_ID);
+            request.setRoomNumber(roomNumber);
+            request.setFloor(floor);
+            request.setRoomTypeId(ROOM_TYPE_ID);
+            request.setCapacity(capacity);
+            request.setNote(note);
+            return request;
+        }
+    }
+
+    // ── F3: sửa cấu trúc — PUT /rooms/{id} (RM-03) ─────────────────────────
+
+    @Nested
+    class UpdateRoom {
+
+        @Test
+        void shouldUpdateStructuralFields() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            Room room = stubOwnedRoomForUpdate(LOCATION_ID, RoomStatus.AVAILABLE);
+            when(validator.requireRoomType(ROOM_TYPE_ID, TENANT_ID)).thenReturn(roomType("Đôi"));
+
+            roomService.updateRoom(room.getId(), request(" 205 ", " 2 ", ROOM_TYPE_ID, 4, " View biển "));
+
+            assertThat(room.getRoomNumber()).isEqualTo("205");
+            assertThat(room.getFloor()).isEqualTo("2");
+            assertThat(room.getCapacity()).isEqualTo(4);
+            assertThat(room.getNote()).isEqualTo("View biển");
+        }
+
+        /** Lưu lại y nguyên số phòng cũ KHÔNG phải là trùng — không tốn thêm truy vấn. */
+        @Test
+        void shouldRecheckUniquenessOnlyWhenRoomNumberChanges() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            Room room = stubOwnedRoomForUpdate(LOCATION_ID, RoomStatus.AVAILABLE);
+            when(validator.requireRoomType(ROOM_TYPE_ID, TENANT_ID)).thenReturn(roomType("Đôi"));
+
+            roomService.updateRoom(room.getId(), request("101", "1", ROOM_TYPE_ID, 2, null));
+            verify(validator, never()).assertRoomNumberFree(any(), any(), any());
+
+            roomService.updateRoom(room.getId(), request("205", "1", ROOM_TYPE_ID, 2, null));
+            verify(validator).assertRoomNumberFree(LOCATION_ID, "205", room.getId());
+        }
+
+        /** BR-ORG-14: giữ nguyên loại phòng đã ẩn thì vẫn lưu được. */
+        @Test
+        void shouldKeepHiddenRoomTypeWhenUnchanged() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            Room room = stubOwnedRoomForUpdate(LOCATION_ID, RoomStatus.AVAILABLE);
+            when(validator.requireRoomType(ROOM_TYPE_ID, TENANT_ID)).thenReturn(roomType("Đã ẩn"));
+
+            roomService.updateRoom(room.getId(), request("101", "1", ROOM_TYPE_ID, 2, null));
+
+            verify(validator, never()).requireActiveRoomType(any(), any());
+        }
+
+        /** ĐỔI sang loại khác thì loại mới bắt buộc còn đang dùng. */
+        @Test
+        void shouldRequireActiveRoomTypeWhenSwitchingToAnotherType() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            Room room = stubOwnedRoomForUpdate(LOCATION_ID, RoomStatus.AVAILABLE);
+            UUID newRoomTypeId = UUID.randomUUID();
+            when(validator.requireActiveRoomType(newRoomTypeId, TENANT_ID)).thenReturn(roomType(newRoomTypeId, "Suite"));
+
+            roomService.updateRoom(room.getId(), request("101", "1", newRoomTypeId, 2, null));
+
+            assertThat(room.getRoomTypeId()).isEqualTo(newRoomTypeId);
+            verify(validator, never()).requireRoomType(any(), any());
+        }
+
+        @Test
+        void shouldNeverChangeStatusOrLocationOnUpdate() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            Room room = stubOwnedRoomForUpdate(LOCATION_ID, RoomStatus.UNAVAILABLE);
+            room.setUnavailableReason("Hỏng điều hòa");
+            when(validator.requireRoomType(ROOM_TYPE_ID, TENANT_ID)).thenReturn(roomType("Đôi"));
+
+            roomService.updateRoom(room.getId(), request("205", "2", ROOM_TYPE_ID, 4, null));
+
+            assertThat(room.getStatus()).isEqualTo(RoomStatus.UNAVAILABLE);
+            assertThat(room.getUnavailableReason()).isEqualTo("Hỏng điều hòa");
+            assertThat(room.getLocationId()).isEqualTo(LOCATION_ID);
+            verifyNoInteractions(roomStatusService);
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenUpdatingRoomOfAnotherTenant() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            UUID foreignRoomId = UUID.randomUUID();
+            when(roomRepository.findByIdAndTenantIdAndActiveTrue(foreignRoomId, TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> roomService.updateRoom(foreignRoomId, request("301", "3", ROOM_TYPE_ID, 2, null)))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(validator);
+        }
+
+        private UpdateRoomRequest request(String roomNumber, String floor, UUID roomTypeId,
+                                          Integer capacity, String note) {
+            UpdateRoomRequest request = new UpdateRoomRequest();
+            request.setRoomNumber(roomNumber);
+            request.setFloor(floor);
+            request.setRoomTypeId(roomTypeId);
+            request.setCapacity(capacity);
+            request.setNote(note);
+            return request;
+        }
+    }
+
+    // ── F3: sửa ghi chú vận hành — PATCH /rooms/{id} (RM-04) ───────────────
+
+    @Nested
+    class UpdateOperational {
+
+        /** BR-ROOM-04: Manager chỉ đụng được ghi chú, mọi thông tin cấu trúc giữ nguyên. */
+        @Test
+        void shouldUpdateOnlyNoteForManager() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            Room room = stubOwnedRoomForUpdate(LOCATION_ID, RoomStatus.OCCUPIED);
+            when(roomTypeRepository.findByIdAndTenantId(ROOM_TYPE_ID, TENANT_ID)).thenReturn(Optional.empty());
+
+            roomService.updateOperational(room.getId(), operationalRequest(" Điều hòa mới thay "));
+
+            assertThat(room.getNote()).isEqualTo("Điều hòa mới thay");
+            assertThat(room.getRoomNumber()).isEqualTo("101");
+            assertThat(room.getFloor()).isEqualTo("1");
+            assertThat(room.getCapacity()).isEqualTo(2);
+            assertThat(room.getRoomTypeId()).isEqualTo(ROOM_TYPE_ID);
+            assertThat(room.getStatus()).isEqualTo(RoomStatus.OCCUPIED);
+            verifyNoInteractions(validator, roomStatusService);
+        }
+
+        /** Gửi ghi chú rỗng nghĩa là XÓA ghi chú, không phải giữ nguyên. */
+        @Test
+        void shouldClearNoteWhenBlank() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            Room room = stubOwnedRoomForUpdate(LOCATION_ID, RoomStatus.AVAILABLE);
+            room.setNote("Ghi chú cũ");
+            when(roomTypeRepository.findByIdAndTenantId(ROOM_TYPE_ID, TENANT_ID)).thenReturn(Optional.empty());
+
+            roomService.updateOperational(room.getId(), operationalRequest("  "));
+
+            assertThat(room.getNote()).isNull();
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenManagerPatchesRoomOfAnotherLocation() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            Room otherLocationRoom = stubOwnedRoomForUpdate(OTHER_LOCATION_ID, RoomStatus.AVAILABLE);
+
+            assertThatThrownBy(() ->
+                roomService.updateOperational(otherLocationRoom.getId(), operationalRequest("Ghi chú")))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verify(roomRepository, never()).save(any(Room.class));
+        }
+
+        private UpdateRoomOperationalRequest operationalRequest(String note) {
+            UpdateRoomOperationalRequest request = new UpdateRoomOperationalRequest();
+            request.setNote(note);
+            return request;
+        }
+    }
+
+    // ── F3: xóa phòng — DELETE /rooms/{id} (RM-05) ─────────────────────────
+
+    @Nested
+    class DeleteRoom {
+
+        /** BR-ROOM-08: xóa MỀM — bản ghi vẫn còn để giữ lịch sử trạng thái. */
+        @Test
+        void shouldSoftDeleteRoom() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            Room room = stubOwnedRoomForUpdate(LOCATION_ID, RoomStatus.AVAILABLE);
+
+            roomService.deleteRoom(room.getId());
+
+            assertThat(room.isActive()).isFalse();
+            verify(validator).assertDeletable(room);
+            verify(roomRepository).save(room);
+            verify(roomRepository, never()).delete(any(Room.class));
+        }
+
+        @Test
+        void shouldNotSoftDeleteWhenConditionsNotMet() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            Room room = stubOwnedRoomForUpdate(LOCATION_ID, RoomStatus.AVAILABLE);
+            doThrow(new BusinessException("Phòng 101 còn việc dọn phòng chưa kết thúc."))
+                .when(validator).assertDeletable(room);
+
+            assertThatThrownBy(() -> roomService.deleteRoom(room.getId())).isInstanceOf(BusinessException.class);
+
+            assertThat(room.isActive()).isTrue();
+            verify(roomRepository, never()).save(any(Room.class));
+        }
+
+        @Test
+        void shouldThrowNotFoundWhenDeletingRoomOfAnotherTenant() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            UUID foreignRoomId = UUID.randomUUID();
+            when(roomRepository.findByIdAndTenantIdAndActiveTrue(foreignRoomId, TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> roomService.deleteRoom(foreignRoomId))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(validator);
+        }
+    }
+
     // ── Dữ liệu mẫu ─────────────────────────────────────────────────────────
+
+    /** Loại phòng đã tra sẵn, dùng cho các test F3 (validator đã được mock). */
+    private static RoomType roomType(String name) {
+        return roomType(ROOM_TYPE_ID, name);
+    }
+
+    private static RoomType roomType(UUID id, String name) {
+        return RoomType.builder().id(id).tenantId(TENANT_ID).name(name).build();
+    }
+
+    /** Phòng của Tenant hiện tại + stub {@code save} trả lại chính entity vừa nhận. */
+    private Room stubOwnedRoomForUpdate(UUID locationId, RoomStatus status) {
+        Room room = stubOwnedRoom(locationId, status);
+        lenient().when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        return room;
+    }
+
+    /** Entity thật sự được ghi xuống DB khi tạo phòng. */
+    private Room capturedSavedRoom() {
+        ArgumentCaptor<Room> saved = ArgumentCaptor.forClass(Room.class);
+        verify(roomRepository).save(saved.capture());
+        return saved.getValue();
+    }
 
     /** Phòng thuộc Tenant hiện tại, repository trả về khi tra theo id. */
     private Room stubOwnedRoom(UUID locationId, RoomStatus status) {

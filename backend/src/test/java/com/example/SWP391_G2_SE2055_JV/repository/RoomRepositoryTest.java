@@ -17,6 +17,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -182,7 +183,88 @@ class RoomRepositoryTest {
             .get().extracting(Room::getUnavailableReason).isEqualTo("Hỏng điều hòa");
     }
 
+    // ── F3: số phòng duy nhất trong Location — BR-ROOM-05 ──────────────────
+
+    @Test
+    void shouldDetectDuplicateOnlyAmongActiveRoomsOfSameLocation() {
+        // 101 đang hoạt động ở khách sạn A.
+        assertThat(roomRepository.existsByLocationIdAndRoomNumberAndActiveTrue(locationA, "101")).isTrue();
+        // 103 đã xóa mềm — số này coi như còn trống.
+        assertThat(roomRepository.existsByLocationIdAndRoomNumberAndActiveTrue(locationA, "103")).isFalse();
+        // G01 nằm ở khách sạn B, không đụng tới khách sạn A.
+        assertThat(roomRepository.existsByLocationIdAndRoomNumberAndActiveTrue(locationA, "G01")).isFalse();
+        assertThat(roomRepository.existsByLocationIdAndRoomNumberAndActiveTrue(locationB, "101")).isFalse();
+    }
+
+    /** Khi SỬA phòng: giữ nguyên số của chính nó không được tính là trùng. */
+    @Test
+    void shouldIgnoreEditedRoomItselfInUniquenessCheck() {
+        Room room101 = findByNumber(tenantId, "101");
+        Room room102 = findByNumber(tenantId, "102");
+
+        assertThat(roomRepository.existsByLocationIdAndRoomNumberAndActiveTrueAndIdNot(
+            locationA, "101", room101.getId())).isFalse();
+        // Nhưng đổi 102 thành 101 thì vẫn là trùng với phòng 101 đang có.
+        assertThat(roomRepository.existsByLocationIdAndRoomNumberAndActiveTrueAndIdNot(
+            locationA, "101", room102.getId())).isTrue();
+    }
+
+    /**
+     * Lưới an toàn ở tầng DB (uk_rooms_location_active_number): kể cả khi service quên kiểm tra,
+     * hoặc hai request cùng tạo một lúc, DB vẫn chặn. Tầng HTTP trả 409.
+     */
+    @Test
+    void shouldRejectDuplicateActiveRoomNumberInSameLocationAtDbLevel() {
+        Room duplicate = newRoom(locationA, "101");
+
+        assertThatThrownBy(() -> roomRepository.saveAndFlush(duplicate))
+            .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void shouldAllowSameRoomNumberInDifferentLocations() {
+        Room sameNumberElsewhere = roomRepository.saveAndFlush(newRoom(locationB, "101"));
+
+        assertThat(sameNumberElsewhere.getId()).isNotNull();
+        assertThat(roomRepository.existsByLocationIdAndRoomNumberAndActiveTrue(locationB, "101")).isTrue();
+    }
+
+    /** BR-ROOM-08: xóa mềm nhả lại số phòng — cột sinh active_room_number về NULL. */
+    @Test
+    void shouldAllowReusingRoomNumberAfterSoftDelete() {
+        // 103 trong dữ liệu mẫu đã ở trạng thái xóa mềm.
+        Room reused = roomRepository.saveAndFlush(newRoom(locationA, "103"));
+
+        assertThat(reused.getId()).isNotNull();
+        assertThat(roomRepository.search(tenantId, locationA, null, null, null, ALL).getContent())
+            .extracting(Room::getRoomNumber)
+            .contains("103");
+    }
+
+    // ── F3: ck_rooms_capacity ──────────────────────────────────────────────
+
+    /**
+     * Sức chứa phải lớn hơn 0. DTO đã chặn bằng {@code @Positive} (422); test này chứng minh DB
+     * cũng không nhận, để mọi đường ghi khác đều an toàn.
+     */
+    @Test
+    void shouldRejectNonPositiveCapacityAtDbLevel() {
+        Room room = newRoom(locationA, "401");
+        room.setCapacity(0);
+
+        assertThatThrownBy(() -> roomRepository.saveAndFlush(room))
+            .isInstanceOf(DataAccessException.class)
+            .hasMessageContaining("ck_rooms_capacity");
+    }
+
     // ── Dữ liệu ─────────────────────────────────────────────────────────────
+
+    /** Phòng mới hợp lệ (Trống / Sẵn sàng) ở một khách sạn cụ thể — dùng cho các test F3. */
+    private Room newRoom(UUID location, String number) {
+        return Room.builder()
+            .tenantId(tenantId).locationId(location).roomNumber(number).floor("4")
+            .roomTypeId(standard).capacity(2).status(RoomStatus.AVAILABLE).build();
+    }
 
     private Room newRoom(String number, RoomStatus status, String unavailableReason) {
         return Room.builder()

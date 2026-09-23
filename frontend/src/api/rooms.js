@@ -85,3 +85,35 @@ export async function changeRoomStatus(id, { targetStatus, reason }) {
   const { data } = await api.patch(`/rooms/${id}/status`, withoutEmpty({ targetStatus, reason }));
   return data;
 }
+
+/**
+ * POST /rooms — Giám đốc tạo phòng. Trả về 201 kèm phòng vừa tạo, luôn ở trạng thái «Chờ dọn»
+ * và đã có sẵn một việc dọn phòng chưa phân công.
+ *
+ * Lỗi mang câu tiếng Việt của backend: 400 (số phòng trùng, loại phòng đã ngừng dùng, hết hạn
+ * mức gói dịch vụ), 404 (khách sạn / loại phòng không thuộc chuỗi), 422 (thiếu trường bắt buộc).
+ */
+export async function createRoom(payload) {
+  const { data } = await api.post('/rooms', payload);
+  return data;
+}
+
+/** PUT /rooms/{id} — sửa thông tin cấu trúc, chỉ Giám đốc. Không đổi được trạng thái. */
+export async function updateRoom(id, payload) {
+  const { data } = await api.put(`/rooms/${id}`, payload);
+  return data;
+}
+
+/** PATCH /rooms/{id} — chỉ ghi chú vận hành, phần Quản lý chi nhánh được sửa. */
+export async function updateRoomNote(id, { note }) {
+  const { data } = await api.patch(`/rooms/${id}`, { note });
+  return data;
+}
+
+/**
+ * DELETE /rooms/{id} — xóa mềm, chỉ Giám đốc. Backend chặn cứng khi phòng không ở «Trống / Sẵn
+ * sàng» hoặc «Không khả dụng», còn việc dọn đang mở, hoặc còn tài sản cố định gắn vào.
+ */
+export async function deleteRoom(id) {
+  await api.delete(`/rooms/${id}`);
+}

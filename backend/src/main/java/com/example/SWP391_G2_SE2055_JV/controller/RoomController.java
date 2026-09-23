@@ -1,9 +1,12 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.ChangeRoomStatusRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.CreateRoomRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomStatusHistoryResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomStatusSummaryResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.UpdateRoomOperationalRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.UpdateRoomRequest;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.service.RoomService;
 import jakarta.validation.Valid;
@@ -12,11 +15,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,8 +35,13 @@ import java.util.UUID;
  * Phòng — BR-ROOM-*.
  *
  * <p>Path bị ràng buộc bởi rule URL có sẵn trong {@code SecurityConfig}: {@code GET /rooms/**}
- * cho cả 4 role, {@code PATCH /rooms/{id}/status} cho Manager và Lễ tân. Phạm vi dữ liệu
- * (Tenant, Location) và "ai được bấm bước nào" kiểm tra ở tầng service.
+ * cho cả 4 role, {@code PATCH /rooms/{id}/status} cho Manager và Lễ tân, {@code POST} và
+ * {@code DELETE} chỉ cho Giám đốc. Phạm vi dữ liệu (Tenant, Location) và "ai được bấm bước
+ * nào" kiểm tra ở tầng service.
+ *
+ * <p>Riêng {@code PUT /rooms/{id}} rơi vào rule chung {@code /rooms/**} nên tầng URL cho
+ * Manager đi qua; {@code @PreAuthorize} bên dưới mới là chốt chặn BR-ROOM-04. Hai tầng này
+ * cố ý không giống nhau: rule URL phải đủ rộng cho {@code PATCH /rooms/{id}} của Manager.
  */
 @RestController
 @RequestMapping("/rooms")
@@ -46,6 +58,13 @@ public class RoomController {
      */
     private static final String CAN_CHANGE_STATUS =
         "hasAnyRole('PLATFORM_ADMIN','MANAGER') or hasAuthority('POSITION_RECEPTION')";
+
+    /** BR-ROOM-04: chỉ Giám đốc tạo / sửa cấu trúc / xóa phòng, trên MỌI khách sạn của chuỗi. */
+    private static final String CAN_MANAGE_ROOM = "hasAnyRole('PLATFORM_ADMIN','DIRECTOR')";
+
+    /** BR-ROOM-04: Manager chỉ sửa được thông tin vận hành; Giám đốc cũng dùng được endpoint này. */
+    private static final String CAN_EDIT_OPERATIONAL =
+        "hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER')";
 
     private final RoomService roomService;
 
@@ -103,5 +122,56 @@ public class RoomController {
     public ResponseEntity<RoomResponse> changeStatus(@PathVariable UUID id,
                                                      @Valid @RequestBody ChangeRoomStatusRequest request) {
         return ResponseEntity.ok(roomService.changeStatus(id, request));
+    }
+
+    // ── F3: CRUD phòng ──────────────────────────────────────────────────────
+
+    /**
+     * RM-02 Giám đốc tạo phòng — BR-ROOM-04. Phòng mới luôn vào «Chờ dọn» và tự sinh một việc
+     * dọn chưa phân công (BR-ROOM-10, BR-HK-01); client không gửi {@code status}.
+     *
+     * <p>Lỗi: 400 (loại phòng đã ẩn, số phòng trùng, hết hạn mức gói dịch vụ), 403 (Manager, Lễ
+     * tân — chặn ngay ở tầng URL), 404 (khách sạn hoặc loại phòng không thuộc chuỗi của mình),
+     * 422 (thiếu trường bắt buộc, sức chứa ≤ 0).
+     */
+    @PostMapping
+    @PreAuthorize(CAN_MANAGE_ROOM)
+    public ResponseEntity<RoomResponse> createRoom(@Valid @RequestBody CreateRoomRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(roomService.createRoom(request));
+    }
+
+    /**
+     * RM-03 Giám đốc sửa thông tin cấu trúc — BR-ROOM-04, BR-ROOM-05. Không đổi được trạng thái
+     * và khách sạn của phòng.
+     */
+    @PutMapping("/{id}")
+    @PreAuthorize(CAN_MANAGE_ROOM)
+    public ResponseEntity<RoomResponse> updateRoom(@PathVariable UUID id,
+                                                   @Valid @RequestBody UpdateRoomRequest request) {
+        return ResponseEntity.ok(roomService.updateRoom(id, request));
+    }
+
+    /**
+     * RM-04 Manager sửa thông tin vận hành (ghi chú) — BR-ROOM-04. Giám đốc cũng dùng được.
+     * Phòng ngoài Location của Manager trả 404.
+     */
+    @PatchMapping("/{id}")
+    @PreAuthorize(CAN_EDIT_OPERATIONAL)
+    public ResponseEntity<RoomResponse> updateOperational(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateRoomOperationalRequest request) {
+        return ResponseEntity.ok(roomService.updateOperational(id, request));
+    }
+
+    /**
+     * RM-05 Giám đốc xóa phòng — BR-ROOM-08. Xóa mềm, và chỉ khi phòng đang «Trống / Sẵn sàng»
+     * hoặc «Không khả dụng», không còn việc dọn đang mở và không còn tài sản cố định gắn vào;
+     * vi phạm bất kỳ điều nào trả 400 kèm câu nêu rõ điều kiện chưa đạt.
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize(CAN_MANAGE_ROOM)
+    public ResponseEntity<Void> deleteRoom(@PathVariable UUID id) {
+        roomService.deleteRoom(id);
+        return ResponseEntity.noContent().build();
     }
 }

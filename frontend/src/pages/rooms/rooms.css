@@ -440,3 +440,43 @@
     flex: 1;
   }
 }
+
+/* ── F3: S-03 form tạo / sửa phòng ─────────────────────────────────── */
+/* styles.css mới định kiểu cho input và select trong .field, chưa có textarea. */
+.room-form textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 11px 12px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+.room-form textarea:focus {
+  outline: 2px solid rgba(46, 116, 181, 0.35);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+/* Ô sức chứa là số: bỏ mũi tên tăng/giảm cho khỏi chật trên điện thoại. */
+.room-form input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.room-form input[type='number']::-webkit-outer-spin-button,
+.room-form input[type='number']::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+@media (max-width: 860px) {
+  /* Vùng bấm ≥ 48px và nút trải hết chiều ngang — design.md mục 3. */
+  .room-form .form__actions {
+    flex-direction: column-reverse;
+  }
+  .room-form .form__actions .btn {
+    width: 100%;
+    min-height: 48px;
+  }
+}

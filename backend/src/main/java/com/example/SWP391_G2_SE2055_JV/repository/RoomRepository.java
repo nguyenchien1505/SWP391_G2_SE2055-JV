@@ -68,6 +68,20 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     Optional<Room> findByIdAndTenantIdAndActiveTrue(UUID id, UUID tenantId);
 
     /**
+     * BR-ROOM-05: số phòng duy nhất trong phạm vi LOCATION, không phải toàn hệ thống. Phòng đã
+     * xóa mềm KHÔNG chiếm chỗ — số phòng cũ được dùng lại, đúng như ràng buộc UNIQUE ở DB
+     * ({@code uk_rooms_location_active_number} trên cột sinh {@code active_room_number}).
+     */
+    boolean existsByLocationIdAndRoomNumberAndActiveTrue(UUID locationId, String roomNumber);
+
+    /**
+     * Bản dùng khi SỬA phòng: bỏ chính phòng đang sửa ra khỏi phép kiểm tra, nếu không thì lưu
+     * lại mà không đổi số phòng cũng bị báo trùng với chính nó.
+     */
+    boolean existsByLocationIdAndRoomNumberAndActiveTrueAndIdNot(UUID locationId, String roomNumber,
+                                                                UUID id);
+
+    /**
      * Danh sách phòng có lọc — S-02, S-06 (BR-ROOM-06: lọc ở server để màn hình điện thoại
      * không phải tải toàn bộ).
      *

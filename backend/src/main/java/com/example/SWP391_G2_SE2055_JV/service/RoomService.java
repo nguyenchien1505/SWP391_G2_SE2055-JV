@@ -1,9 +1,12 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.ChangeRoomStatusRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.CreateRoomRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomStatusHistoryResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomStatusSummaryResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.UpdateRoomOperationalRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.UpdateRoomRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomStatusHistory;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
@@ -17,6 +20,7 @@ import com.example.SWP391_G2_SE2055_JV.repository.RoomTypeRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -39,7 +43,8 @@ import java.util.stream.Collectors;
  *   <li>F2 — đổi trạng thái (RM-11, RM-12; ủy quyền cho {@link RoomStatusService}) và xem lịch sử
  *       trạng thái (RM-07). Mỗi phòng trả về kèm {@code allowedTargets} do
  *       {@link RoomTransitionPolicy} tính.</li>
- *   <li>F3 sẽ thêm tạo/sửa/xóa phòng.</li>
+ *   <li>F3 — Giám đốc tạo/sửa/xóa phòng (RM-02, RM-03, RM-05) và Manager sửa ghi chú vận
+ *       hành (RM-04). Điều kiện được phép ghi nằm ở {@link RoomValidator}.</li>
  * </ul>
  *
  * <p>Lớp này KHÔNG tự đổi trạng thái phòng: nó chỉ tải phòng đúng phạm vi rồi giao cho
@@ -53,6 +58,7 @@ import java.util.stream.Collectors;
  *   <li>Phòng ngoài phạm vi trả 404 chứ không phải 403, để không lộ việc phòng đó tồn tại.</li>
  * </ul>
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RoomService {
@@ -63,6 +69,7 @@ public class RoomService {
     private final UserRepository              userRepository;
     private final RoomStatusService           roomStatusService;
     private final RoomTransitionPolicy        transitionPolicy;
+    private final RoomValidator               validator;
 
     /**
      * S-02 Danh sách phòng, S-06 Sơ đồ phòng. Mọi bộ lọc đều tùy chọn và chạy ở server
@@ -129,6 +136,108 @@ public class RoomService {
         UUID scopedLocationId = scopeLocation(locationId);
         return RoomStatusSummaryResponse.of(
             scopedLocationId, roomRepository.countByStatus(tenantId, scopedLocationId));
+    }
+
+    // ── F3: tạo / sửa / xóa phòng ───────────────────────────────────────────
+
+    /**
+     * RM-02 Giám đốc tạo phòng — BR-ROOM-04, BR-ROOM-05, BR-ROOM-10.
+     *
+     * <p>Thứ tự kiểm tra cố định để câu lỗi luôn nhất quán: khách sạn (404) → loại phòng (404,
+     * hoặc 400 nếu loại đã ẩn) → số phòng trùng (400) → hạn mức gói dịch vụ (400). Kiểm tra phạm
+     * vi dữ liệu đi TRƯỚC kiểm tra nghiệp vụ, để người của Tenant khác không dò được dữ liệu qua
+     * nội dung câu lỗi.
+     *
+     * <p>Phòng mới vào thẳng «Chờ dọn» chứ không phải «Sẵn sàng»:
+     * {@link RoomStatusService#recordInitialStatus} ghi dòng lịch sử đầu tiên và sinh việc dọn
+     * chưa phân công (BR-HK-01), cùng transaction với lệnh lưu phòng — hỏng bước nào thì không
+     * để lại phòng tạo dở.
+     */
+    @Transactional
+    public RoomResponse createRoom(CreateRoomRequest request) {
+        UUID tenantId = SecurityUtils.getCurrentTenantId();
+        UUID locationId = request.getLocationId();
+        String roomNumber = request.getRoomNumber().trim();
+
+        validator.assertLocationInTenant(locationId, tenantId);
+        RoomType roomType = validator.requireActiveRoomType(request.getRoomTypeId(), tenantId);
+        validator.assertRoomNumberFree(locationId, roomNumber, null);
+        validator.assertRoomQuotaAvailable(tenantId);
+
+        Room saved = roomRepository.save(Room.builder()
+            .tenantId(tenantId)
+            .locationId(locationId)
+            .roomNumber(roomNumber)
+            .floor(request.getFloor().trim())
+            .roomTypeId(roomType.getId())
+            .capacity(request.getCapacity())
+            .note(normalizeNote(request.getNote()))
+            .status(RoomStatus.DIRTY)
+            .build());
+
+        roomStatusService.recordInitialStatus(saved);
+        log.info("Tạo phòng {} tại Location {}", saved.getRoomNumber(), locationId);
+        return toResponse(saved, roomType.getName());
+    }
+
+    /**
+     * RM-03 Giám đốc sửa thông tin CẤU TRÚC của phòng — BR-ROOM-04, BR-ROOM-05.
+     *
+     * <p>Không bao giờ đụng {@code status}, {@code unavailableReason} hay {@code locationId}:
+     * trạng thái chỉ đổi qua {@link RoomStatusService}, còn chuyển phòng sang khách sạn khác
+     * không phải nghiệp vụ có thật nên DTO cũng không nhận trường đó.
+     */
+    @Transactional
+    public RoomResponse updateRoom(UUID id, UpdateRoomRequest request) {
+        Room room = getOwnedRoom(id);
+        String roomNumber = request.getRoomNumber().trim();
+
+        // Chỉ hỏi DB khi số phòng thật sự đổi — lưu lại y nguyên số cũ không phải là trùng.
+        if (!roomNumber.equals(room.getRoomNumber())) {
+            validator.assertRoomNumberFree(room.getLocationId(), roomNumber, room.getId());
+        }
+        RoomType roomType = resolveRoomType(request.getRoomTypeId(), room);
+
+        room.setRoomNumber(roomNumber);
+        room.setFloor(request.getFloor().trim());
+        room.setRoomTypeId(roomType.getId());
+        room.setCapacity(request.getCapacity());
+        room.setNote(normalizeNote(request.getNote()));
+
+        log.info("Sửa phòng {} ({})", room.getRoomNumber(), room.getId());
+        return toResponse(roomRepository.save(room), roomType.getName());
+    }
+
+    /**
+     * RM-04 Manager sửa thông tin VẬN HÀNH — BR-ROOM-04. Chỉ ghi chú: số phòng, tầng, loại phòng
+     * và sức chứa là thông tin cấu trúc, thuộc quyền Giám đốc.
+     *
+     * <p>Phạm vi do {@link #getOwnedRoom} lo — Manager chạm vào phòng của khách sạn khác nhận
+     * 404. Giám đốc cũng gọi được endpoint này khi chỉ muốn sửa mỗi ghi chú.
+     */
+    @Transactional
+    public RoomResponse updateOperational(UUID id, UpdateRoomOperationalRequest request) {
+        Room room = getOwnedRoom(id);
+        room.setNote(normalizeNote(request.getNote()));
+        return toResponse(roomRepository.save(room));
+    }
+
+    /**
+     * RM-05 Giám đốc xóa phòng — BR-ROOM-08. Là xóa MỀM: phòng đã có lịch sử trạng thái và có
+     * thể còn task cũ trỏ tới, xóa cứng sẽ mất dấu vết.
+     *
+     * <p>Số phòng được giải phóng ngay nhờ cột sinh {@code active_room_number} nên tạo lại phòng
+     * trùng số là được. Hạn mức gói dịch vụ thì KHÔNG được trả lại — xem
+     * {@link RoomValidator#assertRoomQuotaAvailable}.
+     */
+    @Transactional
+    public void deleteRoom(UUID id) {
+        Room room = getOwnedRoom(id);
+        validator.assertDeletable(room);
+
+        room.setActive(false);
+        roomRepository.save(room);
+        log.info("Xóa mềm phòng {} ({})", room.getRoomNumber(), room.getId());
     }
 
     // ── Phạm vi dữ liệu ─────────────────────────────────────────────────────
@@ -198,6 +307,22 @@ public class RoomService {
     private Map<UUID, String> roomTypeNamesOf(UUID tenantId) {
         return roomTypeRepository.findByTenantIdOrderByNameAsc(tenantId).stream()
             .collect(Collectors.toMap(RoomType::getId, RoomType::getName));
+    }
+
+    /**
+     * Loại phòng hợp lệ cho phòng SAU KHI sửa — BR-ORG-14. Giữ nguyên loại cũ thì vẫn lưu được
+     * dù loại đó đã bị ẩn (không ép Giám đốc đổi loại chỉ vì muốn sửa ghi chú); ĐỔI sang loại
+     * khác thì loại mới bắt buộc còn đang dùng.
+     */
+    private RoomType resolveRoomType(UUID requestedRoomTypeId, Room room) {
+        return requestedRoomTypeId.equals(room.getRoomTypeId())
+            ? validator.requireRoomType(requestedRoomTypeId, room.getTenantId())
+            : validator.requireActiveRoomType(requestedRoomTypeId, room.getTenantId());
+    }
+
+    /** Ô ghi chú để trống hoặc toàn khoảng trắng lưu thành NULL, không phải chuỗi rỗng. */
+    private static String normalizeNote(String note) {
+        return StringUtils.hasText(note) ? note.trim() : null;
     }
 
     /** Tầng là text (G, M, B1 — BR-ROOM-05); ô lọc để trống hoặc toàn khoảng trắng = không lọc. */
