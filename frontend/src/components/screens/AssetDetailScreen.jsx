@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { assetService } from '../../services/assetApi';
+import { fetchAllRooms } from '../../api/rooms';
+import { fetchAllAreas } from '../../api/locations';
 
 export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onReportIssue }) => {
   const [loading, setLoading] = useState(true);
@@ -16,6 +18,14 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
   const [newStatus, setNewStatus] = useState('Good');
   const [editData, setEditData] = useState({ name: '', categoryId: '', note: '' });
   const [categories, setCategories] = useState([]);
+  
+  const [roomsData, setRoomsData] = useState([]);
+  const [areasData, setAreasData] = useState([]);
+
+  useEffect(() => {
+    fetchAllRooms().then(setRoomsData).catch(console.error);
+    fetchAllAreas().then(setAreasData).catch(console.error);
+  }, []);
   const [toastMessage, setToastMessage] = useState('');
 
   useEffect(() => {
@@ -56,10 +66,37 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
 
   const handleSaveLocation = async () => {
     if (!asset) return;
-    const updated = await assetService.updateAssetLocation(asset.code, newLocation);
-    setAsset(updated);
+    try {
+      const parts = newLocation.split('_');
+      if (parts.length === 2) {
+         const type = parts[0];
+         const id = parts[1];
+         
+         let locName = id;
+         if (type === 'ROOM') {
+            const r = roomsData.find(x => x.id === id);
+            if (r) locName = `Phòng ${r.roomNumber} (${r.floor || '?'})`;
+            else if (id === 'mock1') locName = 'Phòng 101 (Mock)';
+         } else {
+            const a = areasData.find(x => x.id === id);
+            if (a) locName = a.name;
+            else if (id === 'mock2') locName = 'Sảnh chính (Mock)';
+         }
+         
+         const updated = await assetService.updateAssetLocation(asset.code, id, type, locName);
+         setAsset(updated);
+         setToastMessage(`Đã chuyển vị trí thiết bị ${asset.code}!`);
+      } else {
+         // Fallback cho mock
+         const updated = await assetService.updateAssetLocation(asset.code, newLocation, 'ROOM', 'Phòng ' + newLocation);
+         setAsset(updated);
+         setToastMessage(`Đã chuyển vị trí thiết bị ${asset.code}!`);
+      }
+    } catch (e) {
+      console.error(e);
+      setToastMessage('Lỗi cập nhật vị trí');
+    }
     setShowLocationModal(false);
-    setToastMessage(`Đã chuyển vị trí thiết bị ${asset.code} sang "${newLocation}"!`);
     setTimeout(() => setToastMessage(''), 3500);
   };
 
@@ -171,7 +208,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={openEditModal}
-            className="px-3.5 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] hover:bg-[#F7F8FA] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            disabled={asset.status === 'Disposed'}
+            className={`px-3.5 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs ${asset.status === 'Disposed' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#F7F8FA] cursor-pointer'}`}
             type="button"
           >
             <span className="material-symbols-outlined text-[18px] text-[#0e61a1]">edit</span>
@@ -180,7 +218,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
 
           <button
             onClick={() => setShowLocationModal(true)}
-            className="px-3.5 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] hover:bg-[#F7F8FA] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            disabled={asset.status === 'Disposed'}
+            className={`px-3.5 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs ${asset.status === 'Disposed' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#F7F8FA] cursor-pointer'}`}
             type="button"
           >
             <span className="material-symbols-outlined text-[18px] text-[#0e61a1]">near_me</span>
@@ -189,7 +228,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
 
           <button
             onClick={() => setShowStatusModal(true)}
-            className="px-3.5 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] hover:bg-[#F7F8FA] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            disabled={asset.status === 'Disposed'}
+            className={`px-3.5 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs ${asset.status === 'Disposed' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#F7F8FA] cursor-pointer'}`}
             type="button"
           >
             <span className="material-symbols-outlined text-[18px] text-[#F9A825]">sync_alt</span>
@@ -198,7 +238,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
 
           <button
             onClick={() => onNavigate('issue-reports')}
-            className="px-3.5 py-2 rounded-xl bg-[#FFEBEE] text-[#D32F2F] hover:bg-[#ffebee]/80 border border-[#D32F2F]/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            disabled={asset.status === 'Disposed'}
+            className={`px-3.5 py-2 rounded-xl border border-[#D32F2F]/30 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs ${asset.status === 'Disposed' ? 'bg-[#FFEBEE]/50 text-[#D32F2F]/50 opacity-50 cursor-not-allowed' : 'bg-[#FFEBEE] text-[#D32F2F] hover:bg-[#ffebee]/80 cursor-pointer'}`}
             type="button"
           >
             <span className="material-symbols-outlined text-[18px]">report_problem</span>
@@ -358,17 +399,18 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
                 onChange={(e) => setNewLocation(e.target.value)}
                 className="w-full p-2.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#1C2330] focus:outline-none focus:border-[#0e61a1]"
               >
-                <option value="Phòng 101">Phòng 101 (Standard King · Tầng 1)</option>
-                <option value="Phòng 104">Phòng 104 (Standard Đơn · Tầng 1)</option>
-                <option value="Phòng 205">Phòng 205 (Superior Đôi · Tầng 2)</option>
-                <option value="Phòng 310">Phòng 310 (Deluxe Hướng Biển · Tầng 3)</option>
-                <option value="Phòng 312">Phòng 312 (Deluxe Twin · Tầng 3)</option>
-                <option value="Phòng 405">Phòng 405 (Superior Đơn · Tầng 4)</option>
-                <option value="Phòng 502">Phòng 502 (Executive Suite · Tầng 5)</option>
-                <option value="Sảnh chính (Lobby)">Sảnh chính (Lobby - Tầng 1)</option>
-                <option value="Phòng Gym & Spa">Phòng Gym & Spa (Tầng M)</option>
-                <option value="Nhà hàng Sao Mai">Nhà hàng Sao Mai (Tầng 2)</option>
-                <option value="Kho tổng tầng hầm">Kho tổng tầng hầm (Kho bảo trì)</option>
+                <optgroup label="Phòng (Rooms)">
+                  {roomsData.map(r => (
+                    <option key={r.id} value={`ROOM_${r.id}`}>Phòng {r.roomNumber} ({r.floor || '?'})</option>
+                  ))}
+                  {roomsData.length === 0 && <option value="ROOM_mock1">Phòng 101 (Mock)</option>}
+                </optgroup>
+                <optgroup label="Khu vực (Areas)">
+                  {areasData.map(a => (
+                    <option key={a.id} value={`AREA_${a.id}`}>{a.name}</option>
+                  ))}
+                  {areasData.length === 0 && <option value="AREA_mock2">Sảnh chính (Mock)</option>}
+                </optgroup>
               </select>
             </div>
 
@@ -561,7 +603,7 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
             <p className="text-xs text-[#5B6472] leading-relaxed">
               Bạn sắp xóa vĩnh viễn tài sản <span className="font-mono font-bold text-[#00375e]">{asset.code}</span> khỏi hệ thống.
               <br/><br/>
-              <span className="text-[#D32F2F] font-semibold">Cảnh báo:</span> Hành động này không thể hoàn tác. Chỉ nên xóa nếu tài sản được nhập sai hoàn toàn và chưa từng được sử dụng. Nếu tài sản đã cũ, hãy dùng chức năng <strong>Đổi trạng thái -> Đã thanh lý</strong>.
+              <span className="text-[#D32F2F] font-semibold">Cảnh báo:</span> Hành động này không thể hoàn tác. Chỉ nên xóa nếu tài sản được nhập sai hoàn toàn và chưa từng được sử dụng. Nếu tài sản đã cũ, hãy dùng chức năng <strong>Đổi trạng thái -&gt; Đã thanh lý</strong>.
             </p>
 
             <div className="flex items-center justify-center gap-3 pt-4">

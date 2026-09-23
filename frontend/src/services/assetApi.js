@@ -2,6 +2,14 @@ import { apiClient } from './apiClient';
 
 let localMockAssets = [];
 
+/**
+ * Dạng UUID chuẩn 8-4-4-4-12. Mọi chỗ nhận diện "id thật của backend" phải dùng CHUNG
+ * hằng số này: viết lại regex ở từng hàm đã từng làm rơi mất nhóm thứ tư, khiến id thật
+ * bị coi là id giả nên tài sản mới chỉ nằm trong mock trong RAM, không xuống DB.
+ */
+const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const isUUID = (id) => UUID_PATTERN.test(String(id ?? ''));
+
 
 // --- CACHE FOR LOOKUPS ---
 let categoriesCache = null;
@@ -61,10 +69,10 @@ const resolveFixedAsset = async (assetId) => {
 
 const mapAssetStatus = (status) => {
   switch (status) {
-    case 'GOOD': return 'Good';
-    case 'BROKEN': return 'Damaged';
-    case 'UNDER_REPAIR': return 'Repairing';
-    case 'DISPOSED': return 'Disposed';
+    case 'GOOD': case 'Good': return 'Good';
+    case 'BROKEN': case 'Damaged': return 'Damaged';
+    case 'UNDER_REPAIR': case 'Repairing': return 'Repairing';
+    case 'DISPOSED': case 'Disposed': return 'Disposed';
     default: return 'Good';
   }
 };
@@ -118,7 +126,8 @@ export const assetService = {
         const query = new URLSearchParams({
           includeDisposed: actualIncludeDisposed.toString(),
           page: (page - 1).toString(), 
-          size: limit.toString()
+          size: limit.toString(),
+          sort: 'createdAt,desc'
         }).toString();
     
         const response = await apiClient.get(`/assets/fixed-assets?${query}`);
@@ -147,7 +156,7 @@ export const assetService = {
           totalPages: Math.max(response.totalPages || 1, Math.ceil(((response.totalElements || 0) + 
 filteredMock.length) / limit))
         };
-      } catch (err) { fetch('/api/ERROR_LOG_THIS_' + encodeURIComponent(err.stack || err));
+      } catch (err) {
         console.error("GET_FIXED_ASSETS_ERROR", err);
         throw err;
       }
@@ -158,16 +167,16 @@ filteredMock.length) / limit))
   },
 
   getFixedAssetById: async (id) => {
-    const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+    const looksLikeBackendId = isUUID(id);
     let backendAsset;
-    
+
     // Check local mocks first if not UUID
-    if (!isUUID) {
+    if (!looksLikeBackendId) {
       const mockAsset = localMockAssets.find(a => a.code === id || a.assetCode === id);
       if (mockAsset) return mockAsset;
     }
 
-    if (isUUID) {
+    if (looksLikeBackendId) {
       backendAsset = await apiClient.get(`/assets/fixed-assets/${id}`);
     } else {
       const assets = await getFixedAssetsMap();
@@ -185,27 +194,74 @@ filteredMock.length) / limit))
 
   
   createBatchAssets: async (data) => {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        for (let i = 1; i <= data.quantity; i++) {
-          const seq = String(i).padStart(3, '0');
-          const fullCode = `${data.category.prefix}-${data.position.code}-${seq}`;
-          localMockAssets.unshift({
-            id: 'mock-' + Date.now() + '-' + i,
-            code: fullCode, assetCode: fullCode,
-            name: data.category.name,
-            category: data.category.name,
-            purpose: data.category.purpose,
-            location: data.position.label,
-            status: data.status,
-            lastMaintenanceDate: new Date().toISOString()
-          });
-        }
-        resolve({ count: data.quantity });
-      }, 1500);
-    });
+    let count = 0;
+    const catId = data.category.id || data.category.value;
+    const posId = data.position?.id;
+    const hasValidUUIDs = isUUID(catId) && (!posId || isUUID(posId));
+
+    for (let i = 1; i <= data.quantity; i++) {
+      const seq = String(i).padStart(3, '0');
+      const fullCode = `${data.category.prefix || 'TS'}-${data.position.code}-${seq}`;
+      
+      if (!hasValidUUIDs) {
+        // Fallback to mock
+        localMockAssets.unshift({
+           id: `mock-${Date.now()}-${i}`,
+           assetCode: fullCode,
+           code: fullCode,
+           name: data.category.name,
+           categoryId: catId,
+           category: data.category.name,
+           purpose: data.category.purpose || 'Internal',
+           location: data.position.label || data.position.code,
+           status: 'Good',
+           createdAt: new Date().toISOString()
+        });
+        count++;
+        continue;
+      }
+
+      const req = {
+        categoryId: catId,
+        name: data.category.name,
+        note: "Thêm tự động hàng loạt",
+        roomId: data.positionType === 'ROOM' ? posId : null,
+        areaId: data.positionType === 'AREA' ? posId : null,
+        assetCode: fullCode
+      };
+      try {
+        await apiClient.post('/assets/fixed-assets', req);
+        count++;
+      } catch (e) {
+        console.error('Failed to create asset in batch:', e);
+        // If it fails on the first one, throw an error to the UI
+        if (i === 1) throw new Error('Lỗi khi tạo tài sản: ' + (e.response?.data?.message || e.message));
+      }
+    }
+    fixedAssetsCache = null;
+    return { count };
   },
   createFixedAsset: async (data) => {
+    const hasValidUUIDs = isUUID(data.categoryId) && (!data.locationId || isUUID(data.locationId));
+
+    if (!hasValidUUIDs) {
+        const mock = {
+           id: `mock-${Date.now()}`,
+           assetCode: `TS-${data.categoryId}-${Date.now().toString().slice(-4)}`,
+           code: `TS-${data.categoryId}-${Date.now().toString().slice(-4)}`,
+           name: data.name,
+           categoryId: data.categoryId,
+           category: 'Mock Category',
+           purpose: 'Internal',
+           location: data.locationId || 'Chưa rõ',
+           status: 'Good',
+           note: data.note,
+           createdAt: new Date().toISOString()
+        };
+        localMockAssets.unshift(mock);
+        return mock;
+    }
+
     const req = {
       categoryId: data.categoryId,
       name: data.name,
@@ -268,25 +324,32 @@ filteredMock.length) / limit))
     return true;
   },
 
-  updateAssetLocation: async (code, newLocation) => {
+  updateAssetLocation: async (code, newLocationId, newLocationType, newLocationName) => {
     const assets = await getFixedAssetsMap();
     const asset = assets.find(a => a.assetCode === code || a.code === code);
     if (!asset) throw new Error("Not found");
     
     // Mock handling
     if (asset.id && asset.id.toString().startsWith('mock-')) {
-       asset.location = newLocation;
+       asset.location = newLocationName || newLocationId;
        return asset;
     }
     
     try {
-      const req = { ...asset, roomId: newLocation, areaId: null };
+      const req = { 
+        categoryId: asset.categoryId,
+        name: asset.name,
+        note: asset.note,
+        roomId: newLocationType === 'ROOM' ? newLocationId : null, 
+        areaId: newLocationType === 'AREA' ? newLocationId : null,
+        assetCode: asset.assetCode
+      };
       const updated = await apiClient.put(`/assets/fixed-assets/${asset.id}`, req);
       fixedAssetsCache = null;
       return mapFixedAsset(updated);
     } catch (e) {
       console.warn('Backend update failed for location (likely due to mock string UUID). Updating local cache instead.');
-      asset.location = newLocation;
+      asset.location = newLocationName || `Mock-${newLocationType}-${newLocationId}`;
       return asset;
     }
   },

@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { assetService } from '../../services/assetApi';
+import { fetchAllRooms } from '../../api/rooms';
+import { fetchAllAreas } from '../../api/locations';
 
 const CATEGORIES = [
   { value: 'AC', name: 'Điều hòa nhiệt độ (AC)', prefix: 'TS-AC', purpose: 'GUEST_USE' },
@@ -40,6 +42,46 @@ const AREA_OPTIONS = [
 ];
 
 export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
+  const [categoriesData, setCategoriesData] = useState([]);
+  const [roomsData, setRoomsData] = useState([]);
+  const [areasData, setAreasData] = useState([]);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const cats = await assetService.getAssetCategories();
+        const fixedCats = cats.filter(c => c.assetKind === 'FIXED').map(c => {
+          let p = 'TS-XX';
+          if (c.name) {
+             const words = c.name.split(' ').map(w => w[0]);
+             p = 'TS-' + (words.join('').substring(0,2).toUpperCase() || 'XX');
+          }
+          return {
+            value: c.id,
+            id: c.id,
+            name: c.name,
+            prefix: p,
+            purpose: c.purpose
+          };
+        });
+        if(fixedCats.length > 0) setCategoriesData(fixedCats);
+        else setCategoriesData(CATEGORIES);
+
+        const rms = await fetchAllRooms();
+        setRoomsData(rms.map(r => ({ id: r.id, code: r.roomNumber, label: `Phòng ${r.roomNumber} (${r.floor || 'Tầng ?'})` })));
+
+        const ars = await fetchAllAreas();
+        setAreasData(ars.map(a => ({ id: a.id, code: a.name.substring(0,3).toUpperCase(), label: a.name })));
+      } catch (e) {
+        console.error(e);
+        setCategoriesData(CATEGORIES);
+        setRoomsData(ROOM_OPTIONS);
+        setAreasData(AREA_OPTIONS);
+      }
+    }
+    load();
+  }, []);
+
   const [selectedCategoryValue, setSelectedCategoryValue] = useState('TV');
   const [positionType, setPositionType] = useState('ROOM'); // 'ROOM' | 'AREA'
   const [selectedPositionCode, setSelectedPositionCode] = useState('310');
@@ -48,13 +90,13 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
   const [successResult, setSuccessResult] = useState(null);
 
   const selectedCategory = useMemo(() => {
-    return CATEGORIES.find((c) => c.value === selectedCategoryValue) || CATEGORIES[0];
-  }, [selectedCategoryValue]);
+    return categoriesData.find((c) => c.value === selectedCategoryValue) || categoriesData[0] || CATEGORIES[0];
+  }, [categoriesData, selectedCategoryValue]);
 
-  const currentPositionList = positionType === 'ROOM' ? ROOM_OPTIONS : AREA_OPTIONS;
+  const currentPositionList = positionType === 'ROOM' ? (roomsData.length > 0 ? roomsData : ROOM_OPTIONS) : (areasData.length > 0 ? areasData : AREA_OPTIONS);
 
   const selectedPosition = useMemo(() => {
-    return currentPositionList.find((p) => p.code === selectedPositionCode) || currentPositionList[0];
+    return currentPositionList.find((p) => p.code === selectedPositionCode) || currentPositionList[0] || { code: '000', label: 'Chưa rõ' };
   }, [currentPositionList, selectedPositionCode]);
 
   // Generate live preview code list
@@ -78,9 +120,9 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
   const handlePositionTypeSwitch = (type) => {
     setPositionType(type);
     if (type === 'ROOM') {
-      setSelectedPositionCode(ROOM_OPTIONS[0].code);
+      setSelectedPositionCode(roomsData[0]?.code || ROOM_OPTIONS[0].code);
     } else {
-      setSelectedPositionCode(AREA_OPTIONS[0].code);
+      setSelectedPositionCode(areasData[0]?.code || AREA_OPTIONS[0].code);
     }
   };
 
@@ -97,6 +139,7 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
       setSuccessResult(res);
     } catch (e) {
       console.error('Batch creation failed', e);
+      alert(e.message || 'Lỗi khởi tạo tài sản hàng loạt. Vui lòng kiểm tra lại.');
     } finally {
       setIsSubmitting(false);
     }
@@ -202,21 +245,21 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                 className="w-full p-2.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#1C2330] font-medium focus:outline-none focus:border-[#0e61a1] cursor-pointer"
               >
                 <optgroup label="Phục vụ khách hàng">
-                  {CATEGORIES.filter(c => c.purpose === 'GUEST_USE').map((cat) => (
+                  {(categoriesData.length > 0 ? categoriesData : CATEGORIES).filter(c => c.purpose === 'GUEST_USE').map((cat) => (
                     <option key={cat.value} value={cat.value}>
                       {cat.name} — Prefix: [{cat.prefix}]
                     </option>
                   ))}
                 </optgroup>
                 <optgroup label="Duy trì & Vận hành cơ sở">
-                  {CATEGORIES.filter(c => c.purpose === 'FACILITY_MAINTENANCE').map((cat) => (
+                  {(categoriesData.length > 0 ? categoriesData : CATEGORIES).filter(c => c.purpose === 'FACILITY_MAINTENANCE').map((cat) => (
                     <option key={cat.value} value={cat.value}>
                       {cat.name} — Prefix: [{cat.prefix}]
                     </option>
                   ))}
                 </optgroup>
                 <optgroup label="Nội bộ">
-                  {CATEGORIES.filter(c => c.purpose === 'INTERNAL_OPS').map((cat) => (
+                  {(categoriesData.length > 0 ? categoriesData : CATEGORIES).filter(c => c.purpose === 'INTERNAL_OPS').map((cat) => (
                     <option key={cat.value} value={cat.value}>
                       {cat.name} — Prefix: [{cat.prefix}]
                     </option>
