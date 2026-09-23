@@ -5,12 +5,14 @@ import { readErrorMessage } from '../../api/client';
 import { deleteRoom, fetchRoom, updateRoom } from '../../api/rooms';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import LockRoomModal from '../../components/rooms/LockRoomModal';
+import RoomActionDialog from '../../components/rooms/RoomActionDialog';
 import RoomForm from '../../components/rooms/RoomForm';
 import RoomNoteModal from '../../components/rooms/RoomNoteModal';
 import RoomHistoryList from '../../components/rooms/RoomHistoryList';
 import RoomStatusBadge from '../../components/rooms/RoomStatusBadge';
 import { formatDateTime } from './format';
-import { roomActionsFor, statusChangedMessage } from './roomActions';
+import { LOCK, roomActionsFor, statusChangedMessage } from './roomActions';
+import { useRoomAction } from './useRoomAction';
 import { useRoomTypes, useTenantLocations } from './useRoomLookups';
 import './rooms.css';
 
@@ -57,7 +59,6 @@ export default function RoomDetailPage() {
 
   const [tab, setTab] = useState('info');
   const [banner, setBanner] = useState(null); // { type, text }
-  const [activeAction, setActiveAction] = useState(null);
   // Tăng lên sau mỗi lần đổi trạng thái → RoomHistoryList dựng lại, nạp từ trang đầu.
   const [historyVersion, setHistoryVersion] = useState(0);
 
@@ -87,10 +88,11 @@ export default function RoomDetailPage() {
     };
   }, [id]);
 
-  function handleStatusChanged(updated) {
-    setBanner({ type: 'success', text: statusChangedMessage(room, updated) });
+  /** Dùng chung cho mọi thao tác đổi trạng thái (F2 khóa/mở khóa, F4 các bước của Lễ tân). */
+  function handleStatusChanged(updated, before) {
+    setBanner({ type: 'success', text: statusChangedMessage(before ?? room, updated) });
     setRoom(updated);
-    setActiveAction(null);
+    // Lịch sử vừa có thêm một dòng → dựng lại danh sách để nạp từ trang đầu.
     setHistoryVersion((v) => v + 1);
   }
 
@@ -130,6 +132,10 @@ export default function RoomDetailPage() {
 
   const locationName = (locations ?? []).find((location) => location.id === room?.locationId)?.name;
   const actions = roomActionsFor(room);
+  const statusAction = useRoomAction({
+    onChanged: handleStatusChanged,
+    onError: (text) => setBanner({ type: 'error', text }),
+  });
   const canDelete = isDirector && DELETABLE_STATUSES.includes(room?.status);
 
   return (
@@ -171,7 +177,10 @@ export default function RoomDetailPage() {
                   key={action.key}
                   type="button"
                   className={`btn ${action.danger ? 'btn--danger' : 'btn--primary'}`}
-                  onClick={() => setActiveAction(action.key)}
+                  onClick={() => {
+                    setBanner(null);
+                    statusAction.start(room, action);
+                  }}
                 >
                   {action.label}
                 </button>
@@ -246,8 +255,20 @@ export default function RoomDetailPage() {
             )}
           </section>
 
-          {activeAction && (
-            <LockRoomModal room={room} onClose={() => setActiveAction(null)} onChanged={handleStatusChanged} />
+          {statusAction.pending?.action.flow === LOCK && (
+            <LockRoomModal
+              room={statusAction.pending.room}
+              onClose={statusAction.cancel}
+              onChanged={statusAction.finish}
+            />
+          )}
+          {statusAction.pending && statusAction.pending.action.flow !== LOCK && (
+            <RoomActionDialog
+              room={statusAction.pending.room}
+              action={statusAction.pending.action}
+              onDone={statusAction.finish}
+              onClose={statusAction.cancel}
+            />
           )}
 
           {noteOpen && (

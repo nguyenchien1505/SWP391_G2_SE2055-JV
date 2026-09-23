@@ -51,6 +51,30 @@ export function changeSourceLabel(source) {
 }
 
 /**
+ * Nhãn của một THAO TÁC, khóa theo CẶP `từ→đến` chứ không theo trạng thái đích.
+ *
+ * Lý do phải là cặp: cùng đích "Đang sử dụng" nhưng từ "Trống" là khách vãng lai đến quầy
+ * (Check-in), còn từ "Đã đặt" là khách đặt trước đã tới (Khách đã đến) — hai việc khác nhau với
+ * người dùng dù backend chỉ thấy một bước chuyển. Cùng lý do với "Hủy đặt / Không đến": hủy và
+ * no-show là một bước chuyển, phân biệt bằng lý do ghi vào lịch sử.
+ *
+ * Danh sách nút thật sự hiện ra vẫn do `room.allowedTargets` của backend quyết định — bảng này
+ * chỉ đặt tên cho chúng.
+ */
+export const ACTION_LABEL = {
+  'AVAILABLE→RESERVED': 'Đặt trước',
+  'AVAILABLE→OCCUPIED': 'Check-in',
+  'RESERVED→OCCUPIED': 'Khách đã đến',
+  'RESERVED→AVAILABLE': 'Hủy đặt / Không đến',
+  'OCCUPIED→DIRTY': 'Check-out',
+};
+
+/** Khóa tra cứu cho {@link ACTION_LABEL} và bảng thao tác trong `roomActions.js`. */
+export function transitionKey(from, to) {
+  return `${from}→${to}`;
+}
+
+/**
  * So sánh tầng / số phòng: tầng là TEXT (G, M, B1 — BR-ROOM-05) nên so kiểu "tự nhiên"
  * để "2" đứng trước "10", thay vì so chuỗi thuần.
  */

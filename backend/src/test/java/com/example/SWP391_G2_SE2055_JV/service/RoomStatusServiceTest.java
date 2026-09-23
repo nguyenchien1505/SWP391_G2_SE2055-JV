@@ -29,6 +29,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -37,7 +38,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
- * F2 — lõi đổi trạng thái phòng (BR-ROOM-02, BR-ROOM-03, BR-ROOM-07, BR-ROOM-09, BR-HK-09).
+ * F2 — lõi đổi trạng thái phòng (BR-ROOM-02, BR-ROOM-03, BR-ROOM-07, BR-ROOM-09, BR-HK-09);
+ * F4 — các bước của Lễ tân (BR-PERM-04, BR-HK-01, BR-HK-10).
  *
  * <p>Repository và hook của Housekeeping được mock; {@link RoomTransitionPolicy} dùng bản THẬT để
  * kiểm được đúng thứ tự 4 bước kiểm tra như khi chạy thật. Phạm vi Tenant/Location không test ở
@@ -244,7 +246,9 @@ class RoomStatusServiceTest {
         }
     }
 
-    // ── Nhánh Lễ tân: hệ quả gắn theo sự kiện phòng nên đúng ngay từ F2 ─────
+    // ── F4: các bước của Lễ tân (RM-08, RM-09, RM-10) ──────────────────────
+    // Hệ quả lên task gắn theo SỰ KIỆN của phòng (applyTaskConsequences) chứ không theo người
+    // bấm, nên nhánh này đã chạy đúng từ F2; F4 bổ sung test cho đủ 5 bước + phần chặn vai trò.
 
     @Nested
     class Reception {
@@ -276,6 +280,136 @@ class RoomStatusServiceTest {
             order.verify(historyRepository).save(any(RoomStatusHistory.class));
             order.verify(hooks).onGuestCheckedOut(room);
             order.verify(hooks).onRoomBecameDirty(room);
+        }
+
+        /** RM-09 — check-in khách vãng lai: Trống → Đang sử dụng, không đụng task nào. */
+        @Test
+        void shouldCheckInFromAvailable() {
+            Room room = room(RoomStatus.AVAILABLE);
+
+            service.changeStatusByUser(room, request(RoomStatus.OCCUPIED, null));
+
+            assertThat(room.getStatus()).isEqualTo(RoomStatus.OCCUPIED);
+            assertThat(savedHistory().getChangeSource()).isEqualTo(ChangeSource.RECEPTION);
+            verifyNoInteractions(hooks);
+        }
+
+        /** RM-09 — khách đã đặt trước đến nhận phòng: Đã đặt → Đang sử dụng. */
+        @Test
+        void shouldCheckInFromReserved() {
+            Room room = room(RoomStatus.RESERVED);
+
+            service.changeStatusByUser(room, request(RoomStatus.OCCUPIED, null));
+
+            assertThat(room.getStatus()).isEqualTo(RoomStatus.OCCUPIED);
+            assertThat(savedHistory().getFromStatus()).isEqualTo(RoomStatus.RESERVED);
+            verifyNoInteractions(hooks);
+        }
+
+        /**
+         * RM-08 — hủy đặt và no-show là CÙNG một bước chuyển, chỉ khác {@code reason}; phân biệt
+         * hai ca đó là việc của người đọc lịch sử, không phải của ma trận trạng thái.
+         */
+        @Test
+        void shouldCancelReservationBackToAvailableWithReason() {
+            Room room = room(RoomStatus.RESERVED);
+
+            service.changeStatusByUser(room, request(RoomStatus.AVAILABLE, "  Khách không đến (no-show)  "));
+
+            assertThat(room.getStatus()).isEqualTo(RoomStatus.AVAILABLE);
+            RoomStatusHistory history = savedHistory();
+            assertThat(history.getReason()).isEqualTo("Khách không đến (no-show)");
+            assertThat(history.getChangeSource()).isEqualTo(ChangeSource.RECEPTION);
+            // Lý do chỉ vào lịch sử. Cột unavailable_reason phải rỗng, nếu không DB chặn bằng
+            // ck_rooms_unavailable_reason (chỉ phòng Không khả dụng mới được có lý do).
+            assertThat(room.getUnavailableReason()).isNull();
+            verifyNoInteractions(hooks);
+        }
+
+        /** Trọn một lượt khách: mỗi bước đúng 1 dòng lịch sử, from/to nối tiếp nhau (BR-ROOM-09). */
+        @Test
+        void shouldWriteOneHistoryRowPerStepForFullGuestCycle() {
+            Room room = room(RoomStatus.AVAILABLE);
+
+            service.changeStatusByUser(room, request(RoomStatus.RESERVED, null));   // đặt trước
+            service.changeStatusByUser(room, request(RoomStatus.OCCUPIED, null));   // khách đến
+            service.changeStatusByUser(room, request(RoomStatus.DIRTY, null));      // check-out
+
+            ArgumentCaptor<RoomStatusHistory> rows = ArgumentCaptor.forClass(RoomStatusHistory.class);
+            verify(historyRepository, times(3)).save(rows.capture());
+            assertThat(rows.getAllValues())
+                .extracting(RoomStatusHistory::getFromStatus, RoomStatusHistory::getToStatus)
+                .containsExactly(
+                    tuple(RoomStatus.AVAILABLE, RoomStatus.RESERVED),
+                    tuple(RoomStatus.RESERVED, RoomStatus.OCCUPIED),
+                    tuple(RoomStatus.OCCUPIED, RoomStatus.DIRTY));
+            assertThat(rows.getAllValues())
+                .allSatisfy(row -> assertThat(row.getChangeSource()).isEqualTo(ChangeSource.RECEPTION));
+        }
+
+        /**
+         * Check-out chỉ có nghĩa với phòng đang có khách. Trống → Chờ dọn không nằm trong ma trận
+         * nên bị chặn ngay ở bước 1, trước cả khi hỏi người bấm là ai.
+         */
+        @Test
+        void shouldRejectCheckOutWhenRoomNotOccupied() {
+            Room room = room(RoomStatus.AVAILABLE);
+
+            assertThatThrownBy(() -> service.changeStatusByUser(room, request(RoomStatus.DIRTY, null)))
+                .isInstanceOf(BusinessException.class);
+            assertNothingWritten(room, RoomStatus.AVAILABLE);
+        }
+    }
+
+    // ── F4: bước của Lễ tân — vai trò khác bấm đều 403 (BR-PERM-04) ─────────
+    // RoomTransitionPolicyTest đã kiểm bảng quyền; ở đây kiểm thêm điều quan trọng với dữ liệu:
+    // bị chặn thì KHÔNG để lại dấu vết nào (không đổi trạng thái, không ghi lịch sử, không đụng task).
+
+    @Nested
+    class ReceptionStepsDeniedToOthers {
+
+        /** Nhân viên dọn chỉ thao tác trên task dọn, không đụng tới luồng khách. */
+        @Test
+        void shouldForbidHousekeepingStaffFromCheckIn() {
+            TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            Room room = room(RoomStatus.AVAILABLE);
+
+            assertThatThrownBy(() -> service.changeStatusByUser(room, request(RoomStatus.OCCUPIED, null)))
+                .isInstanceOf(UnauthorizedException.class);
+            assertNothingWritten(room, RoomStatus.AVAILABLE);
+        }
+
+        /** Chốt 20/09/2026: Manager KHÔNG làm thay Lễ tân, kể cả check-out. */
+        @Test
+        void shouldForbidManagerFromCheckOut() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            Room room = room(RoomStatus.OCCUPIED);
+
+            assertThatThrownBy(() -> service.changeStatusByUser(room, request(RoomStatus.DIRTY, null)))
+                .isInstanceOf(UnauthorizedException.class);
+            assertNothingWritten(room, RoomStatus.OCCUPIED);
+        }
+
+        /** Position loại Khác không có quyền nghiệp vụ đặc thù nào. */
+        @Test
+        void shouldForbidOtherPositionFromReserving() {
+            TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.OTHER);
+            Room room = room(RoomStatus.AVAILABLE);
+
+            assertThatThrownBy(() -> service.changeStatusByUser(room, request(RoomStatus.RESERVED, null)))
+                .isInstanceOf(UnauthorizedException.class);
+            assertNothingWritten(room, RoomStatus.AVAILABLE);
+        }
+
+        /** Giám đốc CRUD phòng nhưng không vận hành trạng thái (BR-ROOM-04). */
+        @Test
+        void shouldForbidDirectorFromCheckIn() {
+            TestAuth.loginAsDirector(TENANT_ID);
+            Room room = room(RoomStatus.AVAILABLE);
+
+            assertThatThrownBy(() -> service.changeStatusByUser(room, request(RoomStatus.OCCUPIED, null)))
+                .isInstanceOf(UnauthorizedException.class);
+            assertNothingWritten(room, RoomStatus.AVAILABLE);
         }
     }
 

@@ -4,7 +4,9 @@ import com.example.SWP391_G2_SE2055_JV.dto.ChangeRoomStatusRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomStatusHistoryResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
+import com.example.SWP391_G2_SE2055_JV.entity.Department;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
+import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
 import com.example.SWP391_G2_SE2055_JV.entity.Tenant;
@@ -13,6 +15,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.ChangeSource;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
@@ -21,6 +24,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.exception.UnauthorizedException;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
 import com.example.SWP391_G2_SE2055_JV.support.TestAuth;
 import jakarta.persistence.EntityManager;
@@ -38,12 +42,14 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
- * F2 — chạy trọn luồng khóa / mở khóa phòng trên MySQL THẬT (profile "test"): RoomService →
- * RoomTransitionPolicy → RoomStatusService → HousekeepingRoomHooks → DB. Đây là bản tự động của
- * checklist kiểm tra tay F2 §3.3, chứng minh các hệ quả mà unit test chỉ kiểm bằng mock:
- * task bị hủy / sinh thật, CHECK và khóa ngoại của DB đều nhận dữ liệu.
+ * F2 — khóa / mở khóa phòng và F4 — luồng khách của Lễ tân, chạy trọn trên MySQL THẬT (profile
+ * "test"): RoomService → RoomTransitionPolicy → RoomStatusService → HousekeepingRoomHooks → DB.
+ * Đây là bản tự động của checklist kiểm tra tay F2 §3.3 và F4 §3.3, chứng minh các hệ quả mà
+ * unit test chỉ kiểm bằng mock: task bị hủy / sinh thật, CHECK và khóa ngoại của DB đều nhận
+ * dữ liệu, và ràng buộc {@code uk_hk_open_task_per_room_type} không bị vi phạm.
  *
  * <p>Mỗi test chạy trong một transaction và tự rollback; {@link #flushAndClear()} ép Hibernate
  * gửi SQL xuống DB rồi đọc lại từ DB, để ràng buộc DB được kiểm thật chứ không chỉ trong bộ nhớ.
@@ -57,7 +63,10 @@ class RoomStatusFlowTest {
     @Autowired HousekeepingTaskRepository taskRepository;
     @Autowired EntityManager              em;
 
+    private UUID tenantId;
+    private UUID hanoi;
     private User manager;
+    private User reception;
     private Room available101;
     private Room occupied102;
     private Room dirty201;
@@ -68,15 +77,24 @@ class RoomStatusFlowTest {
     /** Dựng lại giống seed R__seed_test_rooms.sql (không dựa vào seed — profile test không nạp). */
     @BeforeEach
     void setUp() {
-        UUID tenantId = persist(Tenant.builder().name("Sao Mai Hotels").contactEmail(uniqueEmail())
+        tenantId = persist(Tenant.builder().name("Sao Mai Hotels").contactEmail(uniqueEmail())
             .contactPhone("0900000000").status(TenantStatus.ACTIVE).build()).getId();
-        UUID hanoi = persistLocation(tenantId, "Sao Mai Hà Nội");
+        hanoi = persistLocation(tenantId, "Sao Mai Hà Nội");
         UUID danang = persistLocation(tenantId, "Sao Mai Đà Nẵng");
         UUID roomTypeId = persist(RoomType.builder().tenantId(tenantId).name("Đôi").build()).getId();
 
         manager = persist(User.builder().tenantId(tenantId).locationId(hanoi).role(Role.MANAGER)
             .email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
             .fullName("Trần Quản Lý").phone("0900000000").build());
+        // DM-01 + BR-USER-05: STAFF bắt buộc có Position (ck_users_position_scope), mà Position
+        // lại thuộc một Department — nên phải dựng đủ chuỗi Department → Position → User.
+        UUID frontOffice = persist(Department.builder().tenantId(tenantId).name("Tiền sảnh").build()).getId();
+        UUID receptionPosition = persist(Position.builder().tenantId(tenantId).departmentId(frontOffice)
+            .name("Nhân viên lễ tân").positionType(PositionType.RECEPTION).build()).getId();
+        reception = persist(User.builder().tenantId(tenantId).locationId(hanoi).role(Role.STAFF)
+            .positionId(receptionPosition)
+            .email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
+            .fullName("Lê Lễ Tân").phone("0900000001").build());
 
         available101 = persistRoom(tenantId, hanoi, roomTypeId, "101", RoomStatus.AVAILABLE, null);
         occupied102 = persistRoom(tenantId, hanoi, roomTypeId, "102", RoomStatus.OCCUPIED, null);
@@ -176,7 +194,132 @@ class RoomStatusFlowTest {
             .isInstanceOf(ResourceNotFoundException.class);
     }
 
+
+    // ── Checklist F4 §3.3: luồng khách của Lễ tân ──────────────────────────
+
+    /**
+     * RM-10 — check-out kéo theo HAI hệ quả ngược chiều nhau trong cùng một transaction:
+     * hủy task dọn hằng ngày đang mở (BR-HK-10) rồi sinh task dọn sau trả phòng (BR-HK-01).
+     *
+     * <p>Thứ tự là bắt buộc chứ không phải tùy: DB có unique {@code uk_hk_open_task_per_room_type}
+     * (mỗi phòng tối đa 1 task ĐANG MỞ cho mỗi loại). Test này chạy trên MySQL thật nên nếu code
+     * sinh task mới trước khi hủy task cũ thì sẽ vỡ ở tầng DB — unit test với mock không bắt được.
+     */
+    @Test
+    void shouldCancelStayoverAndCreateCheckoutTaskOnCheckOut() {
+        HousekeepingTask stayover = persist(HousekeepingTask.builder().tenantId(tenantId).locationId(hanoi)
+            .roomId(occupied102.getId()).taskType(HousekeepingTaskType.STAYOVER)
+            .status(HousekeepingTaskStatus.IN_PROGRESS)
+            .createdSource(TaskCreatedSource.MANAGER_STAYOVER).build());
+        flushAndClear();
+        loginAsReception();
+
+        RoomResponse after = roomService.changeStatus(occupied102.getId(), request(RoomStatus.DIRTY, null));
+        flushAndClear();
+
+        assertThat(after.getStatus()).isEqualTo(RoomStatus.DIRTY);
+
+        HousekeepingTask cancelled = em.find(HousekeepingTask.class, stayover.getId());
+        assertThat(cancelled.getStatus()).isEqualTo(HousekeepingTaskStatus.CANCELLED);
+        assertThat(cancelled.getCancelReason()).isEqualTo(TaskCancelReason.GUEST_CHECKED_OUT);
+
+        // Còn ĐÚNG một task đang mở, và đó là task dọn sau trả phòng do hệ thống sinh.
+        assertThat(taskRepository.findByRoomIdAndStatusIn(occupied102.getId(), HousekeepingTaskStatus.OPEN_STATUSES))
+            .singleElement().satisfies(task -> {
+                assertThat(task.getTaskType()).isEqualTo(HousekeepingTaskType.CHECKOUT);
+                assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
+                assertThat(task.getCreatedSource()).isEqualTo(TaskCreatedSource.CHECKOUT_AUTO);
+                assertThat(task.getAssignedStaffId()).isNull();
+            });
+
+        assertThat(historyOf(occupied102)).singleElement().satisfies(row -> {
+            assertThat(row.getFromStatus()).isEqualTo(RoomStatus.OCCUPIED);
+            assertThat(row.getToStatus()).isEqualTo(RoomStatus.DIRTY);
+            assertThat(row.getChangeSource()).isEqualTo(ChangeSource.RECEPTION);
+            assertThat(row.getChangedByName()).isEqualTo("Lê Lễ Tân");
+        });
+    }
+
+    /**
+     * RM-08 → RM-10 — trọn một lượt khách trên DB thật: đặt trước → khách đến → check-out.
+     * Lịch sử phải có đúng 3 dòng, mới nhất trước, và chỉ bước cuối mới sinh task dọn.
+     */
+    @Test
+    void shouldRunFullGuestCycleAndCreateTaskOnlyAtCheckOut() {
+        loginAsReception();
+
+        roomService.changeStatus(available101.getId(), request(RoomStatus.RESERVED, null));
+        roomService.changeStatus(available101.getId(), request(RoomStatus.OCCUPIED, null));
+        assertThat(taskRepository.findByRoomIdAndStatusIn(available101.getId(), HousekeepingTaskStatus.OPEN_STATUSES))
+            .isEmpty();
+
+        roomService.changeStatus(available101.getId(), request(RoomStatus.DIRTY, null));
+        flushAndClear();
+
+        assertThat(em.find(Room.class, available101.getId()).getStatus()).isEqualTo(RoomStatus.DIRTY);
+        // BR-ROOM-09: đúng 3 dòng, mỗi bước một dòng. KHÔNG khẳng định thứ tự ở đây:
+        // room_status_history.changed_at là DATETIME (chính xác tới GIÂY), ba bước này chạy trong
+        // cùng một giây nên "ORDER BY changed_at DESC" không phân định được — xem ghi chú ở F4 §1.4.
+        assertThat(historyOf(available101))
+            .extracting(RoomStatusHistoryResponse::getFromStatus, RoomStatusHistoryResponse::getToStatus)
+            .containsExactlyInAnyOrder(
+                tuple(RoomStatus.OCCUPIED, RoomStatus.DIRTY),
+                tuple(RoomStatus.RESERVED, RoomStatus.OCCUPIED),
+                tuple(RoomStatus.AVAILABLE, RoomStatus.RESERVED));
+        assertThat(historyOf(available101))
+            .allSatisfy(row -> assertThat(row.getChangeSource()).isEqualTo(ChangeSource.RECEPTION));
+        assertThat(taskRepository.findByRoomIdAndStatusIn(available101.getId(), HousekeepingTaskStatus.OPEN_STATUSES))
+            .hasSize(1);
+    }
+
+    /** RM-08 — hủy đặt / no-show: về Trống, lý do vào lịch sử, không sinh việc dọn nào. */
+    @Test
+    void shouldCancelReservationWithReasonInHistory() {
+        loginAsReception();
+        roomService.changeStatus(available101.getId(), request(RoomStatus.RESERVED, null));
+
+        roomService.changeStatus(available101.getId(), request(RoomStatus.AVAILABLE, "Khách không đến (no-show)"));
+        flushAndClear();
+
+        Room saved = em.find(Room.class, available101.getId());
+        assertThat(saved.getStatus()).isEqualTo(RoomStatus.AVAILABLE);
+        assertThat(saved.getUnavailableReason()).isNull();      // ck_rooms_unavailable_reason
+        assertThat(historyOf(available101))
+            .extracting(RoomStatusHistoryResponse::getReason)
+            .contains("Khách không đến (no-show)");
+        assertThat(taskRepository.findByRoomIdAndStatusIn(available101.getId(), HousekeepingTaskStatus.OPEN_STATUSES))
+            .isEmpty();
+    }
+
+    /** BR-PERM-04: Manager không làm thay Lễ tân — nút không hiện, gọi thẳng API thì 403. */
+    @Test
+    void shouldNotOfferNorAllowManagerToCheckOut() {
+        assertThat(roomService.getRoomById(occupied102.getId()).getAllowedTargets()).isEmpty();
+
+        assertThatThrownBy(() -> roomService.changeStatus(occupied102.getId(), request(RoomStatus.DIRTY, null)))
+            .isInstanceOf(UnauthorizedException.class);
+        flushAndClear();
+        assertThat(em.find(Room.class, occupied102.getId()).getStatus()).isEqualTo(RoomStatus.OCCUPIED);
+    }
+
+    /** Lễ tân chỉ thấy các bước của mình — không có nút khóa phòng (BR-ROOM-03). */
+    @Test
+    void shouldOfferOnlyReceptionStepsToReception() {
+        loginAsReception();
+
+        assertThat(roomService.getRoomById(available101.getId()).getAllowedTargets())
+            .containsExactlyInAnyOrder(RoomStatus.RESERVED, RoomStatus.OCCUPIED);
+        assertThat(roomService.getRoomById(occupied102.getId()).getAllowedTargets())
+            .containsExactly(RoomStatus.DIRTY);
+        assertThat(roomService.getRoomById(dirty201.getId()).getAllowedTargets()).isEmpty();
+    }
+
     // ── Tiện ích ────────────────────────────────────────────────────────────
+
+    /** Đổi người đang đăng nhập sang Lễ tân — user CÓ THẬT trong DB vì changed_by là khóa ngoại. */
+    private void loginAsReception() {
+        TestAuth.loginAs(reception.getId(), Role.STAFF, tenantId, hanoi, PositionType.RECEPTION);
+    }
 
     private List<RoomStatusHistoryResponse> historyOf(Room room) {
         return roomService.getHistory(room.getId(), PageRequest.of(0, 20)).getContent();

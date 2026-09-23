@@ -4,12 +4,14 @@ import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
 import { fetchAllRooms } from '../../api/rooms';
 import LockRoomModal from '../../components/rooms/LockRoomModal';
+import RoomActionDialog from '../../components/rooms/RoomActionDialog';
 import RoomActionSheet from '../../components/rooms/RoomActionSheet';
 import RoomCard from '../../components/rooms/RoomCard';
 import RoomStatusFilter from '../../components/rooms/RoomStatusFilter';
 import { formatClock } from './format';
-import { roomActionsFor, statusChangedMessage } from './roomActions';
+import { LOCK, roomActionsFor, statusChangedMessage } from './roomActions';
 import { compareNatural } from './roomLabels';
+import { useRoomAction } from './useRoomAction';
 import { useTenantLocations } from './useRoomLookups';
 import './rooms.css';
 
@@ -45,9 +47,13 @@ function countByStatus(rooms) {
  * Khác S-02: tải TẤT CẢ phòng một lần rồi lọc trạng thái ngay trên trình duyệt, vì sơ đồ cần
  * thấy cả khách sạn cùng lúc và lọc phải tức thì.
  *
- * Bấm thẻ: nếu người dùng có thao tác trên phòng đó (F2: Manager khóa / mở khóa, theo
- * `room.allowedTargets`) thì mở bảng thao tác; không có thì vào thẳng trang chi tiết như F1.
- * Đổi trạng thái xong chỉ thay đúng thẻ đó bằng phòng trong response — không tải lại cả sơ đồ.
+ * Bấm thẻ: nếu người dùng có thao tác trên phòng đó (theo `room.allowedTargets` — Manager
+ * khóa/mở khóa ở F2, Lễ tân đặt/nhận/trả phòng ở F4) thì mở bảng thao tác; không có thì vào
+ * thẳng trang chi tiết như F1. Đổi trạng thái xong chỉ thay đúng thẻ đó bằng phòng trong
+ * response — không tải lại cả sơ đồ, để Lễ tân đang xếp khách không bị mất chỗ đang xem.
+ *
+ * Đây là màn hình S-15 của Lễ tân, làm mobile-first: quầy lễ tân thao tác trên điện thoại /
+ * máy tính bảng nhiều hơn trên máy bàn.
  */
 export default function RoomBoardPage() {
   const { user } = useAuth();
@@ -66,7 +72,16 @@ export default function RoomBoardPage() {
 
   const [banner, setBanner] = useState(null); // { type, text }
   const [sheetRoom, setSheetRoom] = useState(null); // phòng đang mở bảng thao tác
-  const [actionRoom, setActionRoom] = useState(null); // phòng đang mở hộp thoại khóa / mở khóa
+
+  /** Thay đúng thẻ vừa đổi bằng phòng trong response; `before` để dựng câu báo cho đúng ngữ cảnh. */
+  const handleChanged = useCallback((updated, before) => {
+    setBanner({ type: 'success', text: statusChangedMessage(before, updated) });
+    setRooms((prev) => prev.map((room) => (room.id === updated.id ? updated : room)));
+  }, []);
+
+  const showError = useCallback((text) => setBanner({ type: 'error', text }), []);
+
+  const action = useRoomAction({ onChanged: handleChanged, onError: showError });
 
   // Giám đốc: mặc định mở khách sạn đầu tiên — sơ đồ luôn là của MỘT khách sạn.
   useEffect(() => {
@@ -96,6 +111,8 @@ export default function RoomBoardPage() {
   }, [load]);
 
   function handleSelectRoom(room) {
+    // Không có thao tác nào (Giám đốc, nhân viên dọn, hoặc phòng đang ở trạng thái do task quyết
+    // định) thì bấm thẻ = xem chi tiết, giống F1.
     if (roomActionsFor(room).length === 0) {
       navigate(`/phong/${room.id}`);
       return;
@@ -103,15 +120,11 @@ export default function RoomBoardPage() {
     setSheetRoom(room);
   }
 
-  function handlePickAction() {
-    setActionRoom(sheetRoom);
-    setSheetRoom(null);
-  }
-
-  function handleStatusChanged(updated) {
-    setBanner({ type: 'success', text: statusChangedMessage(actionRoom, updated) });
-    setRooms((prev) => prev.map((room) => (room.id === updated.id ? updated : room)));
-    setActionRoom(null);
+  function handlePickAction(picked) {
+    const room = sheetRoom;
+    setSheetRoom(null);       // đóng bảng thao tác trước, để hộp thoại xác nhận không chồng lên
+    setBanner(null);
+    action.start(room, picked);
   }
 
   const counts = useMemo(() => countByStatus(rooms), [rooms]);
@@ -209,8 +222,18 @@ export default function RoomBoardPage() {
         />
       )}
 
-      {actionRoom && (
-        <LockRoomModal room={actionRoom} onClose={() => setActionRoom(null)} onChanged={handleStatusChanged} />
+      {/* Khóa / mở khóa có màn riêng (chọn đích + lý do bắt buộc); các bước của Lễ tân dùng
+          hộp thoại chung. Cả hai cùng kết thúc ở action.finish. */}
+      {action.pending?.action.flow === LOCK && (
+        <LockRoomModal room={action.pending.room} onClose={action.cancel} onChanged={action.finish} />
+      )}
+      {action.pending && action.pending.action.flow !== LOCK && (
+        <RoomActionDialog
+          room={action.pending.room}
+          action={action.pending.action}
+          onDone={action.finish}
+          onClose={action.cancel}
+        />
       )}
     </div>
   );

@@ -480,3 +480,41 @@
     min-height: 48px;
   }
 }
+
+/* ── F4: S-15 bảng thao tác của Lễ tân ─────────────────────────────── */
+/* Trên điện thoại, bảng trượt lên từ cạnh dưới: đó là vùng ngón cái với tới được khi cầm một
+   tay ở quầy (design.md mục 2). Trên desktop giữ nguyên hộp thoại giữa màn hình. */
+@keyframes action-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (max-width: 860px) {
+  /* Ghi đè .modal-backdrop / .modal của styles.css — file dùng chung được nạp SAU rooms.css nên
+     phải dùng 2 lớp để thắng về độ ưu tiên, thay vì sửa file của cả nhóm. */
+  .modal-backdrop.action-sheet-backdrop {
+    place-items: end stretch;
+    padding: 0;
+  }
+  .modal.action-sheet {
+    max-width: none;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    padding-bottom: calc(22px + env(safe-area-inset-bottom));
+    animation: action-sheet-up 0.18s ease-out;
+  }
+  /* Nút thao tác trải hết chiều ngang, cao ≥ 48px — bấm bằng ngón cái. */
+  .action-sheet .action-sheet__list .btn {
+    width: 100%;
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-sheet {
+    animation: none;
+  }
+}
