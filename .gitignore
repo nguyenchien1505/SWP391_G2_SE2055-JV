@@ -34,5 +34,11 @@ build/
 
 .env
 
+### Node ###
+# node_modules TỪNG bị commit vào repo (1504 file). Hậu quả: đổi nhánh là Git xóa bớt file
+# theo cây của nhánh đích, làm hỏng esbuild và .bin rồi báo "'vite' is not recognized";
+# mỗi lần build lại làm bẩn git. Đã gỡ khỏi index 23/09/2026 — đừng commit lại.
+node_modules/
+
 ### Project personal working docs (specs, notes) — không commit ###
 personal docs/

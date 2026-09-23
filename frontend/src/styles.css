@@ -889,3 +889,190 @@ a.nav-item {
 .field__help--error {
   color: var(--danger);
 }
+
+/* ── Màn Quản lý tài khoản Manager ───────────────────────────────────────── */
+
+/* Mục menu đã có màn hình là <a> (NavLink), không phải <button>. */
+a.nav-item {
+  text-decoration: none;
+}
+
+.page__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge--blue {
+  background: #e7eff8;
+  color: var(--blue);
+}
+
+.badge--orange {
+  background: #fdf0dc;
+  color: var(--orange);
+}
+
+.chip--green {
+  background: #e9f5ea;
+  color: var(--green);
+}
+
+.avatar--img {
+  object-fit: cover;
+  padding: 0;
+  background: #eef1f5;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: #fff;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.icon-btn:hover {
+  background: #eef3f9;
+}
+
+.btn--dark {
+  background: var(--text);
+  color: #fff;
+}
+
+.btn--dark:hover:not(:disabled) {
+  background: #000;
+}
+
+/* Hộp thoại mật khẩu tạm — rộng hơn hộp thoại xác nhận thường. */
+.modal--wide {
+  max-width: 540px;
+  border-top: 4px solid var(--primary);
+}
+
+.pw-dialog__head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.pw-dialog__head h2 {
+  margin: 6px 0 4px;
+}
+
+.pw-dialog__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: var(--radius-card);
+  background: #e9f5ea;
+  color: var(--green);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.pw-dialog__info {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 16px 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: var(--page-bg);
+  font-size: 14px;
+}
+
+.pw-dialog__info dt {
+  color: var(--muted);
+}
+
+.pw-dialog__info dd {
+  margin: 0;
+  text-align: right;
+}
+
+.pw-dialog__label {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pw-dialog__secret {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  border-radius: var(--radius-control);
+  background: #eef1f5;
+}
+
+.pw-dialog__secret code {
+  flex: 1;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+  user-select: all;
+  word-break: break-all;
+}
+
+.pw-dialog__warn {
+  margin: 14px 0 18px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: #fff4e5;
+  color: #7a4a00;
+  font-size: 13.5px;
+}
+
+.pw-dialog__warn b:first-child {
+  color: var(--orange);
+}
+
+.pw-dialog__warn p {
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+
+/* ── Pop-up form tạo / sửa ──────────────────────────────────────────────── */
+
+.modal--form {
+  position: relative;
+  max-width: 560px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 24px 24px 20px;
+}
+
+.modal__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.modal__close:hover {
+  background: #eef1f5;
+  color: var(--text);
+}
+
+/* Chừa chỗ cho nút ✕ để tiêu đề form không đè lên. */
+.modal--form .form__head {
+  padding-right: 36px;
+}

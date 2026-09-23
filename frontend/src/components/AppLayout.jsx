@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from './Logo';
 
@@ -23,6 +23,9 @@ const isBranchManager = (user) => user?.role === 'MANAGER';
 /** Chỉ nhân viên Dọn dẹp mới có việc dọn của riêng mình — BR-PERM-05, BR-ORG-08. */
 const isHousekeeper = (user) => user?.positionType === 'HOUSEKEEPING';
 
+/** Chỉ Giám đốc quản lý tài khoản Manager — BR-PERM-02. */
+const isDirector = (user) => user?.role === 'DIRECTOR';
+
 /**
  * Khung màn hình sau đăng nhập. Các mục điều hướng chưa có màn hình tương ứng được để ở
  * trạng thái vô hiệu thay vì ẩn đi — giữ đúng bố cục thiết kế và cho thấy lộ trình còn lại.
@@ -34,21 +37,23 @@ const NAV_GROUPS = [
   {
     title: 'Vận hành chuỗi',
     items: [
-      { label: 'Dashboard tổng quan' },
+      { label: 'Dashboard tổng quan', to: '/tong-quan' },
       { label: 'Sơ đồ phòng', to: '/so-do-phong' },
       { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
       { label: 'Xếp lịch làm việc' },
       { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
+      { label: 'Quản lý tài sản', to: '/tai-san' },
+      { label: 'Vật tư tiêu hao', to: '/vat-tu' },
+      { label: 'Báo hỏng', to: '/bao-hong' },
     ],
   },
   {
     title: 'Quản trị & hệ thống',
     items: [
       { label: 'Danh sách khách sạn', to: '/khach-san', visible: isManagement },
-      { label: 'Manager & Nhân sự' },
+      { label: 'Manager & Nhân sự', to: '/quan-ly', visible: isDirector },
       { label: 'Danh mục & Khu vực' },
       { label: 'Quy định & Mẫu ca' },
-      { label: 'Quản lý tài sản' },
       { label: 'Cấu hình hệ thống' },
     ],
   },
@@ -143,7 +148,7 @@ export default function AppLayout({ children }) {
           </div>
         </header>
 
-        <main className="shell__content">{children}</main>
+        <main className="shell__content">{children || <Outlet />}</main>
       </div>
     </div>
   );

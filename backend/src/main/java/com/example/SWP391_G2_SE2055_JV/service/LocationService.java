@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.LocationResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateLocationContactRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateLocationRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
+import com.example.SWP391_G2_SE2055_JV.entity.Subscription;
 import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
@@ -12,6 +13,7 @@ import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.AreaRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.SubscriptionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +50,7 @@ public class LocationService {
     private final RoomRepository     roomRepository;
     private final UserRepository     userRepository;
     private final AreaRepository     areaRepository;
+    private final SubscriptionRepository subscriptionRepository;
 
     /**
      * BR-ORG-04: "Tổng số phòng" là derived field nên phải đếm khi trả về. Đếm gộp một lần
@@ -86,6 +89,7 @@ public class LocationService {
     @Transactional
     public LocationResponse createLocation(CreateLocationRequest request) {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
+        assertLocationQuotaAvailable(tenantId);
 
         Location location = Location.builder()
             .tenantId(tenantId)
@@ -201,6 +205,27 @@ public class LocationService {
     }
 
     // ── Nội bộ ──────────────────────────────────────────────────────────────
+
+    /**
+     * BR-SAAS-02: số Location bị chặn bởi quota của gói dịch vụ; muốn thêm thì nâng cấp gói
+     * (BR-SAAS-06). Áp dụng cả khi đang dùng thử: BR-SAAS-08 cho dùng thử "dùng chung luồng
+     * custom plan, chỉ khác là miễn phí", tức vẫn theo quota của gói đã chọn.
+     *
+     * <p>Gói được đọc kèm khóa ghi để các request tạo Location cùng lúc của một Tenant đi
+     * lần lượt qua bước "đếm rồi lưu" — xem {@link SubscriptionRepository#findForUpdateByTenantId}.
+     */
+    private void assertLocationQuotaAvailable(UUID tenantId) {
+        Subscription subscription = subscriptionRepository.findForUpdateByTenantId(tenantId)
+            .orElseThrow(() -> new BusinessException(
+                "Tenant chưa có gói dịch vụ nên chưa tạo được Location."));
+
+        long used = locationRepository.countByTenantId(tenantId);
+        if (used >= subscription.getQuotaLocation()) {
+            throw new BusinessException(String.format(
+                "Đã dùng hết %d/%d Location của gói dịch vụ. Nâng cấp gói để thêm Location.",
+                used, subscription.getQuotaLocation()));
+        }
+    }
 
     /** Khóa ngoại chỉ đảm bảo Location TỒN TẠI, không đảm bảo thuộc Tenant người gọi. */
     private Location getOwnedLocation(UUID id) {
