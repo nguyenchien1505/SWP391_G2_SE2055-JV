@@ -64,6 +64,18 @@ function RequireManagementRole({ children }) {
   return user?.role === 'STAFF' ? <Navigate to={homePathFor(user)} replace /> : children;
 }
 
+/**
+ * Bảng lịch dọn phòng — chỉ Quản lý chi nhánh. Giám đốc bị đưa về trang chủ thay vì thấy màn
+ * rỗng không thao tác được: mọi việc trên lịch dọn đều ✖ với DIRECTOR (BR-HK-02, BR-HK-05,
+ * BR-HK-06, BR-HK-09). Chặn ở đây để ẩn mục menu không bị đi vòng bằng cách gõ thẳng URL.
+ * Chỉ là lớp giao diện; quyền thật do backend quyết định.
+ */
+function RequireBranchManager({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role === 'MANAGER' || user?.role === 'PLATFORM_ADMIN';
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
 /** Trang nghiệp vụ trong khung AppLayout, bắt buộc đã đăng nhập (và đã đổi mật khẩu tạm). */
 function inShell(page) {
   return (
@@ -114,10 +126,9 @@ export default function App() {
       <Route path="/phong" element={inShell(<RequireManagementRole><RoomsPage /></RequireManagementRole>)} />
       <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />
       <Route path="/so-do-phong" element={inShell(<RoomBoardPage />)} />
-      {/* Dọn phòng — BR-HK-*. Bảng lịch dọn cho Quản lý; "việc của tôi" cho nhân viên dọn.
-          Không chặn theo vai trò ở đây: backend tự ép phạm vi (nhân viên chỉ thấy việc của
-          mình), và mở được cả hai trang giúp Quản lý kiểm chứng nhanh khi có sự cố. */}
-      <Route path="/don-phong" element={inShell(<RequireManagementRole><HousekeepingPage /></RequireManagementRole>)} />
+      {/* Dọn phòng — BR-HK-*. Bảng lịch dọn chỉ cho Quản lý chi nhánh; "việc của tôi" không
+          chặn vai trò vì backend tự ép nhân viên về việc của chính mình (BR-PERM-05). */}
+      <Route path="/don-phong" element={inShell(<RequireBranchManager><HousekeepingPage /></RequireBranchManager>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
       <Route
         element={

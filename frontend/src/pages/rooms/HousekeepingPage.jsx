@@ -23,8 +23,9 @@ const CLOSED_STATUSES = ['COMPLETED', 'CANCELLED'];
 /**
  * S-09 Hàng chờ phân công + S-11 Danh sách việc dọn — RM-13, RM-14, RM-15, RM-16.
  *
- * Người dùng chính là Quản lý chi nhánh; Giám đốc mở được nhưng chỉ để xem (backend chặn mọi
- * thao tác của Giám đốc trên lịch dọn).
+ * Chỉ Quản lý chi nhánh vào được màn này (route bọc {@code RequireBranchManager}). Giám đốc
+ * đã bị gỡ khỏi đây: mọi thao tác trên lịch dọn đều ✖ với họ, và danh sách của họ trộn phòng
+ * của mọi khách sạn trong chuỗi nên đọc dễ nhầm.
  *
  * Bố cục là **bảng ba cột theo trạng thái** chứ không phải một danh sách dài: việc của Quản lý
  * là nhìn ra ngay "còn bao nhiêu phòng chưa có ai dọn". Dưới 860px ba cột đổi thành ba tab (CSS

@@ -13,6 +13,13 @@ const ROLE_LABEL = {
 /** Giám đốc / Manager — Staff gọi các API quản trị (vd. GET /locations) sẽ nhận 403. */
 const isManagement = (user) => user?.role === 'DIRECTOR' || user?.role === 'MANAGER';
 
+/**
+ * Lịch dọn phòng chỉ dành cho Quản lý chi nhánh. Giám đốc không có thao tác nào ở đây
+ * (BR-HK-02, BR-HK-05, BR-HK-06, BR-HK-09 đều ✖ với DIRECTOR), và danh sách của Giám đốc
+ * trộn phòng của MọI khách sạn nên đọc dễ nhầm — hai khách sạn đều có "phòng 102".
+ */
+const isBranchManager = (user) => user?.role === 'MANAGER';
+
 /** Chỉ nhân viên Dọn dẹp mới có việc dọn của riêng mình — BR-PERM-05, BR-ORG-08. */
 const isHousekeeper = (user) => user?.positionType === 'HOUSEKEEPING';
 
@@ -31,7 +38,7 @@ const NAV_GROUPS = [
       { label: 'Sơ đồ phòng', to: '/so-do-phong' },
       { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
       { label: 'Xếp lịch làm việc' },
-      { label: 'Công việc dọn phòng', to: '/don-phong', visible: isManagement },
+      { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
     ],
   },
   {
