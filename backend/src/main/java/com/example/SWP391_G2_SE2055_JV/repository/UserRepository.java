@@ -28,6 +28,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     Page<User> findByTenantIdAndLocationId(UUID tenantId, UUID locationId, Pageable pageable);
 
+    Page<User> findByTenantIdAndRole(UUID tenantId, Role role, Pageable pageable);
+
+    Page<User> findByTenantIdAndLocationIdAndRole(UUID tenantId, UUID locationId, Role role, Pageable pageable);
+
     Optional<User> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /** BR-SAAS-03: quota "User" CHỈ đếm Staff — Giám đốc và Manager không tính. */

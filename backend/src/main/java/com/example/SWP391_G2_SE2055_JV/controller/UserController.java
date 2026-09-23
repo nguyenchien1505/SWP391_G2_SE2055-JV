@@ -4,6 +4,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.CreateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.TempPasswordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.UserResponse;
+import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,8 +36,9 @@ public class UserController {
     @GetMapping
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER')")
     public ResponseEntity<Page<UserResponse>> getUsers(
+            @RequestParam(required = false) Role role,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(userService.getUsers(pageable));
+        return ResponseEntity.ok(userService.getUsers(role, pageable));
     }
 
     @GetMapping("/{id}")

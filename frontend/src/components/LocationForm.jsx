@@ -181,11 +181,9 @@ export default function LocationForm({ editing, canManage, onSubmit, onCancel })
       )}
 
       <div className="form__actions">
-        {editing && (
-          <button type="button" className="btn btn--ghost" onClick={onCancel}>
-            Hủy bỏ
-          </button>
-        )}
+        <button type="button" className="btn btn--ghost" onClick={onCancel}>
+          Hủy bỏ
+        </button>
         <button type="submit" className="btn btn--primary" disabled={submitting}>
           {submitting ? 'Đang lưu…' : editing ? 'Lưu thay đổi' : 'Lưu khách sạn'}
         </button>

@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import LocationsPage from './pages/LocationsPage';
+import ManagersPage from './pages/ManagersPage';
 import AppLayout from './components/AppLayout';
 
 /** Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). */
@@ -59,6 +60,16 @@ export default function App() {
           <RequireAuth>
             <AppLayout>
               <LocationsPage />
+            </AppLayout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/quan-ly"
+        element={
+          <RequireAuth>
+            <AppLayout>
+              <ManagersPage />
             </AppLayout>
           </RequireAuth>
         }

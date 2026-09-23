@@ -59,17 +59,26 @@ public class UserService {
     private final ApplicationEventPublisher eventPublisher;
     private final PasswordEncoder    passwordEncoder;
 
+    /**
+     * @param role lọc theo vai trò (ví dụ màn hình quản lý Manager chỉ cần MANAGER);
+     *             {@code null} = mọi vai trò.
+     */
     @Transactional(readOnly = true)
-    public Page<UserResponse> getUsers(Pageable pageable) {
+    public Page<UserResponse> getUsers(Role role, Pageable pageable) {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
 
         // BR-PERM-03: Manager chỉ thấy nhân sự trong Location của mình.
         if (SecurityUtils.hasRole(Role.MANAGER)) {
-            return userRepository
-                .findByTenantIdAndLocationId(tenantId, SecurityUtils.getCurrentLocationId(), pageable)
-                .map(UserResponse::fromEntity);
+            UUID locationId = SecurityUtils.getCurrentLocationId();
+            Page<User> page = role == null
+                ? userRepository.findByTenantIdAndLocationId(tenantId, locationId, pageable)
+                : userRepository.findByTenantIdAndLocationIdAndRole(tenantId, locationId, role, pageable);
+            return page.map(UserResponse::fromEntity);
         }
-        return userRepository.findByTenantId(tenantId, pageable).map(UserResponse::fromEntity);
+        Page<User> page = role == null
+            ? userRepository.findByTenantId(tenantId, pageable)
+            : userRepository.findByTenantIdAndRole(tenantId, role, pageable);
+        return page.map(UserResponse::fromEntity);
     }
 
     @Transactional(readOnly = true)
@@ -273,27 +282,36 @@ public class UserService {
     }
 
     /**
-     * BR-PERM-02/03: Manager chỉ quản lý STAFF; tài khoản Manager — kể cả của chính mình —
-     * do Giám đốc quản lý. Thiếu chốt này Manager có thể tự cho mình nghỉ việc hoặc tự
-     * khóa mình, để lại Location không người quản lý.
+     * Ai được GHI (tạo / sửa / cho nghỉ việc / cấp lại mật khẩu) tài khoản nào — BR-PERM-02/03:
+     * <pre>
+     *   DIRECTOR : CRUD Manager. Với Staff chỉ "View Staff" — tạo, sửa, cho nghỉ việc Staff
+     *              là việc của Manager (BR-USER-03; BR-USER-04 "không cần Giám đốc duyệt").
+     *   MANAGER  : CRUD Staff trong Location của mình. Tài khoản Manager — kể cả của chính
+     *              mình — do Giám đốc quản lý; thiếu chốt này Manager có thể tự cho mình nghỉ
+     *              việc hoặc tự khóa mình, để lại Location không người quản lý.
+     * </pre>
+     * Thao tác XEM không đi qua hàm này: Giám đốc vẫn xem được toàn bộ nhân sự trong Tenant.
      */
-    private void assertCanModify(User target) {
-        if (SecurityUtils.hasRole(Role.MANAGER) && target.getRole() != Role.STAFF) {
+    private static void assertCanManage(Role actor, Role target) {
+        if (actor == Role.DIRECTOR && target != Role.MANAGER) {
+            throw new BusinessException(
+                "Giám đốc chỉ quản lý tài khoản Manager; với Staff chỉ được xem (BR-PERM-02).");
+        }
+        if (actor == Role.MANAGER && target != Role.STAFF) {
             throw new BusinessException("Manager chỉ thao tác được trên tài khoản STAFF (BR-PERM-03).");
         }
     }
 
-    /** BR-PERM-02/03: Giám đốc CRUD Manager, Manager CRUD Staff trong Location. */
-    private void assertCanCreateRole(Role target) {
-        Role actor = SecurityUtils.getCurrentRole();
+    private void assertCanModify(User target) {
+        assertCanManage(SecurityUtils.getCurrentRole(), target.getRole());
+    }
 
+    private void assertCanCreateRole(Role target) {
         if (target == Role.PLATFORM_ADMIN || target == Role.DIRECTOR) {
             throw new BusinessException(
                 "Không tạo được tài khoản " + target + " qua luồng này.");
         }
-        if (actor == Role.MANAGER && target != Role.STAFF) {
-            throw new BusinessException("Manager chỉ được tạo tài khoản STAFF (BR-PERM-03).");
-        }
+        assertCanManage(SecurityUtils.getCurrentRole(), target);
     }
 
     /**
