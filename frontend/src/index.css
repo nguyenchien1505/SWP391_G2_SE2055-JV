@@ -1,38 +1,74 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Be Vietnam Pro', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  --font-sans: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
   --color-primary: #00375e;
-  --color-primary-dark: #002642;
   --color-primary-container: #1f4e78;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #95bff0;
+  --color-inverse-primary: #a0cafb;
+
+  --color-secondary: #0e61a1;
+  --color-secondary-container: #79b7fd;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #00477b;
+  --color-secondary-fixed: #d1e4ff;
+  --color-secondary-fixed-dim: #9ecaff;
+
+  --color-surface: #f8f9ff;
+  --color-surface-dim: #d2daeb;
+  --color-surface-bright: #f8f9ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e5eeff;
+  --color-surface-container-high: #e0e9f9;
+  --color-surface-container-highest: #dae3f4;
+
+  --color-on-surface: #131c28;
+  --color-on-surface-variant: #42474e;
+  --color-text-primary: #1C2330;
+  --color-text-secondary: #5B6472;
+
   --color-bg-page: #F7F8FA;
   --color-bg-surface: #FFFFFF;
   --color-border-default: #DFE3E8;
-  --color-text-primary: #1C2330;
-  --color-text-secondary: #5B6472;
+  --color-outline: #72777f;
+  --color-outline-variant: #c2c7cf;
+
+  --color-room-ready: #2E7D32;
+  --color-room-ready-bg: #E8F5E9;
+  --color-room-occupied: #1565C0;
+  --color-room-occupied-bg: #E3F2FD;
+  --color-room-dirty: #EF6C00;
+  --color-room-dirty-bg: #FFF3E0;
+  --color-room-cleaning: #F9A825;
+  --color-room-cleaning-bg: #FFFDE7;
+  --color-room-inspecting: #6A1B9A;
+  --color-room-inspecting-bg: #F3E5F5;
+  --color-room-unavailable: #616161;
+  --color-room-unavailable-bg: #EEEEEE;
+
+  --color-danger: #D32F2F;
+  --color-danger-bg: #FFEBEE;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
 }
 
-body {
-  font-family: 'Be Vietnam Pro', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  background-color: #F7F8FA;
-  color: #1C2330;
-  margin: 0;
-  padding: 0;
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-bg-page);
+    color: var(--color-text-primary);
+  }
 }
 
-/* Custom subtle scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+  vertical-align: middle;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-

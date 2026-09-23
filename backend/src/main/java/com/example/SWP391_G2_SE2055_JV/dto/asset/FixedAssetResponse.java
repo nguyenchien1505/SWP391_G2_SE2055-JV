@@ -16,7 +16,9 @@ public class FixedAssetResponse {
     private String assetCode;
     private String name;
     private UUID roomId;
+    private String roomName;
     private UUID areaId;
+    private String areaName;
     private FixedAssetStatus status;
     private String note;
 

@@ -77,12 +77,12 @@ public class FixedAssetService {
                 : fixedAssetRepository.findByTenantIdAndLocationIdAndStatusNotIn(
                     tenantId, locationId, HIDDEN_IN_OPERATIONS, pageable);
         }
-        return page.map(FixedAssetResponse::fromEntity);
+        return page.map(this::enrichResponse);
     }
 
     @Transactional(readOnly = true)
     public FixedAssetResponse getFixedAssetById(UUID id) {
-        return FixedAssetResponse.fromEntity(getOwnedAsset(id));
+        return enrichResponse(getOwnedAsset(id));
     }
 
     @Transactional
@@ -110,7 +110,7 @@ public class FixedAssetService {
             .note(request.getNote())
             .build();
 
-        return FixedAssetResponse.fromEntity(fixedAssetRepository.save(asset));
+        return enrichResponse(fixedAssetRepository.save(asset));
     }
 
     /**
@@ -143,7 +143,7 @@ public class FixedAssetService {
         asset.setAreaId(request.getAreaId());
         asset.setNote(request.getNote());
 
-        return FixedAssetResponse.fromEntity(fixedAssetRepository.save(asset));
+        return enrichResponse(fixedAssetRepository.save(asset));
     }
 
     /**
@@ -169,7 +169,26 @@ public class FixedAssetService {
                 damageReportService.autoResolveForDisposedAsset(asset.getId(), SecurityUtils.getCurrentUserId());
             }
         }
-        return FixedAssetResponse.fromEntity(asset);
+        return enrichResponse(asset);
+    }
+
+    @Transactional
+    public void deleteFixedAsset(UUID id) {
+        FixedAsset asset = getOwnedAsset(id);
+        log.info("Xóa vĩnh viễn tài sản {}", asset.getAssetCode());
+        fixedAssetRepository.delete(asset);
+    }
+
+    private FixedAssetResponse enrichResponse(FixedAsset asset) {
+        FixedAssetResponse response = FixedAssetResponse.fromEntity(asset);
+        if (asset.getRoomId() != null) {
+            roomRepository.findById(asset.getRoomId())
+                .ifPresent(room -> response.setRoomName("Phòng " + room.getRoomNumber()));
+        } else if (asset.getAreaId() != null) {
+            areaRepository.findById(asset.getAreaId())
+                .ifPresent(area -> response.setAreaName(area.getName()));
+        }
+        return response;
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────

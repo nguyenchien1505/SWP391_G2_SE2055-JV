@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from './Logo';
 
@@ -17,21 +18,23 @@ const NAV_GROUPS = [
   {
     title: 'Vận hành chuỗi',
     items: [
-      { label: 'Dashboard tổng quan', ready: false },
+      { label: 'Dashboard tổng quan', path: '/tong-quan', ready: true },
       { label: 'Sơ đồ phòng', ready: false },
       { label: 'Danh sách phòng', ready: false },
       { label: 'Xếp lịch làm việc', ready: false },
       { label: 'Công việc dọn phòng', ready: false },
+      { label: 'Quản lý tài sản', path: '/tai-san', ready: true },
+      { label: 'Vật tư tiêu hao', path: '/vat-tu', ready: true },
+      { label: 'Báo hỏng', path: '/bao-hong', ready: true },
     ],
   },
   {
     title: 'Quản trị & hệ thống',
     items: [
-      { label: 'Danh sách khách sạn', ready: true },
+      { label: 'Danh sách khách sạn', path: '/khach-san', ready: true },
       { label: 'Manager & Nhân sự', ready: false },
       { label: 'Danh mục & Khu vực', ready: false },
       { label: 'Quy định & Mẫu ca', ready: false },
-      { label: 'Quản lý tài sản', ready: false },
       { label: 'Cấu hình hệ thống', ready: false },
     ],
   },
@@ -67,15 +70,25 @@ export default function AppLayout({ children }) {
             <div className="nav-group" key={group.title}>
               <p className="nav-group__title">{group.title}</p>
               {group.items.map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  className={`nav-item ${item.ready ? 'nav-item--active' : ''}`}
-                  disabled={!item.ready}
-                  title={item.ready ? undefined : 'Màn hình này chưa được phát triển'}
-                >
-                  {item.label}
-                </button>
+                item.ready && item.path ? (
+                  <NavLink
+                    key={item.label}
+                    to={item.path}
+                    className={({ isActive }) => `nav-item ${isActive ? 'nav-item--active' : ''}`}
+                  >
+                    {item.label}
+                  </NavLink>
+                ) : (
+                  <button
+                    key={item.label}
+                    type="button"
+                    className="nav-item"
+                    disabled={!item.ready}
+                    title={item.ready ? undefined : 'Màn hình này chưa được phát triển'}
+                  >
+                    {item.label}
+                  </button>
+                )
               ))}
             </div>
           ))}
@@ -110,7 +123,7 @@ export default function AppLayout({ children }) {
           </div>
         </header>
 
-        <main className="shell__content">{children}</main>
+        <main className="shell__content">{children || <Outlet />}</main>
       </div>
     </div>
   );

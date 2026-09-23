@@ -88,4 +88,11 @@ public class FixedAssetController {
             @Valid @RequestBody UpdateFixedAssetStatusRequest request) {
         return ResponseEntity.ok(fixedAssetService.updateStatus(id, request.getStatus()));
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<Void> deleteFixedAsset(@PathVariable UUID id) {
+        fixedAssetService.deleteFixedAsset(id);
+        return ResponseEntity.noContent().build();
+    }
 }

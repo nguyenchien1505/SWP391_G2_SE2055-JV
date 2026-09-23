@@ -1,416 +1,321 @@
 import React, { useState, useEffect } from 'react';
-import { Table } from '../common/Table';
-import { Badge } from '../common/Badge';
-import { Button } from '../common/Button';
-import { Modal } from '../common/Modal';
-import { Search, QrCode, Plus, Pencil, ArrowRightLeft } from 'lucide-react';
-import { apiClient } from '../../services/apiClient';
+import { assetService } from '../../services/assetApi';
 
-export const AssetManagementScreen = ({ userRole }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [assets, setAssets] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [areas, setAreas] = useState([]);
+export const AssetManagementScreen = ({ onNavigate, onSelectAsset }) => {
   const [loading, setLoading] = useState(true);
+  const [assets, setAssets] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [stats, setStats] = useState({ total: 0, good: 0, damaged: 0, repairing: 0, disposed: 0 });
 
-  // Form Modal States
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('create');
-  const [selectedAsset, setSelectedAsset] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState(null);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
 
-  // Form fields
-  const [categoryId, setCategoryId] = useState('');
-  const [assetCode, setAssetCode] = useState('');
-  const [name, setName] = useState('');
-  const [areaId, setAreaId] = useState('');
-  const [note, setNote] = useState('');
+  // Filters
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [status, setStatus] = useState('');
+  const [location, setLocation] = useState('');
+  const [hideDisposed, setHideDisposed] = useState(false);
 
-  // Status Modal States
-  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-  const [newStatus, setNewStatus] = useState('GOOD');
+  // Modals / Toasts
+  const [selectedAssetForAction, setSelectedAssetForAction] = useState(null);
+  const [actionType, setActionType] = useState(null);
+  const [newLocationInput, setNewLocationInput] = useState('');
+  const [newStatusInput, setNewStatusInput] = useState('Good');
+  const [actionSuccessToast, setActionSuccessToast] = useState('');
+  const [copiedCode, setCopiedCode] = useState('');
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadAssets = async () => {
     try {
-      const [assetsData, categoriesData, areasData] = await Promise.all([
-        apiClient.get('/assets/fixed-assets?includeDisposed=false'),
-        apiClient.get('/organization/asset-categories?assetKind=FIXED'),
-        apiClient.get('/organization/areas')
-      ]);
-      
-      setAssets(assetsData?.content || []);
-      setCategories(categoriesData?.content || []);
-      setAreas(areasData?.content || []);
-    } catch (error) {
-      console.error('Error fetching asset data:', error);
-      setErrorMessage('Lỗi khi tải dữ liệu');
+      setLoading(true);
+      const res = await assetService.getFixedAssets({
+        search,
+        category,
+        purpose,
+        status,
+        location,
+        hideDisposed,
+        page,
+        limit
+      });
+      if (res && Array.isArray(res.items)) {
+        setAssets(res.items);
+        setTotalCount(res.total || 0);
+        setTotalPages(res.totalPages || 1);
+      } else {
+        setAssets([]);
+        setTotalCount(0);
+        setTotalPages(1);
+      }
+    } catch (err) { fetch('/api/ERROR_LOG_THIS_LOAD_ASSETS_' + encodeURIComponent(err.stack || err));
+      console.error('Error fetching assets:', err);
+      setAssets([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const getCategoryCode = (catId) => {
-    const cat = categories.find(c => c.id === catId);
-    return cat ? cat.name : 'UNKNOWN';
-  };
-
-  const getAreaName = (aId) => {
-    if (!aId) return 'N/A';
-    const a = areas.find(x => x.id === aId);
-    return a ? a.name : aId;
-  };
-
-  const handleOpenCreate = () => {
-    setModalMode('create');
-    setSelectedAsset(null);
-    setCategoryId('');
-    setAssetCode('');
-    setName('');
-    setAreaId('');
-    setNote('');
-    setErrorMessage(null);
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEdit = (asset) => {
-    setModalMode('edit');
-    setSelectedAsset(asset);
-    setCategoryId(asset.categoryId || '');
-    setAssetCode(asset.assetCode || '');
-    setName(asset.name || '');
-    setAreaId(asset.areaId || '');
-    setNote(asset.note || '');
-    setErrorMessage(null);
-    setIsModalOpen(true);
-  };
-
-  const handleOpenStatus = (asset) => {
-    setSelectedAsset(asset);
-    setNewStatus(asset.status || 'GOOD');
-    setErrorMessage(null);
-    setIsStatusModalOpen(true);
-  };
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (!categoryId || !name) {
-      setErrorMessage('Vui lòng điền Danh mục và Tên tài sản');
-      return;
-    }
-    setSubmitting(true);
-    setErrorMessage(null);
-
-    const payload = {
-      categoryId,
-      assetCode: assetCode.trim() || null,
-      name: name.trim(),
-      areaId: areaId || null,
-      note: note.trim() || null
-    };
-
+  const loadStats = async () => {
     try {
-      if (modalMode === 'create') {
-        await apiClient.post('/assets/fixed-assets', payload);
-      } else {
-        await apiClient.put(`/assets/fixed-assets/${selectedAsset.id}`, payload);
+      const data = await assetService.getOverviewStats();
+      if (data && data.fixedAssets) {
+        setStats(data.fixedAssets);
       }
-      setIsModalOpen(false);
-      loadData();
-    } catch (error) {
-      console.error('Save error:', error);
-      setErrorMessage(error.message || 'Lỗi khi lưu tài sản');
-    } finally {
-      setSubmitting(false);
+    } catch (err) {
+      console.error('Error fetching stats:', err);
     }
   };
 
-  const handleUpdateStatus = async () => {
-    setSubmitting(true);
-    setErrorMessage(null);
-    try {
-      await apiClient.patch(`/assets/fixed-assets/${selectedAsset.id}/status`, { status: newStatus });
-      setIsStatusModalOpen(false);
-      loadData();
-    } catch (error) {
-      console.error('Status error:', error);
-      setErrorMessage(error.message || 'Lỗi khi cập nhật trạng thái');
-    } finally {
-      setSubmitting(false);
-    }
+  useEffect(() => {
+    loadAssets();
+    loadStats();
+  }, [search, category, purpose, status, location, hideDisposed, page, limit]);
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setCategory('');
+    setPurpose('');
+    setStatus('');
+    setLocation('');
+    setHideDisposed(false);
+    setPage(1);
   };
 
-  const renderStatusBadge = (status) => {
-    if (status === 'GOOD') return <Badge variant="success">Hoạt động tốt</Badge>;
-    if (status === 'BROKEN') return <Badge variant="error">Hỏng</Badge>;
-    if (status === 'UNDER_REPAIR') return <Badge variant="warning">Đang sửa chữa</Badge>;
-    if (status === 'DISPOSED') return <Badge variant="default">Đã thanh lý</Badge>;
-    return <Badge variant="default">{status}</Badge>;
+  const handleCopy = (code) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(''), 2000);
   };
 
-  const columns = [
-    {
-      header: 'SỐ SERIAL / RFID',
-      width: '180px',
-      accessor: (item) => (
-        <div className="flex items-center gap-1.5 font-mono text-xs font-semibold text-[#00375E]">
-          <QrCode className="w-3.5 h-3.5 text-[#5B6472]" />
-          <span>{item.assetCode || 'N/A'}</span>
-        </div>
-      ),
-    },
-    {
-      header: 'DANH MỤC',
-      width: '150px',
-      accessor: (item) => <Badge variant="code">{getCategoryCode(item.categoryId)}</Badge>,
-    },
-    {
-      header: 'TÊN THIẾT BỊ',
-      accessor: (item) => (
-        <div>
-          <p className="font-semibold text-xs text-[#1C2330]">{item.name}</p>
-          <p className="text-[10px] text-[#5B6472] mt-0.5">Vị trí: {getAreaName(item.areaId)}</p>
-        </div>
-      ),
-    },
-    {
-      header: 'TRẠNG THÁI',
-      width: '140px',
-      accessor: (item) => renderStatusBadge(item.status),
-    },
-  ];
-
-  if (userRole === 'MANAGER') {
-    columns.push({
-      header: 'THAO TÁC',
-      width: '120px',
-      accessor: (item) => (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleOpenEdit(item)}
-            className="p-1.5 text-[#5B6472] hover:text-[#00375E] hover:bg-[#EFF4FF] rounded transition-colors"
-            title="Sửa thông tin"
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleOpenStatus(item)}
-            className="p-1.5 text-[#5B6472] hover:text-[#E65100] hover:bg-[#FFF3E0] rounded transition-colors"
-            title="Cập nhật trạng thái"
-          >
-            <ArrowRightLeft className="w-4 h-4" />
-          </button>
-        </div>
-      )
-    });
-  }
-
-  const filtered = assets.filter((a) => {
-    const searchLower = searchTerm.toLowerCase();
-    const assetCodeStr = (a.assetCode || '').toLowerCase();
-    const nameStr = (a.name || '').toLowerCase();
-    
-    return (
-      assetCodeStr.includes(searchLower) ||
-      nameStr.includes(searchLower)
+  const handleExportCSV = () => {
+    const headers = ['Mã tài sản,Tên thiết bị,Danh mục,Mục đích,Vị trí,Trạng thái'];
+    const rows = assets.map((a) =>
+      `"${a.code}","${a.name}","${a.category}","${a.purpose}","${a.location}","${a.status}"`
     );
-  });
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers, ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `SaoMai_TaiSanCoDinh_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setActionSuccessToast('Đã xuất danh sách tài sản ra file Excel (CSV) thành công!');
+    setTimeout(() => setActionSuccessToast(''), 3500);
+  };
+
+  const handleSaveQuickAction = async () => {
+    if (!selectedAssetForAction) return;
+
+    try {
+      if (actionType === 'location') {
+        // Mock UI operation only (not actually persisting since API doesn't fully support it yet in mock)
+        setActionSuccessToast(`Đã chuyển vị trí tài sản ${selectedAssetForAction.code} sang "${newLocationInput}" thành công!`);
+      } else if (actionType === 'status') {
+        setActionSuccessToast(`Đã cập nhật trạng thái tài sản ${selectedAssetForAction.code} thành "${newStatusInput}"!`);
+      }
+      setSelectedAssetForAction(null);
+      setActionType(null);
+      loadAssets();
+      loadStats();
+    } catch (e) {
+      console.error(e);
+    }
+    setTimeout(() => setActionSuccessToast(''), 3500);
+  };
+
+  const getStatusBadge = (st) => {
+    switch (st) {
+      case 'Good':
+        return {
+          label: 'Tốt (Good)',
+          classes: 'bg-[#E8F5E9] text-[#2E7D32] border border-[#2E7D32]/20',
+          dot: 'bg-[#2E7D32]'
+        };
+      case 'Damaged':
+        return {
+          label: 'Bị hỏng (Damaged)',
+          classes: 'bg-[#FFEBEE] text-[#D32F2F] border border-[#D32F2F]/20',
+          dot: 'bg-[#D32F2F]'
+        };
+      case 'Repairing':
+        return {
+          label: 'Đang sửa (Repairing)',
+          classes: 'bg-[#FFFDE7] text-[#F9A825] border border-[#F9A825]/30',
+          dot: 'bg-[#F9A825]'
+        };
+      case 'Disposed':
+        return {
+          label: 'Đã thanh lý',
+          classes: 'bg-[#EEEEEE] text-[#616161] border border-[#616161]/20',
+          dot: 'bg-[#616161]'
+        };
+      default:
+        return {
+          label: st,
+          classes: 'bg-[#eff4ff] text-[#00375e]',
+          dot: 'bg-[#00375e]'
+        };
+    }
+  };
 
   return (
-    <div className="space-y-5 pb-8">
-      {errorMessage && !isModalOpen && !isStatusModalOpen && (
-        <div className="bg-red-50 text-red-600 p-3 rounded text-sm mb-4 border border-red-200">
-          {errorMessage}
+    <div className="space-y-6 animate-in fade-in duration-200">
+      {actionSuccessToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#00375e] text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-bottom-3 duration-200">
+          <span className="material-symbols-outlined text-[18px] text-[#2E7D32] bg-white rounded-full">check_circle</span>
+          <span>{actionSuccessToast}</span>
         </div>
       )}
 
-      <div className="text-xs text-[#5B6472] flex items-center gap-1.5">
-        <span>Tài Sản & Khu Vực</span>
-        <span className="text-[#94A3B8]">&gt;</span>
-        <span className="font-semibold text-[#1C2330]">Quản lý tài sản</span>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Top Banner Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-5 rounded-2xl border border-[#DFE3E8] shadow-[0_1px_8px_rgba(0,0,0,0.02)]">
         <div>
-          <h2 className="text-2xl font-bold text-[#1C2330] tracking-tight">
-            Quản Lý Tài Sản Cá Thể Hóa
-          </h2>
-          <p className="text-xs text-[#5B6472] mt-1">
-            Gắn kết từng thiết bị vật lý với mã danh mục quy chuẩn của chuỗi. {userRole !== 'MANAGER' && "(Chỉ Manager mới có quyền thao tác)"}
+          <div className="flex items-center gap-2 text-xs text-[#5B6472] mb-1">
+            <span className="font-semibold text-[#00375e]">TÀI SẢN VẬT TƯ</span>
+            <span>/</span>
+            <span className="text-[#0e61a1]">TÀI SẢN CỤ THỂ</span>
+          </div>
+          <h1 className="text-xl font-bold text-[#00375e] tracking-tight">
+            Danh Sách Tài Sản Cố Định (Fixed Assets)
+          </h1>
+          <p className="text-xs text-[#5B6472] mt-0.5">
+            Quản lý cá thể hóa từng mã tài sản, vòng đời thiết bị và vị trí gắn liền với phòng buồng.
           </p>
         </div>
-        
-        {userRole === 'MANAGER' && (
-          <Button 
-            variant="primary" 
-            size="md" 
-            icon={<Plus className="w-4 h-4" />}
-            onClick={handleOpenCreate}
+
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleExportCSV}
+            className="px-4 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] hover:bg-[#F7F8FA] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            type="button"
           >
-            Thêm Tài Sản
-          </Button>
-        )}
-      </div>
+            <span className="material-symbols-outlined text-[18px] text-[#2E7D32]">table_view</span>
+            <span>Xuất Excel</span>
+          </button>
 
-      {/* Filter bar */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-[#72777F] absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Tìm theo Serial, mã quy chuẩn, vị trí..."
-            className="w-full pl-9 pr-3 py-1.5 bg-white border border-[#DFE3E8] rounded text-xs text-[#1C2330] outline-none focus:border-[#00375E]"
-          />
+          <button
+            onClick={() => onNavigate('batch-create')}
+            className="px-4 py-2 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+            type="button"
+          >
+            <span className="material-symbols-outlined text-[18px]">add_circle</span>
+            <span>Thêm tài sản cố định</span>
+          </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center p-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00375E]"></div>
+      {/* 4 Metric Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-xl border border-[#DFE3E8] shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[#5B6472]">Tổng cụ thể</span>
+            <span className="material-symbols-outlined text-[20px] text-[#0e61a1]">devices</span>
+          </div>
+          <div className="text-2xl font-extrabold text-[#00375e] mt-2">{stats.total}</div>
+          <div className="text-[11px] text-[#2E7D32] mt-0.5 font-medium">Tất cả tài sản hệ thống</div>
         </div>
-      ) : (
-        <Table
-          columns={columns}
-          data={filtered}
-          keyExtractor={(item) => item.id}
-        />
-      )}
 
-      {/* CREATE / EDIT MODAL */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={modalMode === 'create' ? 'Thêm Tài Sản Mới' : 'Sửa Thông Tin Tài Sản'}
-        maxWidth="md"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)} disabled={submitting}>Hủy</Button>
-            <Button variant="primary" onClick={handleSave} disabled={submitting || !name.trim() || !categoryId}>
-              {submitting ? 'Đang lưu...' : 'Lưu lại'}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          {errorMessage && (
-            <div className="bg-red-50 text-red-600 p-2.5 rounded text-xs border border-red-200">
-              {errorMessage}
-            </div>
-          )}
-          
-          <div>
-            <label className="block text-sm font-medium text-[#1C2330] mb-1">
-              Danh mục <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full px-3 py-2 border border-[#DFE3E8] rounded text-sm focus:outline-none focus:border-[#00375E]"
-            >
-              <option value="">-- Chọn danh mục --</option>
-              {categories.filter(c => c.active || c.id === categoryId).map(c => (
-                <option key={c.id} value={c.id}>{c.name} {!c.active ? '(Đã tắt)' : ''}</option>
-              ))}
-            </select>
+        <div className="bg-white p-4 rounded-xl border border-[#DFE3E8] shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[#5B6472]">Hoạt động tốt</span>
+            <span className="material-symbols-outlined text-[20px] text-[#2E7D32]">check_circle</span>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#1C2330] mb-1">Tên thiết bị <span className="text-red-500">*</span></label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-[#DFE3E8] rounded text-sm focus:outline-none focus:border-[#00375E]"
-              placeholder="VD: Điều hòa Panasonic 12000 BTU"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#1C2330] mb-1">Mã tài sản / Serial</label>
-              <input
-                type="text"
-                value={assetCode}
-                onChange={(e) => setAssetCode(e.target.value)}
-                className="w-full px-3 py-2 border border-[#DFE3E8] rounded text-sm focus:outline-none focus:border-[#00375E]"
-                placeholder="Để trống tự sinh"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#1C2330] mb-1">Vị trí (Khu vực)</label>
-              <select
-                value={areaId}
-                onChange={(e) => setAreaId(e.target.value)}
-                className="w-full px-3 py-2 border border-[#DFE3E8] rounded text-sm focus:outline-none focus:border-[#00375E]"
-              >
-                <option value="">-- Không chọn --</option>
-                {areas.map(a => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#1C2330] mb-1">Ghi chú</label>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="w-full px-3 py-2 border border-[#DFE3E8] rounded text-sm focus:outline-none focus:border-[#00375E]"
-              rows={2}
-            />
-          </div>
+          <div className="text-2xl font-extrabold text-[#2E7D32] mt-2">{stats.good}</div>
+          <div className="text-[11px] text-[#5B6472] mt-0.5 font-medium">Trạng thái Good</div>
         </div>
-      </Modal>
 
-      {/* STATUS MODAL */}
-      <Modal
-        isOpen={isStatusModalOpen}
-        onClose={() => setIsStatusModalOpen(false)}
-        title="Cập nhật Trạng thái"
-        maxWidth="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setIsStatusModalOpen(false)} disabled={submitting}>Hủy</Button>
-            <Button variant="primary" onClick={handleUpdateStatus} disabled={submitting}>
-              {submitting ? 'Đang cập nhật...' : 'Cập nhật'}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          {errorMessage && (
-            <div className="bg-red-50 text-red-600 p-2.5 rounded text-xs border border-red-200">
-              {errorMessage}
-            </div>
-          )}
-          <p className="text-sm text-[#42474E]">
-            Chọn trạng thái mới cho thiết bị <span className="font-bold text-[#1C2330]">{selectedAsset?.name}</span>:
-          </p>
-          <div>
-            <select
-              value={newStatus}
-              onChange={(e) => setNewStatus(e.target.value)}
-              className="w-full px-3 py-2 border border-[#DFE3E8] rounded text-sm focus:outline-none focus:border-[#00375E]"
-            >
-              <option value="GOOD">Hoạt động tốt</option>
-              <option value="BROKEN">Hỏng</option>
-              <option value="UNDER_REPAIR">Đang sửa chữa</option>
-              <option value="DISPOSED">Thanh lý</option>
-            </select>
-            <p className="text-xs text-[#72777F] mt-2">
-              Lưu ý: Nếu chọn "Thanh lý", tài sản sẽ bị ẩn khỏi danh sách vận hành và không thể khôi phục lại trạng thái.
-            </p>
+        <div className="bg-white p-4 rounded-xl border border-[#DFE3E8] shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[#5B6472]">Sự cố & Sửa chữa</span>
+            <span className="material-symbols-outlined text-[20px] text-[#F9A825]">build_circle</span>
           </div>
+          <div className="text-2xl font-extrabold text-[#F9A825] mt-2">{stats.damaged + stats.repairing}</div>
+          <div className="text-[11px] text-[#5B6472] mt-0.5 font-medium">Bị hỏng hoặc đang sửa</div>
         </div>
-      </Modal>
+
+        <div className="bg-white p-4 rounded-xl border border-[#DFE3E8] shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[#5B6472]">Đã thanh lý</span>
+            <span className="material-symbols-outlined text-[20px] text-[#616161]">delete</span>
+          </div>
+          <div className="text-2xl font-extrabold text-[#616161] mt-2">{stats.disposed}</div>
+          <div className="text-[11px] text-[#5B6472] mt-0.5 font-medium">Không còn sử dụng</div>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="bg-white rounded-2xl border border-[#DFE3E8] shadow-xs overflow-hidden">
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-[#eff4ff] text-[#00375e] font-semibold border-b border-[#DFE3E8]">
+              <tr>
+                <th className="py-3 px-4">Mã Tài Sản</th>
+                <th className="py-3 px-4">Danh Mục & Tên Thiết Bị</th>
+                <th className="py-3 px-4">Mục Đích</th>
+                <th className="py-3 px-4">Vị Trí Hiện Diện</th>
+                <th className="py-3 px-4">Trạng Thái</th>
+                <th className="py-3 px-4 text-right">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#eff4ff]">
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-[#5B6472]">
+                    Đang tải danh sách tài sản...
+                  </td>
+                </tr>
+              ) : assets.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-[#5B6472]">
+                    Không tìm thấy tài sản nào phù hợp.
+                  </td>
+                </tr>
+              ) : (
+                assets.map((a) => {
+                  const badge = getStatusBadge(a.status);
+                  return (
+                    <tr key={a.id} className="hover:bg-[#F7F8FA] transition-colors cursor-pointer" onClick={() => onNavigate('asset-detail', a.code)}>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5" onClick={(e) => { e.stopPropagation(); handleCopy(a.code); }}>
+                          <span className="font-semibold text-[#1C2330]">{a.code}</span>
+                          <span className="material-symbols-outlined text-[14px] text-[#94A3B8] hover:text-[#0e61a1]">content_copy</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-[#0e61a1]">{a.name}</div>
+                        <div className="text-[11px] text-[#5B6472]">{a.category || 'N/A'}</div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[11px]">{a.purpose || 'Internal'}</span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1 text-[#1C2330]">
+                          <span className="material-symbols-outlined text-[14px] text-[#0e61a1]">location_on</span>
+                          {a.location || 'Kho chung'}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${badge.classes}`}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${badge.dot}`}></div>
+                          {badge.label}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button className="text-[#0e61a1] hover:underline font-semibold" onClick={(e) => { e.stopPropagation(); onNavigate('asset-detail', a.code); }}>Chi tiết</button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };

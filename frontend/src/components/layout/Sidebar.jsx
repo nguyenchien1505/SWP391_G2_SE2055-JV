@@ -22,14 +22,14 @@ export const Sidebar = ({
       sectionTitle: 'VẬN HÀNH CHUỖI',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: <LayoutGrid className="w-4 h-4" /> },
+        { id: 'assets', label: 'Quản lý tài sản', icon: <Archive className="w-4 h-4" /> },
+        { id: 'consumables', label: 'Tồn kho tiêu hao', icon: <Package className="w-4 h-4" /> },
+        { id: 'damage-reports', label: 'Quản lý báo hỏng', icon: <AlertTriangle className="w-4 h-4" /> },
       ],
     },
     {
       sectionTitle: 'TÀI SẢN & KHU VỰC',
       items: [
-        { id: 'assets', label: 'Quản lý tài sản', icon: <Archive className="w-4 h-4" /> },
-        { id: 'consumables', label: 'Tồn kho tiêu hao', icon: <Package className="w-4 h-4" /> },
-        { id: 'damage-reports', label: 'Quản lý báo hỏng', icon: <AlertTriangle className="w-4 h-4" /> },
         { id: 'catalog', label: 'Danh mục hệ thống', icon: <FolderTree className="w-4 h-4" /> },
         { id: 'locations', label: 'Quản lý khu vực', icon: <Building className="w-4 h-4" /> },
       ],

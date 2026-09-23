@@ -1,16 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.repository;
 
 import com.example.SWP391_G2_SE2055_JV.entity.FixedAsset;
-<<<<<<< HEAD
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-import java.util.UUID;
-
-/**
- * Chỉ chứa truy vấn mà module Tổ chức cần (BR-ORG-15); nghiệp vụ tài sản đầy đủ thuộc
- * module BR-ASSET.
-=======
 import com.example.SWP391_G2_SE2055_JV.enums.FixedAssetStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,18 +17,10 @@ import java.util.UUID;
  * <p>Có hai cặp method đọc song song vì phạm vi nhìn khác nhau theo vai trò: Giám đốc
  * đứng trên nhiều Location nên lọc theo Tenant, còn Manager và Staff bị giới hạn trong
  * Location của mình.
->>>>>>> Nguyen
  */
 @Repository
 public interface FixedAssetRepository extends JpaRepository<FixedAsset, UUID> {
 
-<<<<<<< HEAD
-    /**
-     * BR-ORG-15: chặn xóa Khu vực khi còn tài sản cố định gắn vào. Tính cả tài sản đã
-     * thanh lý — bản ghi vẫn giữ khóa ngoại tới khu vực để tra lịch sử (BR-ASSET-14).
-     */
-    boolean existsByAreaId(UUID areaId);
-=======
     // ── Phạm vi Tenant — Giám đốc ────────────────────────────────────────────
     Page<FixedAsset> findByTenantId(UUID tenantId, Pageable pageable);
 
@@ -74,5 +56,4 @@ public interface FixedAssetRepository extends JpaRepository<FixedAsset, UUID> {
     boolean existsByAreaId(UUID areaId);
 
     boolean existsByRoomId(UUID roomId);
->>>>>>> Nguyen
 }

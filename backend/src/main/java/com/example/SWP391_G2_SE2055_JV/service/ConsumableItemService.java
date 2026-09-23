@@ -8,8 +8,10 @@ import com.example.SWP391_G2_SE2055_JV.entity.ConsumableItem;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.repository.AssetCategoryRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ConsumableItemRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +49,7 @@ public class ConsumableItemService {
 
     private final ConsumableItemRepository consumableItemRepository;
     private final AssetCategoryRepository  categoryRepository;
+    private final UserRepository           userRepository;
 
     @Transactional(readOnly = true)
     public Page<ConsumableItemResponse> getConsumables(Boolean outOfStock, Pageable pageable) {
@@ -72,7 +75,8 @@ public class ConsumableItemService {
     @Transactional(readOnly = true)
     public ConsumableItemResponse getConsumableById(UUID id) {
         ConsumableItem item = getOwnedItem(id);
-        return ConsumableItemResponse.fromEntity(item, categoryRepository.findById(item.getCategoryId()).orElse(null));
+        User user = item.getLastCountedBy() != null ? userRepository.findById(item.getLastCountedBy()).orElse(null) : null;
+        return ConsumableItemResponse.fromEntity(item, categoryRepository.findById(item.getCategoryId()).orElse(null), user);
     }
 
     /** Thêm một danh mục tiêu hao vào kho của Location hiện tại (BR-ASSET-04). */
@@ -100,7 +104,8 @@ public class ConsumableItemService {
             .lastCountedBy(userId)
             .build();
 
-        return ConsumableItemResponse.fromEntity(consumableItemRepository.save(item), category);
+        User user = userRepository.findById(userId).orElse(null);
+        return ConsumableItemResponse.fromEntity(consumableItemRepository.save(item), category, user);
     }
 
     /**
@@ -211,13 +216,15 @@ public class ConsumableItemService {
     /** Nạp danh mục theo lô 1 lần cho cả trang/danh sách, tránh N+1. */
     private Page<ConsumableItemResponse> enrichWithCategory(Page<ConsumableItem> page) {
         Map<UUID, AssetCategory> categoriesById = loadCategories(page.getContent());
-        return page.map(item -> ConsumableItemResponse.fromEntity(item, categoriesById.get(item.getCategoryId())));
+        Map<UUID, User> usersById = loadUsers(page.getContent());
+        return page.map(item -> ConsumableItemResponse.fromEntity(item, categoriesById.get(item.getCategoryId()), usersById.get(item.getLastCountedBy())));
     }
 
     private List<ConsumableItemResponse> enrichWithCategory(List<ConsumableItem> items) {
         Map<UUID, AssetCategory> categoriesById = loadCategories(items);
+        Map<UUID, User> usersById = loadUsers(items);
         return items.stream()
-            .map(item -> ConsumableItemResponse.fromEntity(item, categoriesById.get(item.getCategoryId())))
+            .map(item -> ConsumableItemResponse.fromEntity(item, categoriesById.get(item.getCategoryId()), usersById.get(item.getLastCountedBy())))
             .toList();
     }
 
@@ -225,6 +232,18 @@ public class ConsumableItemService {
         Set<UUID> categoryIds = items.stream().map(ConsumableItem::getCategoryId).collect(Collectors.toSet());
         Map<UUID, AssetCategory> result = new HashMap<>();
         categoryRepository.findAllById(categoryIds).forEach(c -> result.put(c.getId(), c));
+        return result;
+    }
+
+    private Map<UUID, User> loadUsers(List<ConsumableItem> items) {
+        Set<UUID> userIds = items.stream()
+            .map(ConsumableItem::getLastCountedBy)
+            .filter(id -> id != null)
+            .collect(Collectors.toSet());
+        Map<UUID, User> result = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            userRepository.findAllById(userIds).forEach(u -> result.put(u.getId(), u));
+        }
         return result;
     }
 }
