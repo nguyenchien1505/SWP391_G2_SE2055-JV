@@ -18,3 +18,15 @@ export function formatDateTime(value) {
 export function formatClock(date = new Date()) {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
+
+/** "2026-09-23" (LocalDate từ backend) → "23/09/2026". Chuỗi ngày parse theo giờ ĐỊA PHƯƠNG. */
+export function formatDate(value) {
+  if (!value) return '—';
+  const [year, month, day] = String(value).split('-');
+  return day && month && year ? `${day}/${month}/${year}` : '—';
+}
+
+/** Hôm nay dạng "YYYY-MM-DD" — khớp kiểu LocalDate của backend, dùng cho tham số ngày. */
+export function todayIso(date = new Date()) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}

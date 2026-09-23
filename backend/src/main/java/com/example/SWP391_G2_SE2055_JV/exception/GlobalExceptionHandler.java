@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -77,6 +78,22 @@ public class GlobalExceptionHandler {
                                                        HttpServletRequest request) {
         return buildResponse(HttpStatus.BAD_REQUEST,
             "Giá trị của tham số '" + ex.getName() + "' không hợp lệ.",
+            request.getRequestURI(), null);
+    }
+
+    /**
+     * Thiếu tham số bắt buộc trên URL — ví dụ gọi {@code /housekeeping/tasks/assignable-staff}
+     * mà không kèm {@code date}.
+     *
+     * <p>Cùng họ với {@link #handleTypeMismatch}: lỗi của client nên phải là 400. Thiếu handler
+     * này thì {@link #handleGeneral} nuốt mất và client nhận 500 "An unexpected error occurred",
+     * không biết mình quên tham số nào.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMissingParameter(MissingServletRequestParameterException ex,
+                                                           HttpServletRequest request) {
+        return buildResponse(HttpStatus.BAD_REQUEST,
+            "Thiếu tham số bắt buộc '" + ex.getParameterName() + "'.",
             request.getRequestURI(), null);
     }
 

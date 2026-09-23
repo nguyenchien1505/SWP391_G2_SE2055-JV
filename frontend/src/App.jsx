@@ -14,6 +14,8 @@ import SystemConfigPage from './pages/Admin_platform/SystemConfigPage';
 import RoomsPage from './pages/rooms/RoomsPage';
 import RoomDetailPage from './pages/rooms/RoomDetailPage';
 import RoomBoardPage from './pages/rooms/RoomBoardPage';
+import HousekeepingPage from './pages/rooms/HousekeepingPage';
+import MyTasksPage from './pages/rooms/MyTasksPage';
 import { homePathFor } from './homePath';
 
 function RequireAuth({ children }) {
@@ -112,6 +114,11 @@ export default function App() {
       <Route path="/phong" element={inShell(<RequireManagementRole><RoomsPage /></RequireManagementRole>)} />
       <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />
       <Route path="/so-do-phong" element={inShell(<RoomBoardPage />)} />
+      {/* Dọn phòng — BR-HK-*. Bảng lịch dọn cho Quản lý; "việc của tôi" cho nhân viên dọn.
+          Không chặn theo vai trò ở đây: backend tự ép phạm vi (nhân viên chỉ thấy việc của
+          mình), và mở được cả hai trang giúp Quản lý kiểm chứng nhanh khi có sự cố. */}
+      <Route path="/don-phong" element={inShell(<RequireManagementRole><HousekeepingPage /></RequireManagementRole>)} />
+      <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
       <Route
         element={
           <RequireAdmin>

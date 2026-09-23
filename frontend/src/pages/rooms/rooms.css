@@ -518,3 +518,154 @@
     animation: none;
   }
 }
+
+/* ── F5: S-09/S-11 bảng lịch dọn phòng ─────────────────────────────── */
+/* Desktop: 4 cột cạnh nhau, Quản lý nhìn một phát ra cả bức tranh. */
+.task-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.task-column {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.task-column__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.task-column__head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.task-column--closed {
+  background: #f7f8fa;
+}
+/* Thanh tab chỉ có nghĩa khi bảng đã xếp thành 1 cột — desktop ẩn đi. */
+.task-tabs {
+  display: none;
+}
+
+/* ── F5: thẻ một việc dọn ──────────────────────────────────────────── */
+.task-card {
+  background: var(--tone-bg);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--tone);
+  border-radius: var(--radius-card);
+  padding: 12px;
+}
+.task-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.task-card__room {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.task-card__meta {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.task-card__meta b {
+  color: var(--text);
+}
+/* Tồn đọng: cam cảnh báo, không dùng đỏ — việc vẫn hợp lệ, chỉ là quá hạn (BR-HK-04). */
+.task-card__flag {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b85300;
+}
+.task-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ── F5: S-16/S-17 việc của tôi — mobile-first ─────────────────────── */
+/* Chữ lớn hơn một bậc so với màn khác: dùng khi đang đứng trong hành lang (design.md mục 3). */
+.my-tasks .task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.task-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.task-row__info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.task-row__room {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.task-row__meta {
+  font-size: 15px;
+  color: var(--muted);
+}
+.task-row__action {
+  min-height: 48px;
+  min-width: 140px;
+}
+.task-row--done {
+  opacity: 0.75;
+}
+
+@media (max-width: 860px) {
+  /* Bốn cột cạnh nhau trên điện thoại thì cột nào cũng quá hẹp → đổi thành tab. */
+  .task-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+    overflow-x: auto;
+  }
+  .task-tabs .chip {
+    margin-left: 6px;
+  }
+  .task-board {
+    grid-template-columns: 1fr;
+  }
+  .task-column {
+    display: none;
+  }
+  .task-column.is-active-tab {
+    display: grid;
+  }
+  .task-column__head {
+    display: none;   /* tên cột đã nằm trên tab đang chọn */
+  }
+  /* Nút "Hoàn thành" trải hết chiều ngang, bấm được bằng ngón cái. */
+  .task-row__action {
+    width: 100%;
+  }
+  .task-card__actions .btn {
+    flex: 1 1 100%;
+    min-height: 48px;
+  }
+}

@@ -74,6 +74,61 @@ export function transitionKey(from, to) {
   return `${from}→${to}`;
 }
 
+// ── Lịch dọn phòng (F5) — BR-HK-01..12 ─────────────────────────────────────
+// Cùng nguyên tắc với trạng thái phòng: backend chỉ trả mã enum, chữ hiển thị nằm ở đây.
+
+/** Thứ tự các cột trên bảng lịch dọn: đi theo vòng đời một việc dọn. */
+export const TASK_STATUS_ORDER = ['UNASSIGNED', 'IN_PROGRESS', 'PENDING_INSPECTION'];
+
+export const TASK_STATUS = {
+  UNASSIGNED: { label: 'Chưa phân công', tone: 'dirty' },
+  IN_PROGRESS: { label: 'Đang làm', tone: 'cleaning' },
+  // Chỉ việc dọn sau check-out mới đi qua bước này (BR-HK-06).
+  PENDING_INSPECTION: { label: 'Chờ kiểm tra', tone: 'inspection' },
+  COMPLETED: { label: 'Đã xong', tone: 'available' },
+  CANCELLED: { label: 'Đã hủy', tone: 'unavailable' },
+};
+
+export function taskStatusMeta(status) {
+  return TASK_STATUS[status] ?? { label: status ?? '—', tone: 'unavailable' };
+}
+
+/** Gọi theo việc chứ không theo mã: người dùng không cần biết "CHECKOUT" là gì. */
+export const TASK_TYPE = {
+  CHECKOUT: 'Dọn sau trả phòng',
+  STAYOVER: 'Dọn hằng ngày',
+};
+
+export const taskTypeLabel = (type) => TASK_TYPE[type] ?? type ?? '—';
+
+/** BR-HK-12: vì sao việc này tồn tại — Quản lý cần biết để xếp thứ tự ưu tiên. */
+export const TASK_CREATED_SOURCE = {
+  CHECKOUT_AUTO: 'Tự sinh khi khách trả phòng',
+  MANAGER_STAYOVER: 'Quản lý tạo cho khách đang ở',
+  INSPECTION_FAILED: 'Dọn lại — kiểm tra không đạt',
+};
+
+export const taskSourceLabel = (source) => TASK_CREATED_SOURCE[source] ?? source ?? '—';
+
+/** BR-HK-07 / BR-SCH-24: vì sao việc này quay lại hàng chờ. */
+export const UNASSIGNED_REASON = {
+  TRANSFER: 'Người làm được điều chuyển',
+  TERMINATION: 'Người làm đã nghỉ việc',
+  LEAVE_APPROVED: 'Người làm được duyệt nghỉ',
+  MANAGER_MANUAL: 'Quản lý gỡ người',
+};
+
+export const unassignedReasonLabel = (reason) => UNASSIGNED_REASON[reason] ?? reason ?? null;
+
+/** BR-HK-09, BR-HK-10: vì sao việc này bị hủy. */
+export const TASK_CANCEL_REASON = {
+  ROOM_UNAVAILABLE: 'Phòng chuyển sang Không khả dụng',
+  GUEST_CHECKED_OUT: 'Khách đã trả phòng',
+  MANAGER_MANUAL: 'Quản lý hủy',
+};
+
+export const taskCancelReasonLabel = (reason) => TASK_CANCEL_REASON[reason] ?? reason ?? null;
+
 /**
  * So sánh tầng / số phòng: tầng là TEXT (G, M, B1 — BR-ROOM-05) nên so kiểu "tự nhiên"
  * để "2" đứng trước "10", thay vì so chuỗi thuần.

@@ -13,6 +13,9 @@ const ROLE_LABEL = {
 /** Giám đốc / Manager — Staff gọi các API quản trị (vd. GET /locations) sẽ nhận 403. */
 const isManagement = (user) => user?.role === 'DIRECTOR' || user?.role === 'MANAGER';
 
+/** Chỉ nhân viên Dọn dẹp mới có việc dọn của riêng mình — BR-PERM-05, BR-ORG-08. */
+const isHousekeeper = (user) => user?.positionType === 'HOUSEKEEPING';
+
 /**
  * Khung màn hình sau đăng nhập. Các mục điều hướng chưa có màn hình tương ứng được để ở
  * trạng thái vô hiệu thay vì ẩn đi — giữ đúng bố cục thiết kế và cho thấy lộ trình còn lại.
@@ -28,7 +31,7 @@ const NAV_GROUPS = [
       { label: 'Sơ đồ phòng', to: '/so-do-phong' },
       { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
       { label: 'Xếp lịch làm việc' },
-      { label: 'Công việc dọn phòng' },
+      { label: 'Công việc dọn phòng', to: '/don-phong', visible: isManagement },
     ],
   },
   {
@@ -44,7 +47,10 @@ const NAV_GROUPS = [
   },
   {
     title: 'Cá nhân',
-    items: [{ label: 'Lịch cá nhân & Chấm công' }],
+    items: [
+      { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: isHousekeeper },
+      { label: 'Lịch cá nhân & Chấm công' },
+    ],
   },
 ];
 
