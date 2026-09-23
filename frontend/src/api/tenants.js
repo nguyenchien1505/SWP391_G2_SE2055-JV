@@ -47,3 +47,9 @@ export async function reactivateTenant(id) {
   const { data } = await api.post(`/platform/tenants/${id}/reactivate`);
   return data;
 }
+
+/** Danh sách cơ sở (Location) của một Tenant — dùng cho màn chi tiết Tenant. */
+export async function fetchTenantLocations(id) {
+  const { data } = await api.get(`/platform/tenants/${id}/locations`, { params: { size: 100 } });
+  return data;
+}

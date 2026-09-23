@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
-import { BedDouble, Building, ChevronRight, Lock, LockOpen, Users } from "lucide-react";
+import { BedDouble, Building, ChevronRight, Lock, LockOpen, MapPin, Phone, Star, Users } from "lucide-react";
 import { toast } from "sonner";
 import { api, errorMessage } from "../../lib/api";
-import { formatDate, formatDateTime, formatVnd, SUSPEND_REASON_LABEL } from "../../lib/format";
-import type { TenantDetail, TenantUsage, UsageMetric } from "../../lib/types";
+import { formatDate, formatDateTime, formatVnd, LOCATION_STATUS_LABEL, SUSPEND_REASON_LABEL } from "../../lib/format";
+import type { LocationItem, Page, TenantDetail, TenantUsage, UsageMetric } from "../../lib/types";
 import { TenantAvatar, shortId } from "../../components/TenantAvatar";
 import { TenantStatusBadge } from "../../components/TenantStatusBadge";
 import { Button } from "../../components/ui/button";
@@ -59,16 +59,19 @@ export function TenantDetailPage() {
   const { id } = useParams();
   const [tenant, setTenant] = useState<TenantDetail | null>(null);
   const [usage, setUsage] = useState<TenantUsage | null>(null);
+  const [locations, setLocations] = useState<LocationItem[] | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [d, u] = await Promise.all([
+      const [d, u, l] = await Promise.all([
         api.get<TenantDetail>(`/platform/tenants/${id}`),
         api.get<TenantUsage>(`/platform/tenants/${id}/usage`),
+        api.get<Page<LocationItem>>(`/platform/tenants/${id}/locations`, { params: { size: 100 } }),
       ]);
       setTenant(d.data);
       setUsage(u.data);
+      setLocations(l.data.content);
     } catch (err) {
       toast.error(errorMessage(err, "Không tải được thông tin tenant"));
     }
@@ -170,8 +173,55 @@ export function TenantDetailPage() {
                   <ResourceCard label="Phòng nghỉ" icon={<BedDouble className="size-4" />} metric={usage.rooms} />
                   <ResourceCard label="Tài khoản nhân viên" icon={<Users className="size-4" />} metric={usage.staff} />
                 </div>
-               
+
               </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Đang tải…</p>
+            )}
+          </Panel>
+
+          <Panel title="Danh sách cơ sở">
+            {locations ? (
+              locations.length > 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {locations.map((loc) => (
+                    <div key={loc.id} className="rounded-lg border p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-medium">{loc.name}</div>
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                            loc.status === "OPERATIONAL"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {LOCATION_STATUS_LABEL[loc.status]}
+                        </span>
+                      </div>
+                      <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="size-3.5 shrink-0" /> {loc.address}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="size-3.5 shrink-0" /> {loc.phone}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {loc.starRating != null && (
+                            <span className="flex items-center gap-1">
+                              <Star className="size-3.5" /> {loc.starRating}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1">
+                            <BedDouble className="size-3.5" /> {loc.totalRooms} phòng
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Tenant chưa có cơ sở nào.</p>
+              )
             ) : (
               <p className="text-sm text-muted-foreground">Đang tải…</p>
             )}

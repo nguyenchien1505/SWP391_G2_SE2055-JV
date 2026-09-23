@@ -176,6 +176,30 @@ public class LocationService {
         log.info("Xóa Location {}", location.getId());
     }
 
+    /**
+     * Dành cho Admin Platform xem Location của MỘT Tenant bất kỳ theo id trên URL — khác
+     * {@link #getLocations(Pageable)} vốn luôn lấy tenant từ session người đăng nhập nên
+     * Admin (tenant_id NULL) không dùng được.
+     */
+    @Transactional(readOnly = true)
+    public Page<LocationResponse> getLocationsForTenant(UUID tenantId, Pageable pageable) {
+        Page<Location> page = locationRepository.findByTenantId(tenantId, pageable);
+        if (page.isEmpty()) {
+            return page.map(location -> LocationResponse.fromEntity(location, 0L));
+        }
+
+        List<UUID> locationIds = page.getContent().stream().map(Location::getId).toList();
+        Map<UUID, Long> roomCounts = roomRepository
+            .countActiveRoomsGroupedByLocation(tenantId, locationIds)
+            .stream()
+            .collect(Collectors.toMap(
+                RoomRepository.LocationRoomCount::getLocationId,
+                RoomRepository.LocationRoomCount::getTotal));
+
+        return page.map(location -> LocationResponse.fromEntity(
+            location, roomCounts.getOrDefault(location.getId(), 0L)));
+    }
+
     // ── Nội bộ ──────────────────────────────────────────────────────────────
 
     /** Khóa ngoại chỉ đảm bảo Location TỒN TẠI, không đảm bảo thuộc Tenant người gọi. */

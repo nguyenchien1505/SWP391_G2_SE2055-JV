@@ -1,13 +1,18 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.LocationResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.TenantDetailResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.TenantResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.TenantUsageResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
+import com.example.SWP391_G2_SE2055_JV.service.LocationService;
 import com.example.SWP391_G2_SE2055_JV.service.TenantAdminService;
 import com.example.SWP391_G2_SE2055_JV.service.TenantUsageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,6 +49,7 @@ public class TenantAdminController {
 
     private final TenantAdminService tenantAdminService;
     private final TenantUsageService tenantUsageService;
+    private final LocationService    locationService;
 
     @GetMapping
     @PreAuthorize("hasRole('PLATFORM_ADMIN')")
@@ -78,5 +84,14 @@ public class TenantAdminController {
     @PreAuthorize("hasRole('PLATFORM_ADMIN')")
     public ResponseEntity<TenantUsageResponse> getUsage(@PathVariable UUID id) {
         return ResponseEntity.ok(tenantUsageService.getUsage(id));
+    }
+
+    /** Danh sách Location của Tenant — dùng cho màn hình chi tiết Tenant ở Admin Platform. */
+    @GetMapping("/{id}/locations")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
+    public ResponseEntity<Page<LocationResponse>> getLocations(
+            @PathVariable UUID id,
+            @PageableDefault(size = 100, sort = "name", direction = Sort.Direction.ASC) Pageable pageable) {
+        return ResponseEntity.ok(locationService.getLocationsForTenant(id, pageable));
     }
 }
