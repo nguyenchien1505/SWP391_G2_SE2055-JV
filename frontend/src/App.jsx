@@ -73,6 +73,48 @@ function inShell(page) {
   );
 }
 
+import { DashboardScreen } from './components/screens/DashboardScreen';
+import { AssetManagementScreen } from './components/screens/AssetManagementScreen';
+import { AssetDetailScreen } from './components/screens/AssetDetailScreen';
+import { BatchCreateAssetsScreen } from './components/screens/BatchCreateAssetsScreen';
+import { ConsumableInventoryScreen } from './components/screens/ConsumableInventoryScreen';
+import { DamageReportScreen } from './components/screens/DamageReportScreen';
+import { useNavigate, useParams } from 'react-router-dom';
+
+function useAssetNavigate() {
+  const navigate = useNavigate();
+  return (path, param) => {
+    if (path === 'overview') navigate('/tong-quan');
+    if (path === 'fixed-assets') navigate('/tai-san');
+    if (path === 'asset-detail') navigate(`/tai-san/${param}`);
+    if (path === 'batch-create') navigate('/tai-san/batch');
+    if (path === 'consumables') navigate('/vat-tu');
+    if (path === 'issue-reports') navigate('/bao-hong');
+    if (path === 'incident-detail') navigate(`/bao-hong/${param}`);
+  };
+}
+
+function OverviewWrapper() {
+  return <DashboardScreen onNavigate={useAssetNavigate()} />;
+}
+function FixedAssetWrapper() {
+  return <AssetManagementScreen onNavigate={useAssetNavigate()} />;
+}
+function BatchCreateWrapper() {
+  return <BatchCreateAssetsScreen onNavigate={useAssetNavigate()} />;
+}
+function ConsumableWrapper() {
+  return <ConsumableInventoryScreen onNavigate={useAssetNavigate()} />;
+}
+function DetailWrapper() {
+  const { code } = useParams();
+  return <AssetDetailScreen assetCode={code} onNavigate={useAssetNavigate()} />;
+}
+function IncidentWrapper() {
+  const { id } = useParams();
+  return <DamageReportScreen incidentId={id} onNavigate={useAssetNavigate()} />;
+}
+
 export default function App() {
   const { user, loading } = useAuth();
 
@@ -119,6 +161,18 @@ export default function App() {
           mình), và mở được cả hai trang giúp Quản lý kiểm chứng nhanh khi có sự cố. */}
       <Route path="/don-phong" element={inShell(<RequireManagementRole><HousekeepingPage /></RequireManagementRole>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
+
+      {/* New Asset Routes */}
+      <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+        <Route path="/tong-quan" element={<OverviewWrapper />} />
+        <Route path="/tai-san" element={<FixedAssetWrapper />} />
+        <Route path="/tai-san/batch" element={<BatchCreateWrapper />} />
+        <Route path="/tai-san/:code" element={<DetailWrapper />} />
+        <Route path="/vat-tu" element={<ConsumableWrapper />} />
+        <Route path="/bao-hong" element={<IncidentWrapper />} />
+      </Route>
+
+      {/* Admin Platform Routes */}
       <Route
         element={
           <RequireAdmin>

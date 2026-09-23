@@ -15,8 +15,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Phòng — dùng chung cho module Tổ chức (BR-ORG-04, BR-ORG-05, BR-ORG-11) và module
- * Quản lý phòng (BR-ROOM-*).
+ * Phòng — dùng chung cho module Tổ chức (BR-ORG-04, BR-ORG-05, BR-ORG-11), module
+ * Quản lý phòng (BR-ROOM-*), và tra cứu Phòng phục vụ việc gắn tài sản cố định (BR-ASSET-03).
  *
  * <p>Mọi truy vấn của module phòng đều nhận {@code tenantId} để cách ly dữ liệu và bỏ qua
  * phòng đã xóa mềm ({@code active = false}, BR-ROOM-08) — phòng đã xóa coi như không tồn tại.
@@ -58,6 +58,7 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
         UUID getLocationId();
         long getTotal();
     }
+
 
     // ── Module Quản lý phòng ────────────────────────────────────────────────
 
@@ -125,4 +126,5 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
         RoomStatus getStatus();
         long getTotal();
     }
+    Optional<Room> findByIdAndTenantId(UUID id, UUID tenantId);
 }

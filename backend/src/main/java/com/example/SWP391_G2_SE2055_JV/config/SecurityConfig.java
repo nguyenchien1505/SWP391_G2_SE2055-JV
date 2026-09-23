@@ -136,13 +136,12 @@ public class SecurityConfig {
                 .requestMatchers("/locations/**")
                     .hasAnyRole(ADMIN, DIRECTOR)
 
-                // ── Khu vực: ngoại lệ của nhóm /organization — cấp LOCATION, Manager CRUD
-                // (BR-ORG-12, BR-PERM-03). Phải đứng TRƯỚC rule danh mục cấp Tenant bên dưới
-                // vì rule khớp đầu tiên thắng.
-                .requestMatchers(HttpMethod.GET, "/organization/areas/**")
-                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+                // ── Khu vực: cấp LOCATION, Manager CRUD (BR-ORG-12) — NGƯỢC với phần còn
+                // lại của /organization/** (danh mục cấp Tenant, chỉ Giám đốc ghi). Rule
+                // này phải đứng TRƯỚC 2 rule danh mục bên dưới, nếu không Manager sẽ bị
+                // rơi xuống hasAnyRole(ADMIN, DIRECTOR) và nhận 403 khi tạo Khu vực.
                 .requestMatchers("/organization/areas/**")
-                    .hasAnyRole(ADMIN, MANAGER)
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
 
                 // ── Danh mục cấp Tenant: chỉ Giám đốc tạo (BR-ORG-06, BR-ORG-11, BR-ASSET-09) ──
                 .requestMatchers(HttpMethod.GET, "/organization/**")
@@ -207,6 +206,11 @@ public class SecurityConfig {
                     .hasAnyRole(ADMIN, MANAGER)
 
                 // ── Tài sản ──────────────────────────────────────────────────
+                // Tồn kho tiêu hao: CHỈ Manager (sửa) và Giám đốc (đọc), Staff không
+                // đụng tới (BR-PERM). Rule này phải đứng TRƯỚC "GET /assets/**" bên dưới
+                // (rule đó mở GET tới STAFF) — nếu không Staff vẫn xem được kho.
+                .requestMatchers("/assets/consumables/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
                 // Cả Lễ tân và Dọn dẹp đều báo hỏng được (BR-ASSET-05).
                 .requestMatchers(HttpMethod.POST, "/assets/damage-reports")
                     .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
