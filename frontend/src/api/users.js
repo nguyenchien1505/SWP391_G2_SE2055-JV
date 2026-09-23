@@ -39,10 +39,29 @@ export async function updateUser(id, payload) {
   return data;
 }
 
-/** BR-USER-04: cho nghỉ việc là xóa mềm — tài khoản chuyển TERMINATED, không hoàn tác. */
+/**
+ * BR-USER-04: cho nghỉ việc là xóa mềm — tài khoản chuyển TERMINATED, không hoàn tác.
+ * Chỉ dùng cho Staff và Manager dự bị; Manager đang phụ trách khách sạn dùng
+ * `terminateWithHandover`.
+ */
 export async function terminateUser(id) {
   const { data } = await api.delete(`/users/${id}`);
   return data;
+}
+
+/**
+ * Cho Manager đang phụ trách khách sạn nghỉ việc, bàn giao ngay cho người khác. `handover` có
+ * đúng một trong hai: `{ replacementManagerId }` (Manager dự bị) hoặc `{ newManager }` (hồ sơ
+ * Manager mới — khi đó response có `tempPassword`, hiển thị đúng một lần).
+ */
+export async function terminateWithHandover(id, handover) {
+  const { data } = await api.post(`/users/${id}/terminate`, handover);
+  return data; // { user, replacement, tempPassword }
+}
+
+/** Xóa vĩnh viễn Manager đã nghỉ việc; backend từ chối nếu tài khoản đã phát sinh dữ liệu. */
+export async function deleteUserPermanently(id) {
+  await api.delete(`/users/${id}/permanent`);
 }
 
 /** Cấp lại mật khẩu tạm — response có `tempPassword`, hiển thị đúng một lần. */

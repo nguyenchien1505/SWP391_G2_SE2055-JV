@@ -18,6 +18,9 @@ const EMPTY = {
   avatarUrl: '',
 };
 
+/** Giá trị của lựa chọn "Khác" trong ô khách sạn: tạo Manager dự bị, chưa gán khách sạn. */
+const RESERVE = 'RESERVE';
+
 /**
  * Tạo / sửa tài khoản Manager — thiết kế "Cấp tài khoản Quản lý mới" trong docs/FE_Lâm_Dũng.
  *
@@ -25,10 +28,25 @@ const EMPTY = {
  * Position): ngày bắt đầu làm việc, ngày sinh, giới tính, địa chỉ, ảnh đại diện — backend từ
  * chối nếu thiếu. Khi thiết kế và BR mâu thuẫn thì theo BR.
  *
- * <p>Không đổi được email (username unique toàn hệ thống — BR-USER-06) và khách sạn (đổi
- * Location phải qua luồng điều chuyển có duyệt — BR-TRF-02) khi sửa.
+ * <p>Khách sạn điều hành có thêm lựa chọn "Khác" = Manager DỰ BỊ: chưa gán khách sạn, gán sau
+ * ở màn sửa hoặc nhận bàn giao khi một Manager nghỉ việc.
+ *
+ * <p>Không đổi được email (username unique toàn hệ thống — BR-USER-06) khi sửa. Khách sạn cũng
+ * không đổi được (đổi Location phải qua luồng điều chuyển có duyệt — BR-TRF-02), trừ Manager dự
+ * bị thì được gán khách sạn lần đầu.
+ *
+ * <p>`handoverLocationName` có giá trị = form tạo Manager mới NHẬN BÀN GIAO khách sạn đó (trong
+ * hộp thoại cho nghỉ việc): không có ô chọn khách sạn và nút lưu đổi nhãn.
  */
-export default function ManagerForm({ editing, freeLocations, locationName, onSubmit, onCancel, onTerminate }) {
+export default function ManagerForm({
+  editing,
+  freeLocations,
+  locationName,
+  handoverLocationName,
+  onSubmit,
+  onCancel,
+  onTerminate,
+}) {
   const [values, setValues] = useState(
     editing
       ? {
@@ -46,7 +64,9 @@ export default function ManagerForm({ editing, freeLocations, locationName, onSu
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const noFreeLocation = !editing && freeLocations.length === 0;
+  const handover = Boolean(handoverLocationName);
+  const isReserve = Boolean(editing) && !editing.locationId;
+  const noFreeLocation = freeLocations.length === 0;
 
   function setField(field, value) {
     setValues((prev) => ({ ...prev, [field]: value }));
@@ -61,6 +81,12 @@ export default function ManagerForm({ editing, freeLocations, locationName, onSu
   async function handleSubmit(event) {
     event.preventDefault();
     setError('');
+
+    // Để trống thì backend hiểu là Manager dự bị — bắt chọn rõ "Khác" để không tạo nhầm.
+    if (!editing && !handover && values.locationId === '') {
+      setError('Chọn khách sạn điều hành, hoặc chọn "Khác" để tạo Manager dự bị.');
+      return;
+    }
     setSubmitting(true);
 
     const profile = {
@@ -72,9 +98,14 @@ export default function ManagerForm({ editing, freeLocations, locationName, onSu
       address: values.address.trim(),
       avatarUrl: values.avatarUrl.trim(),
     };
-    const payload = editing
-      ? profile
-      : { ...profile, role: 'MANAGER', email: values.email.trim(), locationId: values.locationId || null };
+    let payload;
+    if (editing) {
+      // Manager dự bị: chọn khách sạn = gán; để "Khác" thì giữ dự bị (null = không đổi).
+      payload = { ...profile, locationId: isReserve && values.locationId ? values.locationId : null };
+    } else {
+      const locationId = handover || values.locationId === RESERVE ? null : values.locationId;
+      payload = { ...profile, role: 'MANAGER', email: values.email.trim(), locationId };
+    }
 
     const message = await onSubmit(payload);
     setSubmitting(false);
@@ -93,10 +124,14 @@ export default function ManagerForm({ editing, freeLocations, locationName, onSu
           🪪
         </span>
         <div>
-          <h2>{editing ? 'Cập nhật hồ sơ Quản lý' : 'Cấp tài khoản Quản lý mới'}</h2>
+          <h2>
+            {editing ? 'Cập nhật hồ sơ Quản lý' : handover ? 'Tạo Quản lý mới nhận bàn giao' : 'Cấp tài khoản Quản lý mới'}
+          </h2>
           <p className="muted">
             {editing
-              ? 'Email đăng nhập và khách sạn phụ trách không đổi được tại đây.'
+              ? isReserve
+                ? 'Email đăng nhập không đổi được. Quản lý dự bị có thể được gán khách sạn tại đây.'
+                : 'Email đăng nhập và khách sạn phụ trách không đổi được tại đây.'
               : 'Hệ thống tạo tài khoản và cấp mật khẩu tạm, bắt buộc đổi ở lần đăng nhập đầu.'}
           </p>
         </div>
@@ -115,12 +150,41 @@ export default function ManagerForm({ editing, freeLocations, locationName, onSu
       </label>
 
       {editing ? (
-        <div className="readonly-box">
-          <b>Email đăng nhập</b>
-          <p>{editing.email}</p>
-          <b>Khách sạn phụ trách</b>
-          <p>{locationName ?? '—'}</p>
-        </div>
+        <>
+          <div className="readonly-box">
+            <b>Email đăng nhập</b>
+            <p>{editing.email}</p>
+            {!isReserve && (
+              <>
+                <b>Khách sạn phụ trách</b>
+                <p>{locationName ?? '—'}</p>
+              </>
+            )}
+          </div>
+
+          {isReserve && (
+            <label className="field" htmlFor="mgr-location">
+              <span className="field__label">Khách sạn điều hành</span>
+              <select
+                id="mgr-location"
+                value={values.locationId}
+                onChange={(e) => setField('locationId', e.target.value)}
+              >
+                <option value="">Khác — vẫn để dự bị</option>
+                {freeLocations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} ({loc.totalRooms} phòng)
+                  </option>
+                ))}
+              </select>
+              <span className="field__help">
+                {noFreeLocation
+                  ? 'Mọi khách sạn đều đã có quản lý nên chưa gán được.'
+                  : 'Gán xong thì khách sạn chuyển "Đang hoạt động". Sau đó muốn đổi khách sạn phải qua điều chuyển.'}
+              </span>
+            </label>
+          )}
+        </>
       ) : (
         <>
           <label className="field" htmlFor="mgr-email">
@@ -137,29 +201,38 @@ export default function ManagerForm({ editing, freeLocations, locationName, onSu
             <span className="field__help">Duy nhất toàn hệ thống, không đổi được sau khi tạo.</span>
           </label>
 
-          <label className="field" htmlFor="mgr-location">
-            <span className="field__label">
-              Khách sạn điều hành <b className="req">*</b>
-            </span>
-            <select
-              id="mgr-location"
-              value={values.locationId}
-              onChange={(e) => setField('locationId', e.target.value)}
-              disabled={noFreeLocation}
-            >
-              <option value="">— Chọn khách sạn chưa có quản lý —</option>
-              {freeLocations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name} ({loc.totalRooms} phòng)
-                </option>
-              ))}
-            </select>
-            <span className="field__help">
-              {noFreeLocation
-                ? 'Mọi khách sạn đều đã có quản lý. Thêm khách sạn mới ở màn "Danh sách khách sạn".'
-                : 'Mỗi khách sạn chỉ có một Quản lý; có quản lý thì khách sạn chuyển "Đang hoạt động".'}
-            </span>
-          </label>
+          {handover ? (
+            <div className="readonly-box">
+              <b>Khách sạn nhận bàn giao</b>
+              <p>🏨 {handoverLocationName}</p>
+            </div>
+          ) : (
+            <label className="field" htmlFor="mgr-location">
+              <span className="field__label">
+                Khách sạn điều hành <b className="req">*</b>
+              </span>
+              <select
+                id="mgr-location"
+                value={values.locationId}
+                onChange={(e) => setField('locationId', e.target.value)}
+              >
+                <option value="">— Chọn khách sạn chưa có quản lý —</option>
+                {freeLocations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} ({loc.totalRooms} phòng)
+                  </option>
+                ))}
+                <option value={RESERVE}>Khác — Quản lý dự bị (gán khách sạn sau)</option>
+              </select>
+              <span className="field__help">
+                {values.locationId === RESERVE
+                  ? 'Quản lý dự bị chưa phụ trách khách sạn nào: gán sau ở màn sửa, hoặc chọn để nhận bàn giao khi một Quản lý nghỉ việc.'
+                  : noFreeLocation
+                    ? 'Mọi khách sạn đều đã có quản lý — chọn "Khác" để tạo Quản lý dự bị.'
+                    : 'Mỗi khách sạn chỉ có một Quản lý; có quản lý thì khách sạn chuyển "Đang hoạt động".'}
+              </span>
+            </label>
+          )}
         </>
       )}
 
@@ -265,8 +338,14 @@ export default function ManagerForm({ editing, freeLocations, locationName, onSu
         <button type="button" className="btn btn--ghost" onClick={onCancel}>
           Hủy bỏ
         </button>
-        <button type="submit" className="btn btn--primary" disabled={submitting || noFreeLocation}>
-          {submitting ? 'Đang lưu…' : editing ? 'Lưu thay đổi' : '🔑 Khởi tạo & cấp mật khẩu tạm'}
+        <button type="submit" className={`btn ${handover ? 'btn--danger' : 'btn--primary'}`} disabled={submitting}>
+          {submitting
+            ? 'Đang lưu…'
+            : editing
+              ? 'Lưu thay đổi'
+              : handover
+                ? 'Cho nghỉ việc & bàn giao'
+                : '🔑 Khởi tạo & cấp mật khẩu tạm'}
         </button>
       </div>
     </form>

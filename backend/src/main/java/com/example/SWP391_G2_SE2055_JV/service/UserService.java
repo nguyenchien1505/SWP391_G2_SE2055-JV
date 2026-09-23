@@ -2,10 +2,14 @@ package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.CreateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.TempPasswordResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.TerminateUserRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.TerminationResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.UserResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
+import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
+import com.example.SWP391_G2_SE2055_JV.entity.Subscription;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
@@ -16,6 +20,7 @@ import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.SubscriptionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
@@ -23,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -55,6 +61,7 @@ public class UserService {
     private final PositionRepository positionRepository;
     private final LocationRepository locationRepository;
     private final ShiftRepository    shiftRepository;
+    private final SubscriptionRepository subscriptionRepository;
     private final HousekeepingService housekeepingService;
     private final ApplicationEventPublisher eventPublisher;
     private final PasswordEncoder    passwordEncoder;
@@ -101,6 +108,9 @@ public class UserService {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BusinessException("Email đã tồn tại trong hệ thống: " + request.getEmail());
         }
+        if (request.getRole() == Role.STAFF) {
+            assertStaffQuotaAvailable(tenantId);
+        }
 
         String tempPassword = generateTempPassword();
 
@@ -128,8 +138,9 @@ public class UserService {
             saved.getEmail(), saved.getFullName(), tempPassword, false));
         log.info("Tạo tài khoản {} role={} tenant={}", saved.getEmail(), saved.getRole(), tenantId);
 
-        // BR-ORG-02, DM-13: Location có Manager thì mới chính thức vận hành.
-        if (saved.getRole() == Role.MANAGER) {
+        // BR-ORG-02, DM-13: Location có Manager thì mới chính thức vận hành. Manager dự bị
+        // (không có Location) chưa làm thay đổi khách sạn nào.
+        if (saved.getRole() == Role.MANAGER && location != null) {
             location.setStatus(LocationStatus.OPERATIONAL);
             locationRepository.save(location);
         }
@@ -158,16 +169,26 @@ public class UserService {
         if (request.getAddress() != null)       user.setAddress(request.getAddress());
         if (request.getAvatarUrl() != null)     user.setAvatarUrl(request.getAvatarUrl());
 
-        if (request.getPositionId() != null) {
+        // Chỉ kiểm khi ĐỔI Position: giữ nguyên một Position đã bị ẩn sau này vẫn hợp lệ.
+        if (request.getPositionId() != null && !request.getPositionId().equals(user.getPositionId())) {
             if (!user.isStaff()) {
                 throw new BusinessException("Chỉ STAFF mới có Position.");
             }
-            assertPositionExists(request.getPositionId(), user.getTenantId());
+            assertPositionSelectable(request.getPositionId(), user.getTenantId());
             user.setPositionId(request.getPositionId());
         }
 
         if (request.getEnabled() != null) {
             user.setStatus(request.getEnabled() ? UserStatus.ACTIVE : UserStatus.INACTIVE);
+        }
+
+        if (request.getLocationId() != null && !request.getLocationId().equals(user.getLocationId())) {
+            if (user.getRole() != Role.MANAGER || user.getLocationId() != null) {
+                throw new BusinessException(
+                    "Chỉ gán khách sạn được cho Manager dự bị; đổi khách sạn của người đang có "
+                    + "khách sạn phải qua luồng điều chuyển.");
+            }
+            assignManagerToLocation(user, getOwnedLocationWithoutManager(request.getLocationId()));
         }
 
         log.info("Cập nhật hồ sơ {}", user.getEmail());
@@ -180,9 +201,13 @@ public class UserService {
      * <p>Xóa mềm: tài khoản chuyển TERMINATED và không đăng nhập được, dữ liệu lịch sử
      * giữ nguyên, ca TƯƠNG LAI tự động gỡ thành "chưa phân công" (BR-SCH-17, BR-SCH-24),
      * task dọn đã gán cho các ngày tương lai cũng gỡ theo (BR-HK-07).
+     *
+     * <p>Manager đang phụ trách khách sạn thì phải bàn giao ngay trong cùng giao dịch — cho một
+     * Manager dự bị nhận, hoặc tạo Manager mới (xem {@link TerminateUserRequest}). Nhờ vậy khách
+     * sạn không lúc nào "mồ côi", cùng tinh thần BR-TRF-03 của luồng điều chuyển.
      */
     @Transactional
-    public UserResponse terminateUser(UUID id) {
+    public TerminationResponse terminateUser(UUID id, TerminateUserRequest request) {
         User user = getOwnedUser(id);
         assertCanModify(user);
 
@@ -193,29 +218,83 @@ public class UserService {
             throw new BusinessException("Không cho nghỉ việc tài khoản Giám đốc qua luồng này.");
         }
 
-        user.setStatus(UserStatus.TERMINATED);
-        user.setTerminatedAt(LocalDateTime.now());
-        user.setTerminatedBy(SecurityUtils.getCurrentUserId());
-        userRepository.save(user);
+        UUID replacementId = request == null ? null : request.getReplacementManagerId();
+        CreateUserRequest newManager = request == null ? null : request.getNewManager();
+        boolean handsOverLocation = user.getRole() == Role.MANAGER && user.getLocationId() != null;
 
-        // BR-SCH-17 + BR-HK-07: ca và task dọn cùng dùng MỘT mốc "hôm nay" theo múi giờ
-        // Location, nếu không hai bên sẽ lệch nhau quanh thời điểm giao ngày.
-        LocalDate today = todayAtLocationOf(user);
-        int released = releaseFutureShifts(user, today, UnassignedReason.TERMINATION);
-        int releasedTasks = housekeepingService.releaseFutureTasks(
-            user.getId(), UnassignedReason.TERMINATION, today);
-        log.info("Cho nghỉ việc {} — gỡ {} ca và {} task dọn tương lai",
-            user.getEmail(), released, releasedTasks);
-
-        // DM-13: Location mất Manager thì quay về "Chưa vận hành" cho tới khi có Manager mới.
-        if (user.getRole() == Role.MANAGER && user.getLocationId() != null) {
-            locationRepository.findById(user.getLocationId()).ifPresent(location -> {
-                location.setStatus(LocationStatus.NOT_OPERATIONAL);
-                locationRepository.save(location);
-            });
+        if (handsOverLocation && (replacementId == null) == (newManager == null)) {
+            throw new BusinessException(
+                "Quản lý này đang phụ trách khách sạn: chọn MỘT Manager dự bị hoặc tạo MỘT tài "
+                + "khoản Manager mới để nhận bàn giao.");
+        }
+        if (!handsOverLocation && (replacementId != null || newManager != null)) {
+            throw new BusinessException("Tài khoản này không phụ trách khách sạn nào nên không cần bàn giao.");
         }
 
-        return UserResponse.fromEntity(user);
+        // Kiểm tra người nhận TRƯỚC khi đổi gì, để lỗi chọn sai không đi kèm thay đổi dở dang.
+        User reserve = replacementId == null ? null : getReserveManager(replacementId, user.getId());
+
+        terminate(user);
+
+        if (!handsOverLocation) {
+            return new TerminationResponse(UserResponse.fromEntity(user), null, null);
+        }
+
+        // DM-13: khách sạn chuyển ngay sang người mới nên vẫn "Đang vận hành" — không có
+        // khoảng trống "Chưa vận hành" như trước.
+        if (reserve != null) {
+            Location location = locationRepository.findByIdAndTenantId(user.getLocationId(), user.getTenantId())
+                .orElseThrow(() -> new ResourceNotFoundException("Location", "id", user.getLocationId()));
+            assignManagerToLocation(reserve, location);
+            log.info("Bàn giao khách sạn {} từ {} cho Manager dự bị {}",
+                location.getId(), user.getEmail(), reserve.getEmail());
+            return new TerminationResponse(
+                UserResponse.fromEntity(user), UserResponse.fromEntity(reserve), null);
+        }
+
+        newManager.setRole(Role.MANAGER);
+        newManager.setLocationId(user.getLocationId());
+        newManager.setPositionId(null);
+        // Người cũ đã TERMINATED ở trên nên chốt "1 Location 1 Manager" trong createUser cho qua.
+        TempPasswordResponse created = createUser(newManager);
+        log.info("Bàn giao khách sạn {} từ {} cho Manager mới {}",
+            user.getLocationId(), user.getEmail(), created.getUser().getEmail());
+        return new TerminationResponse(
+            UserResponse.fromEntity(user), created.getUser(), created.getTempPassword());
+    }
+
+    /**
+     * Xóa VĨNH VIỄN tài khoản Manager đã nghỉ việc mà chưa để lại dữ liệu nào — ví dụ tạo nhầm,
+     * hoặc nghỉ trước khi bắt đầu làm. Khác cho nghỉ việc (xóa mềm, BR-USER-04): dòng dữ liệu
+     * biến mất hẳn và email được giải phóng.
+     *
+     * <p>"Chưa tương tác với hệ thống" = không bản ghi nào tham chiếu tới tài khoản này. Mọi
+     * cột trỏ tới {@code users} (created_by / updated_by, ca làm, task dọn, biên bản kiểm tra,
+     * đơn nghỉ, điều chuyển…) đều có khóa ngoại, nên để DB tự chặn thay vì liệt kê bảng ở đây —
+     * bảng mới thêm sau này cũng tự được tính.
+     */
+    @Transactional
+    public void deleteTerminatedManager(UUID id) {
+        User user = getOwnedUser(id);
+        assertCanModify(user);
+
+        if (user.getRole() != Role.MANAGER) {
+            throw new BusinessException("Chỉ xóa vĩnh viễn được tài khoản Manager.");
+        }
+        if (!user.isTerminated()) {
+            throw new BusinessException("Chỉ xóa vĩnh viễn được tài khoản đã nghỉ việc.");
+        }
+
+        try {
+            userRepository.delete(user);
+            userRepository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException(
+                "Không xóa vĩnh viễn được: tài khoản này đã phát sinh dữ liệu trong hệ thống (ca làm, "
+                + "công việc, bản ghi do người này tạo hoặc sửa…). Tài khoản vẫn giữ ở trạng thái "
+                + "Đã nghỉ việc để tra cứu lịch sử.");
+        }
+        log.info("Xóa vĩnh viễn tài khoản Manager {}", user.getEmail());
     }
 
     /** Cấp lại mật khẩu tạm. Trả về đúng một lần, không gửi email (BR-USER-03). */
@@ -239,6 +318,62 @@ public class UserService {
     }
 
     // ── Nội bộ ──────────────────────────────────────────────────────────────
+
+    /** Xóa mềm + gỡ ca/task tương lai — phần chung của mọi trường hợp nghỉ việc. */
+    private void terminate(User user) {
+        user.setStatus(UserStatus.TERMINATED);
+        user.setTerminatedAt(LocalDateTime.now());
+        user.setTerminatedBy(SecurityUtils.getCurrentUserId());
+        // Flush ngay: chốt "1 Location 1 Manager" ngay sau đó phải thấy người này đã nghỉ.
+        userRepository.saveAndFlush(user);
+
+        // BR-SCH-17 + BR-HK-07: ca và task dọn cùng dùng MỘT mốc "hôm nay" theo múi giờ
+        // Location, nếu không hai bên sẽ lệch nhau quanh thời điểm giao ngày.
+        LocalDate today = todayAtLocationOf(user);
+        int released = releaseFutureShifts(user, today, UnassignedReason.TERMINATION);
+        int releasedTasks = housekeepingService.releaseFutureTasks(
+            user.getId(), UnassignedReason.TERMINATION, today);
+        log.info("Cho nghỉ việc {} — gỡ {} ca và {} task dọn tương lai",
+            user.getEmail(), released, releasedTasks);
+    }
+
+    /**
+     * Manager dự bị hợp lệ để nhận bàn giao: cùng Tenant, là MANAGER, chưa có khách sạn, đang
+     * hoạt động (không nhận người đang bị khóa — khách sạn cần người đăng nhập được ngay).
+     */
+    private User getReserveManager(UUID id, UUID leavingManagerId) {
+        User reserve = userRepository.findByIdAndTenantId(id, SecurityUtils.getCurrentTenantId())
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        if (reserve.getId().equals(leavingManagerId)
+                || reserve.getRole() != Role.MANAGER
+                || reserve.getLocationId() != null
+                || reserve.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException("Người nhận bàn giao phải là Manager dự bị đang hoạt động.");
+        }
+        return reserve;
+    }
+
+    /** Khách sạn thuộc Tenant hiện tại và đang chưa có Manager (BR-SCH-08: 1 Location 1 Manager). */
+    private Location getOwnedLocationWithoutManager(UUID locationId) {
+        Location location = locationRepository.findByIdAndTenantId(locationId, SecurityUtils.getCurrentTenantId())
+            .orElseThrow(() -> new ResourceNotFoundException("Location", "id", locationId));
+        if (userRepository.existsByLocationIdAndRoleAndStatusNot(
+                location.getId(), Role.MANAGER, UserStatus.TERMINATED)) {
+            throw new BusinessException("Location này đã có Manager.");
+        }
+        return location;
+    }
+
+    /** Gán Manager dự bị vào khách sạn; khách sạn có Manager thì "Đang vận hành" (BR-ORG-02, DM-13). */
+    private void assignManagerToLocation(User manager, Location location) {
+        if (manager.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException("Mở khóa tài khoản trước khi gán khách sạn.");
+        }
+        manager.setLocationId(location.getId());
+        userRepository.save(manager);
+        location.setStatus(LocationStatus.OPERATIONAL);
+        locationRepository.save(location);
+    }
 
     /**
      * BR-SCH-17: "ca tương lai" là ca có ngày LỚN HƠN hôm nay — ca của chính hôm nay
@@ -322,11 +457,15 @@ public class UserService {
     private Location validateProfile(CreateUserRequest request, UUID tenantId) {
         if (request.getRole() == Role.STAFF) {
             requireStaffProfile(request);
+            if (request.getLocationId() == null) {
+                throw missing("Location trực thuộc");
+            }
             if (request.getPositionId() == null) {
                 throw new BusinessException("Position là bắt buộc với STAFF.");
             }
-            assertPositionExists(request.getPositionId(), tenantId);
+            assertPositionSelectable(request.getPositionId(), tenantId);
         } else if (request.getRole() == Role.MANAGER) {
+            // Location để trống = Manager dự bị, gán khách sạn sau.
             requireStaffProfile(request);
             if (request.getPositionId() != null) {
                 throw new BusinessException("Manager KHÔNG có Position.");
@@ -360,9 +499,11 @@ public class UserService {
         return location;
     }
 
-    /** Bộ 10 trường bắt buộc của BR-USER-01 (Manager dùng lại, trừ Position). */
+    /**
+     * Các trường hồ sơ bắt buộc của BR-USER-01 mà Staff và Manager dùng chung. Location và
+     * Position kiểm riêng ở {@link #validateProfile}: Manager dự bị không có Location.
+     */
     private void requireStaffProfile(CreateUserRequest request) {
-        if (request.getLocationId() == null)    throw missing("Location trực thuộc");
         if (request.getStartWorkDate() == null) throw missing("Ngày bắt đầu làm việc");
         if (request.getDateOfBirth() == null)   throw missing("Ngày sinh");
         if (request.getGender() == null)        throw missing("Giới tính");
@@ -370,9 +511,32 @@ public class UserService {
         if (isBlank(request.getAvatarUrl()))    throw missing("Ảnh đại diện");
     }
 
-    private void assertPositionExists(UUID positionId, UUID tenantId) {
-        positionRepository.findByIdAndTenantId(positionId, tenantId)
+    /** Position thuộc Tenant và chưa bị ẩn — BR-ORG-14: mục đã ẩn không còn được chọn. */
+    private void assertPositionSelectable(UUID positionId, UUID tenantId) {
+        Position position = positionRepository.findByIdAndTenantId(positionId, tenantId)
             .orElseThrow(() -> new ResourceNotFoundException("Position", "id", positionId));
+        if (!position.isActive()) {
+            throw new BusinessException("Vị trí \"" + position.getName() + "\" đã ngừng sử dụng, hãy chọn vị trí khác.");
+        }
+    }
+
+    /**
+     * BR-SAAS-02, BR-SAAS-03: số Staff bị chặn bởi quota User của gói; Giám đốc và Manager không
+     * tính. Người đã nghỉ việc không chiếm suất. Cách hiểu dùng thử giống quota Location
+     * ({@code LocationService}): vẫn theo quota của gói đã chọn (BR-SAAS-08).
+     *
+     * <p>Đọc gói kèm khóa ghi để hai Manager cùng tạo Staff một lúc không cùng lọt qua bước đếm.
+     */
+    private void assertStaffQuotaAvailable(UUID tenantId) {
+        Subscription subscription = subscriptionRepository.findForUpdateByTenantId(tenantId)
+            .orElseThrow(() -> new BusinessException("Tenant chưa có gói dịch vụ nên chưa tạo được nhân viên."));
+
+        long used = userRepository.countByTenantIdAndRoleAndStatusNot(tenantId, Role.STAFF, UserStatus.TERMINATED);
+        if (used >= subscription.getQuotaUser()) {
+            throw new BusinessException(String.format(
+                "Đã dùng hết %d/%d suất nhân viên của gói dịch vụ. Liên hệ Giám đốc nâng cấp gói để thêm nhân viên.",
+                used, subscription.getQuotaUser()));
+        }
     }
 
     private static BusinessException missing(String field) {

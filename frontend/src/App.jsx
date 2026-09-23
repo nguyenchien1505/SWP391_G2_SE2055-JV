@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import LocationsPage from './pages/LocationsPage';
 import ManagersPage from './pages/ManagersPage';
+import StaffPage from './pages/StaffPage';
 import AppLayout from './components/AppLayout';
 import AdminLayout from './components/AdminLayout';
 import TenantsPage from './pages/Admin_platform/TenantsPage';
@@ -15,9 +16,13 @@ import RoomDetailPage from './pages/rooms/RoomDetailPage';
 import RoomBoardPage from './pages/rooms/RoomBoardPage';
 import HousekeepingPage from './pages/rooms/HousekeepingPage';
 import MyTasksPage from './pages/rooms/MyTasksPage';
+import ReserveManagerPage from './pages/ReserveManagerPage';
 import { homePathFor } from './homePath';
 
-/** Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). */
+/**
+ * Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). Quản lý dự bị
+ * (chưa gán khách sạn) chỉ thấy màn chờ — backend chặn mọi API quản lý của họ.
+ */
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
 
@@ -27,7 +32,10 @@ function RequireAuth({ children }) {
   if (!user) {
     return <Navigate to="/dang-nhap" replace />;
   }
-  return user.mustChangePassword ? <Navigate to="/doi-mat-khau" replace /> : children;
+  if (user.mustChangePassword) {
+    return <Navigate to="/doi-mat-khau" replace />;
+  }
+  return user.role === 'MANAGER' && !user.locationId ? <ReserveManagerPage /> : children;
 }
 
 /** Màn đổi mật khẩu chỉ cần đăng nhập, không áp thêm rào mật khẩu tạm. */
@@ -112,6 +120,8 @@ export default function App() {
       />
       {/* Quản lý tài khoản Manager — BR-PERM-02: chỉ Giám đốc; Manager vào thấy thông báo. */}
       <Route path="/quan-ly" element={inShell(<RequireManagementRole><ManagersPage /></RequireManagementRole>)} />
+      {/* Quản lý tài khoản nhân viên — BR-PERM-03: Manager CRUD Staff trong khách sạn của mình. */}
+      <Route path="/nhan-vien" element={inShell(<RequireManagementRole><StaffPage /></RequireManagementRole>)} />
       {/* Quản lý phòng — BR-ROOM-*. S-02 dành cho Giám đốc/Manager; chi tiết và sơ đồ phòng mọi vai trò. */}
       <Route path="/phong" element={inShell(<RequireManagementRole><RoomsPage /></RequireManagementRole>)} />
       <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />

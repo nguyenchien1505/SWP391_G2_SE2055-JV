@@ -17,7 +17,8 @@ import java.util.UUID;
  * đây; phần còn lại kiểm ở service (xem {@code UserService.validateProfile}):
  * <ul>
  *   <li>STAFF — đủ 10 trường của BR-USER-01.</li>
- *   <li>MANAGER — như STAFF nhưng KHÔNG có Position (BR-USER-05).</li>
+ *   <li>MANAGER — như STAFF nhưng KHÔNG có Position (BR-USER-05). Riêng Location được để
+ *       trống: đó là Manager DỰ BỊ, gán khách sạn sau hoặc nhận thay khi một Manager nghỉ việc.</li>
  *   <li>DIRECTOR — chỉ họ tên, email, SĐT (BR-USER-05).</li>
  * </ul>
  *

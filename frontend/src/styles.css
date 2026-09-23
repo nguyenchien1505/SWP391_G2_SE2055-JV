@@ -1076,3 +1076,59 @@ a.nav-item {
 .modal--form .form__head {
   padding-right: 36px;
 }
+
+/* ── Quản lý dự bị & bàn giao khi cho nghỉ việc ───────────────────── */
+.alert--warn {
+  background: #fdf0dc;
+  border: 1px solid #f6d3a1;
+  color: #7a3e00;
+}
+.badge--violet {
+  background: #efe9fb;
+  color: #5b3cc4;
+}
+.form__icon--danger {
+  background: #fdecec;
+  color: var(--danger);
+}
+.choice-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin: 4px 0 16px;
+}
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 12px;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.choice input {
+  margin-top: 3px;
+  accent-color: var(--primary);
+}
+.choice b,
+.choice small {
+  display: block;
+}
+.choice small {
+  color: var(--muted);
+  margin-top: 2px;
+}
+.choice--active {
+  border-color: var(--primary);
+  background: #f3f7fc;
+}
+
+/* ── Hồ sơ nhân viên (pop-up xem chi tiết) ─────────────────────────── */
+.avatar--lg {
+  width: 56px;
+  height: 56px;
+}
+.form__head .badge {
+  margin-top: 6px;
+}

@@ -19,6 +19,9 @@ const isHousekeeper = (user) => user?.positionType === 'HOUSEKEEPING';
 /** Chỉ Giám đốc quản lý tài khoản Manager — BR-PERM-02. */
 const isDirector = (user) => user?.role === 'DIRECTOR';
 
+/** Manager CRUD tài khoản nhân viên trong khách sạn của mình — BR-PERM-03. */
+const isManager = (user) => user?.role === 'MANAGER';
+
 /**
  * Khung màn hình sau đăng nhập. Các mục điều hướng chưa có màn hình tương ứng được để ở
  * trạng thái vô hiệu thay vì ẩn đi — giữ đúng bố cục thiết kế và cho thấy lộ trình còn lại.
@@ -42,6 +45,7 @@ const NAV_GROUPS = [
     items: [
       { label: 'Danh sách khách sạn', to: '/khach-san', visible: isManagement },
       { label: 'Manager & Nhân sự', to: '/quan-ly', visible: isDirector },
+      { label: 'Nhân viên chi nhánh', to: '/nhan-vien', visible: isManager },
       { label: 'Danh mục & Khu vực' },
       { label: 'Quy định & Mẫu ca' },
       { label: 'Quản lý tài sản' },

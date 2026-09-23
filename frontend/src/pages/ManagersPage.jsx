@@ -4,9 +4,11 @@ import { readErrorMessage } from '../api/client';
 import { fetchLocations } from '../api/locations';
 import {
   createUser,
+  deleteUserPermanently,
   fetchUsersByRole,
   resetUserPassword,
   terminateUser,
+  terminateWithHandover,
   updateUser,
 } from '../api/users';
 import ManagerForm from '../components/ManagerForm';
@@ -14,8 +16,15 @@ import FormModal from '../components/FormModal';
 import StatCard from '../components/StatCard';
 import ConfirmDialog from '../components/ConfirmDialog';
 import TempPasswordDialog from '../components/TempPasswordDialog';
+import TerminateManagerDialog from '../components/TerminateManagerDialog';
 
 const PAGE_SIZE = 10;
+
+/** Giá trị bộ lọc cơ sở cho Quản lý dự bị (chưa gán khách sạn). */
+const RESERVE_FILTER = 'RESERVE';
+
+/** Quản lý dự bị = còn làm việc nhưng chưa phụ trách khách sạn nào. */
+const isReserve = (user) => user.status !== 'TERMINATED' && !user.locationId;
 
 /** Trạng thái hiển thị gộp từ `status` và cờ mật khẩu tạm — đúng 4 nhóm lọc của thiết kế. */
 function displayStatus(user) {
@@ -40,7 +49,14 @@ function formatDate(value) {
 function downloadCsv(rows, locationName) {
   const header = ['Họ và tên', 'Email', 'Số điện thoại', 'Khách sạn', 'Trạng thái', 'Ngày tạo'];
   const lines = rows.map((u) =>
-    [u.fullName, u.email, u.phone, locationName(u.locationId), displayStatus(u).label, formatDate(u.createdAt)]
+    [
+      u.fullName,
+      u.email,
+      u.phone,
+      u.locationId ? locationName(u.locationId) : 'Quản lý dự bị',
+      displayStatus(u).label,
+      formatDate(u.createdAt),
+    ]
       .map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`)
       .join(','),
   );
@@ -60,6 +76,10 @@ function downloadCsv(rows, locationName) {
  * <p>BR-PERM-02: chỉ Giám đốc CRUD Manager. Bỏ các phần của thiết kế không có trong BR/DB:
  * chức danh GM/AGM (Manager không có Position — BR-USER-05, DM-01; mỗi khách sạn chỉ 1
  * Manager), cột "Đăng nhập gần nhất" và chỉ số 2FA (hệ thống không lưu).
+ *
+ * <p>Quản lý DỰ BỊ (chưa gán khách sạn) được tạo bằng lựa chọn "Khác", gán khách sạn sau ở màn
+ * sửa, hoặc nhận bàn giao khi một Quản lý đang phụ trách khách sạn nghỉ việc. Quản lý đã nghỉ
+ * việc mà chưa phát sinh dữ liệu thì xóa vĩnh viễn được.
  */
 export default function ManagersPage() {
   const { user } = useAuth();
@@ -81,6 +101,7 @@ export default function ManagersPage() {
   const [banner, setBanner] = useState(null); // { type, text }
   const [pending, setPending] = useState(null); // { action, target }
   const [issued, setIssued] = useState(null); // dữ liệu hộp thoại mật khẩu tạm
+  const [handoverTarget, setHandoverTarget] = useState(null); // Quản lý đang cho nghỉ, cần bàn giao
 
   function openForm(manager = null) {
     setEditing(manager);
@@ -129,6 +150,12 @@ export default function ManagersPage() {
     [locations],
   );
 
+  // Người nhận bàn giao phải đăng nhập được ngay — bỏ qua Quản lý dự bị đang bị khóa.
+  const activeReserves = useMemo(
+    () => managers.filter((m) => isReserve(m) && m.status === 'ACTIVE'),
+    [managers],
+  );
+
   const filtered = useMemo(() => {
     const needle = keyword.trim().toLowerCase();
     return managers.filter((m) => {
@@ -137,7 +164,9 @@ export default function ManagersPage() {
         [m.fullName, m.email, m.phone, locationName(m.locationId)].some((v) =>
           (v ?? '').toLowerCase().includes(needle),
         );
-      const matchLocation = locationFilter === 'ALL' || m.locationId === locationFilter;
+      const matchLocation =
+        locationFilter === 'ALL' ||
+        (locationFilter === RESERVE_FILTER ? isReserve(m) : m.locationId === locationFilter);
       const matchStatus = statusFilter === 'ALL' || displayStatus(m).key === statusFilter;
       return matchKeyword && matchLocation && matchStatus;
     });
@@ -156,6 +185,7 @@ export default function ManagersPage() {
       mustChange: count('MUST_CHANGE'),
       inactive: count('INACTIVE'),
       terminated: count('TERMINATED'),
+      reserve: managers.filter(isReserve).length,
       covered: locations.length - freeLocations.length,
     };
   }, [managers, locations, freeLocations]);
@@ -164,16 +194,22 @@ export default function ManagersPage() {
     try {
       if (editing) {
         await updateUser(editing.id, values);
-        setBanner({ type: 'success', text: `Đã cập nhật hồ sơ "${values.fullName}".` });
+        setBanner({
+          type: 'success',
+          text: values.locationId
+            ? `Đã gán "${values.fullName}" phụ trách khách sạn "${locationName(values.locationId)}"; khách sạn chuyển "Đang hoạt động".`
+            : `Đã cập nhật hồ sơ "${values.fullName}".`,
+        });
         closeForm();
       } else {
         const result = await createUser(values);
         setIssued({
-          title: 'Cấp tài khoản Quản lý thành công!',
-          description:
-            'Tài khoản đã được tạo; khách sạn được gán chuyển sang trạng thái "Đang hoạt động".',
+          title: values.locationId ? 'Cấp tài khoản Quản lý thành công!' : 'Cấp tài khoản Quản lý dự bị thành công!',
+          description: values.locationId
+            ? 'Tài khoản đã được tạo; khách sạn được gán chuyển sang trạng thái "Đang hoạt động".'
+            : 'Tài khoản đã được tạo ở trạng thái dự bị: chưa phụ trách khách sạn nào, chưa dùng được chức năng quản lý cho tới khi được gán khách sạn.',
           user: result.user,
-          locationName: locationName(values.locationId),
+          locationName: values.locationId ? locationName(values.locationId) : null,
           tempPassword: result.tempPassword,
         });
         // Đóng pop-up form trước để hộp thoại mật khẩu tạm hiện một mình.
@@ -206,16 +242,54 @@ export default function ManagersPage() {
           text: action === 'lock' ? `Đã tạm khóa tài khoản "${target.fullName}".` : `Đã mở khóa tài khoản "${target.fullName}".`,
         });
       } else if (action === 'terminate') {
+        // Chỉ Quản lý dự bị đi đường này — người đang phụ trách khách sạn phải qua bàn giao.
         await terminateUser(target.id);
         closeForm();
-        setBanner({
-          type: 'success',
-          text: `Đã cho "${target.fullName}" nghỉ việc. Khách sạn "${locationName(target.locationId)}" chuyển về "Chưa vận hành".`,
-        });
+        setBanner({ type: 'success', text: `Đã cho Quản lý dự bị "${target.fullName}" nghỉ việc.` });
+      } else if (action === 'purge') {
+        await deleteUserPermanently(target.id);
+        setBanner({ type: 'success', text: `Đã xóa vĩnh viễn tài khoản "${target.fullName}" (${target.email}).` });
       }
       await load();
     } catch (err) {
       setBanner({ type: 'error', text: readErrorMessage(err, 'Thao tác không thành công.') });
+    }
+  }
+
+  /** Nút "Cho nghỉ việc" trong form sửa: đang phụ trách khách sạn thì phải bàn giao. */
+  function startTerminate(target) {
+    if (target.locationId) {
+      closeForm();
+      setBanner(null);
+      setHandoverTarget(target);
+    } else {
+      setPending({ action: 'terminate', target });
+    }
+  }
+
+  async function handleHandover(handover) {
+    const target = handoverTarget;
+    const hotel = locationName(target.locationId);
+    try {
+      const result = await terminateWithHandover(target.id, handover);
+      setHandoverTarget(null);
+      setBanner({
+        type: 'success',
+        text: `Đã cho "${target.fullName}" nghỉ việc; "${result.replacement.fullName}" nhận bàn giao khách sạn "${hotel}".`,
+      });
+      if (result.tempPassword) {
+        setIssued({
+          title: 'Bàn giao thành công — đã cấp tài khoản Quản lý mới',
+          description: `"${target.fullName}" đã nghỉ việc; khách sạn tiếp tục "Đang hoạt động" dưới quyền Quản lý mới.`,
+          user: result.replacement,
+          locationName: hotel,
+          tempPassword: result.tempPassword,
+        });
+      }
+      await load();
+      return null;
+    } catch (err) {
+      return readErrorMessage(err, 'Cho nghỉ việc không thành công.');
     }
   }
 
@@ -235,8 +309,10 @@ export default function ManagersPage() {
       label: 'Tạm khóa',
       message: (t) => (
         <>
-          <b>{t.fullName}</b> bị đăng xuất ngay và không đăng nhập được cho tới khi được mở khóa. Khách sạn
-          vẫn giữ người này là quản lý.
+          <b>{t.fullName}</b> bị đăng xuất ngay và không đăng nhập được cho tới khi được mở khóa.{' '}
+          {t.locationId
+            ? 'Khách sạn vẫn giữ người này là quản lý.'
+            : 'Quản lý dự bị đang bị khóa thì không được chọn để nhận bàn giao khách sạn.'}
         </>
       ),
     },
@@ -250,13 +326,24 @@ export default function ManagersPage() {
       ),
     },
     terminate: {
-      title: 'Cho quản lý nghỉ việc?',
+      title: 'Cho quản lý dự bị nghỉ việc?',
       label: 'Cho nghỉ việc',
       message: (t) => (
         <>
-          Không hoàn tác được. Tài khoản <b>{t.fullName}</b> chuyển "Đã nghỉ việc", ca làm tương lai bị gỡ,
-          và khách sạn <b>{locationName(t.locationId)}</b> chuyển về "Chưa vận hành" cho tới khi có quản lý
-          mới (BR-USER-04, DM-13). Email này không dùng lại được (BR-USER-06).
+          Không hoàn tác được. Tài khoản <b>{t.fullName}</b> chuyển "Đã nghỉ việc" và không đăng nhập được
+          nữa. Người này chưa phụ trách khách sạn nào nên không cần bàn giao.
+        </>
+      ),
+    },
+    purge: {
+      title: 'Xóa vĩnh viễn tài khoản?',
+      label: 'Xóa vĩnh viễn',
+      message: (t) => (
+        <>
+          Tài khoản <b>{t.fullName}</b> ({t.email}) bị xóa hẳn khỏi hệ thống và email được giải phóng để
+          dùng lại. Chỉ xóa được khi người này <b>chưa phát sinh dữ liệu nào</b> (ca làm, công việc, bản
+          ghi do họ tạo hoặc sửa…); nếu đã có, hệ thống sẽ từ chối và giữ tài khoản ở trạng thái "Đã
+          nghỉ việc".
         </>
       ),
     },
@@ -315,7 +402,7 @@ export default function ManagersPage() {
         <StatCard
           label="Khách sạn có quản lý"
           value={`${stats.covered}/${locations.length}`}
-          note={freeLocations.length === 0 ? 'Đầy đủ quản lý' : `Còn ${freeLocations.length} khách sạn chưa có quản lý`}
+          note={`${freeLocations.length === 0 ? 'Đầy đủ quản lý' : `Còn ${freeLocations.length} khách sạn chưa có quản lý`} · ${stats.reserve} dự bị`}
           icon="🏨"
           tone="blue"
         />
@@ -348,6 +435,7 @@ export default function ManagersPage() {
                   {loc.name}
                 </option>
               ))}
+              <option value={RESERVE_FILTER}>Quản lý dự bị ({stats.reserve})</option>
             </select>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="ALL">Trạng thái: Tất cả</option>
@@ -419,10 +507,17 @@ export default function ManagersPage() {
                           </div>
                         </td>
                         <td>
-                          <div className="cell-manager">
-                            <b>🏨 {location?.name ?? '—'}</b>
-                            {location && <small>{location.totalRooms} phòng</small>}
-                          </div>
+                          {isReserve(m) ? (
+                            <div className="cell-manager">
+                              <span className="badge badge--violet">Dự bị</span>
+                              <small>Chưa gán khách sạn</small>
+                            </div>
+                          ) : (
+                            <div className="cell-manager">
+                              <b>🏨 {location?.name ?? '—'}</b>
+                              {location && <small>{location.totalRooms} phòng</small>}
+                            </div>
+                          )}
                         </td>
                         <td>{formatDate(m.createdAt)}</td>
                         <td>
@@ -430,7 +525,15 @@ export default function ManagersPage() {
                         </td>
                         <td className="cell-actions">
                           {closed ? (
-                            <span className="muted">—</span>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Xóa vĩnh viễn (chỉ khi chưa phát sinh dữ liệu)"
+                              aria-label="Xóa vĩnh viễn"
+                              onClick={() => setPending({ action: 'purge', target: m })}
+                            >
+                              🗑
+                            </button>
                           ) : (
                             <>
                               <button
@@ -509,6 +612,12 @@ export default function ManagersPage() {
             tạm chỉ hiển thị một lần và phải đổi ở lần đăng nhập đầu (BR-USER-07). Email là tên
             đăng nhập, không đổi và không dùng lại được kể cả sau khi nghỉ việc (BR-USER-06).
           </p>
+          <p>
+            Chọn "Khác" khi tạo để có <b>Quản lý dự bị</b> — chưa phụ trách khách sạn, gán sau ở màn sửa.
+            Cho nghỉ việc một Quản lý đang phụ trách khách sạn thì phải bàn giao ngay cho Quản lý dự bị
+            hoặc Quản lý mới. Quản lý đã nghỉ việc mà chưa phát sinh dữ liệu thì xóa vĩnh viễn được
+            (🗑), khi đó email được dùng lại.
+          </p>
         </div>
       </div>
 
@@ -521,9 +630,19 @@ export default function ManagersPage() {
             locationName={editing ? locationName(editing.locationId) : undefined}
             onCancel={closeForm}
             onSubmit={handleSubmit}
-            onTerminate={() => setPending({ action: 'terminate', target: editing })}
+            onTerminate={() => startTerminate(editing)}
           />
         </FormModal>
+      )}
+
+      {handoverTarget && (
+        <TerminateManagerDialog
+          target={handoverTarget}
+          locationName={locationName(handoverTarget.locationId)}
+          reserveManagers={activeReserves}
+          onCancel={() => setHandoverTarget(null)}
+          onConfirm={handleHandover}
+        />
       )}
 
       {/* Render SAU pop-up form để hộp thoại xác nhận "Cho nghỉ việc" nổi lên trên form. */}

@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.config;
 
+import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.exception.ApiError;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -109,6 +110,16 @@ public class CurrentUserRefreshFilter extends OncePerRequestFilter {
                 && !ALLOWED_WHILE_MUST_CHANGE_PASSWORD.contains(pathWithinApplication(request))) {
             writeError(request, response, HttpStatus.FORBIDDEN,
                 "Bạn phải đổi mật khẩu tạm trước khi sử dụng hệ thống.");
+            return;
+        }
+
+        // Manager dự bị chưa có khách sạn nên chưa có phạm vi dữ liệu nào. Chặn gọn ở đây thay vì
+        // để từng service tự xử lý: các truy vấn lọc theo Location mà nhận null sẽ thành
+        // "location_id IS NULL" và trả về cả Giám đốc lẫn Manager dự bị khác.
+        if (fresh.getRole() == Role.MANAGER && fresh.getLocationId() == null
+                && !ALLOWED_WHILE_MUST_CHANGE_PASSWORD.contains(pathWithinApplication(request))) {
+            writeError(request, response, HttpStatus.FORBIDDEN,
+                "Tài khoản Quản lý dự bị chưa được gán khách sạn nên chưa dùng được chức năng quản lý.");
             return;
         }
 

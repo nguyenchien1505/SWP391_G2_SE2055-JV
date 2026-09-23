@@ -12,7 +12,7 @@ import java.util.UUID;
  *
  * <p>KHÔNG đổi được email (là username unique toàn hệ thống — BR-USER-06), role,
  * và tenantId qua đây. Đổi Location phải đi qua luồng điều chuyển có duyệt (BR-TRF-02),
- * không sửa trực tiếp.
+ * không sửa trực tiếp — ngoại lệ duy nhất là {@code locationId} bên dưới.
  */
 @Data
 public class UpdateUserRequest {
@@ -20,6 +20,12 @@ public class UpdateUserRequest {
     private String    fullName;
     private String    phone;
     private UUID      positionId;
+
+    /**
+     * CHỈ để gán khách sạn cho Manager dự bị (đang chưa có Location). Người đã có Location
+     * thì đổi phải qua điều chuyển; gửi đúng Location hiện tại thì bỏ qua.
+     */
+    private UUID      locationId;
     private LocalDate startWorkDate;
     private LocalDate dateOfBirth;
     private Gender    gender;

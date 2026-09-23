@@ -6,6 +6,12 @@ export async function fetchLocations({ page = 0, size = 10, sort = 'name,asc' } 
   return data;
 }
 
+/** GET /locations/{id} — Manager dùng để lấy khách sạn của chính mình. */
+export async function fetchLocation(id) {
+  const { data } = await api.get(`/locations/${id}`);
+  return data;
+}
+
 export async function createLocation(payload) {
   const { data } = await api.post('/locations', payload);
   return data;
