@@ -3,9 +3,8 @@ import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import LocationsPage from './pages/LocationsPage';
+import ManagersPage from './pages/ManagersPage';
 import AppLayout from './components/AppLayout';
-
-/** Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). */
 import AdminLayout from './components/AdminLayout';
 import TenantsPage from './pages/Admin_platform/TenantsPage';
 import TenantDetailPage from './pages/Admin_platform/TenantDetailPage';
@@ -18,6 +17,7 @@ import HousekeepingPage from './pages/rooms/HousekeepingPage';
 import MyTasksPage from './pages/rooms/MyTasksPage';
 import { homePathFor } from './homePath';
 
+/** Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). */
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
 
@@ -110,6 +110,8 @@ export default function App() {
           </RequireAuth>
         }
       />
+      {/* Quản lý tài khoản Manager — BR-PERM-02: chỉ Giám đốc; Manager vào thấy thông báo. */}
+      <Route path="/quan-ly" element={inShell(<RequireManagementRole><ManagersPage /></RequireManagementRole>)} />
       {/* Quản lý phòng — BR-ROOM-*. S-02 dành cho Giám đốc/Manager; chi tiết và sơ đồ phòng mọi vai trò. */}
       <Route path="/phong" element={inShell(<RequireManagementRole><RoomsPage /></RequireManagementRole>)} />
       <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />

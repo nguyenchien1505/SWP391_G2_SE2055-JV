@@ -16,6 +16,9 @@ const isManagement = (user) => user?.role === 'DIRECTOR' || user?.role === 'MANA
 /** Chỉ nhân viên Dọn dẹp mới có việc dọn của riêng mình — BR-PERM-05, BR-ORG-08. */
 const isHousekeeper = (user) => user?.positionType === 'HOUSEKEEPING';
 
+/** Chỉ Giám đốc quản lý tài khoản Manager — BR-PERM-02. */
+const isDirector = (user) => user?.role === 'DIRECTOR';
+
 /**
  * Khung màn hình sau đăng nhập. Các mục điều hướng chưa có màn hình tương ứng được để ở
  * trạng thái vô hiệu thay vì ẩn đi — giữ đúng bố cục thiết kế và cho thấy lộ trình còn lại.
@@ -38,7 +41,7 @@ const NAV_GROUPS = [
     title: 'Quản trị & hệ thống',
     items: [
       { label: 'Danh sách khách sạn', to: '/khach-san', visible: isManagement },
-      { label: 'Manager & Nhân sự' },
+      { label: 'Manager & Nhân sự', to: '/quan-ly', visible: isDirector },
       { label: 'Danh mục & Khu vực' },
       { label: 'Quy định & Mẫu ca' },
       { label: 'Quản lý tài sản' },
