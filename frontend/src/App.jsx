@@ -72,6 +72,18 @@ function RequireManagementRole({ children }) {
   return user?.role === 'STAFF' ? <Navigate to={homePathFor(user)} replace /> : children;
 }
 
+/**
+ * Bảng lịch dọn phòng — chỉ Quản lý chi nhánh. Giám đốc bị đưa về trang chủ thay vì thấy màn
+ * rỗng không thao tác được: mọi việc trên lịch dọn đều ✖ với DIRECTOR (BR-HK-02, BR-HK-05,
+ * BR-HK-06, BR-HK-09). Chặn ở đây để ẩn mục menu không bị đi vòng bằng cách gõ thẳng URL.
+ * Chỉ là lớp giao diện; quyền thật do backend quyết định.
+ */
+function RequireBranchManager({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role === 'MANAGER' || user?.role === 'PLATFORM_ADMIN';
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
 /** Trang nghiệp vụ trong khung AppLayout, bắt buộc đã đăng nhập (và đã đổi mật khẩu tạm). */
 function inShell(page) {
   return (
@@ -79,6 +91,48 @@ function inShell(page) {
       <AppLayout>{page}</AppLayout>
     </RequireAuth>
   );
+}
+
+import { DashboardScreen } from './components/screens/DashboardScreen';
+import { AssetManagementScreen } from './components/screens/AssetManagementScreen';
+import { AssetDetailScreen } from './components/screens/AssetDetailScreen';
+import { BatchCreateAssetsScreen } from './components/screens/BatchCreateAssetsScreen';
+import { ConsumableInventoryScreen } from './components/screens/ConsumableInventoryScreen';
+import { DamageReportScreen } from './components/screens/DamageReportScreen';
+import { useNavigate, useParams } from 'react-router-dom';
+
+function useAssetNavigate() {
+  const navigate = useNavigate();
+  return (path, param) => {
+    if (path === 'overview') navigate('/tong-quan');
+    if (path === 'fixed-assets') navigate('/tai-san');
+    if (path === 'asset-detail') navigate(`/tai-san/${param}`);
+    if (path === 'batch-create') navigate('/tai-san/batch');
+    if (path === 'consumables') navigate('/vat-tu');
+    if (path === 'issue-reports') navigate('/bao-hong');
+    if (path === 'incident-detail') navigate(`/bao-hong/${param}`);
+  };
+}
+
+function OverviewWrapper() {
+  return <DashboardScreen onNavigate={useAssetNavigate()} />;
+}
+function FixedAssetWrapper() {
+  return <AssetManagementScreen onNavigate={useAssetNavigate()} />;
+}
+function BatchCreateWrapper() {
+  return <BatchCreateAssetsScreen onNavigate={useAssetNavigate()} />;
+}
+function ConsumableWrapper() {
+  return <ConsumableInventoryScreen onNavigate={useAssetNavigate()} />;
+}
+function DetailWrapper() {
+  const { code } = useParams();
+  return <AssetDetailScreen assetCode={code} onNavigate={useAssetNavigate()} />;
+}
+function IncidentWrapper() {
+  const { id } = useParams();
+  return <DamageReportScreen incidentId={id} onNavigate={useAssetNavigate()} />;
 }
 
 export default function App() {
@@ -126,11 +180,22 @@ export default function App() {
       <Route path="/phong" element={inShell(<RequireManagementRole><RoomsPage /></RequireManagementRole>)} />
       <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />
       <Route path="/so-do-phong" element={inShell(<RoomBoardPage />)} />
-      {/* Dọn phòng — BR-HK-*. Bảng lịch dọn cho Quản lý; "việc của tôi" cho nhân viên dọn.
-          Không chặn theo vai trò ở đây: backend tự ép phạm vi (nhân viên chỉ thấy việc của
-          mình), và mở được cả hai trang giúp Quản lý kiểm chứng nhanh khi có sự cố. */}
-      <Route path="/don-phong" element={inShell(<RequireManagementRole><HousekeepingPage /></RequireManagementRole>)} />
+      {/* Dọn phòng — BR-HK-*. Bảng lịch dọn chỉ cho Quản lý chi nhánh; "việc của tôi" không
+          chặn vai trò vì backend tự ép nhân viên về việc của chính mình (BR-PERM-05). */}
+      <Route path="/don-phong" element={inShell(<RequireBranchManager><HousekeepingPage /></RequireBranchManager>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
+
+      {/* New Asset Routes */}
+      <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+        <Route path="/tong-quan" element={<OverviewWrapper />} />
+        <Route path="/tai-san" element={<FixedAssetWrapper />} />
+        <Route path="/tai-san/batch" element={<BatchCreateWrapper />} />
+        <Route path="/tai-san/:code" element={<DetailWrapper />} />
+        <Route path="/vat-tu" element={<ConsumableWrapper />} />
+        <Route path="/bao-hong" element={<IncidentWrapper />} />
+      </Route>
+
+      {/* Admin Platform Routes */}
       <Route
         element={
           <RequireAdmin>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from './Logo';
 
@@ -12,6 +12,13 @@ const ROLE_LABEL = {
 
 /** Giám đốc / Manager — Staff gọi các API quản trị (vd. GET /locations) sẽ nhận 403. */
 const isManagement = (user) => user?.role === 'DIRECTOR' || user?.role === 'MANAGER';
+
+/**
+ * Lịch dọn phòng chỉ dành cho Quản lý chi nhánh. Giám đốc không có thao tác nào ở đây
+ * (BR-HK-02, BR-HK-05, BR-HK-06, BR-HK-09 đều ✖ với DIRECTOR), và danh sách của Giám đốc
+ * trộn phòng của MọI khách sạn nên đọc dễ nhầm — hai khách sạn đều có "phòng 102".
+ */
+const isBranchManager = (user) => user?.role === 'MANAGER';
 
 /** Chỉ nhân viên Dọn dẹp mới có việc dọn của riêng mình — BR-PERM-05, BR-ORG-08. */
 const isHousekeeper = (user) => user?.positionType === 'HOUSEKEEPING';
@@ -33,11 +40,14 @@ const NAV_GROUPS = [
   {
     title: 'Vận hành chuỗi',
     items: [
-      { label: 'Dashboard tổng quan' },
+      { label: 'Dashboard tổng quan', to: '/tong-quan' },
       { label: 'Sơ đồ phòng', to: '/so-do-phong' },
       { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
       { label: 'Xếp lịch làm việc' },
-      { label: 'Công việc dọn phòng', to: '/don-phong', visible: isManagement },
+      { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
+      { label: 'Quản lý tài sản', to: '/tai-san' },
+      { label: 'Vật tư tiêu hao', to: '/vat-tu' },
+      { label: 'Báo hỏng', to: '/bao-hong' },
     ],
   },
   {
@@ -48,7 +58,6 @@ const NAV_GROUPS = [
       { label: 'Nhân viên chi nhánh', to: '/nhan-vien', visible: isManager },
       { label: 'Danh mục & Khu vực' },
       { label: 'Quy định & Mẫu ca' },
-      { label: 'Quản lý tài sản' },
       { label: 'Cấu hình hệ thống' },
     ],
   },
@@ -143,7 +152,7 @@ export default function AppLayout({ children }) {
           </div>
         </header>
 
-        <main className="shell__content">{children}</main>
+        <main className="shell__content">{children || <Outlet />}</main>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import {
   fetchTenant,
+  fetchTenantLocations,
   fetchTenantUsage,
   reactivateTenant,
   suspendTenant,
@@ -57,6 +58,7 @@ export default function TenantDetailPage() {
 
   const [tenant, setTenant] = useState(null);
   const [usage, setUsage] = useState(null);
+  const [locations, setLocations] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [banner, setBanner] = useState(null); // { type, text }
   const [pendingAction, setPendingAction] = useState(null); // 'suspend' | 'reactivate'
@@ -65,9 +67,14 @@ export default function TenantDetailPage() {
   const load = useCallback(async () => {
     setLoadError('');
     try {
-      const [detail, usageData] = await Promise.all([fetchTenant(id), fetchTenantUsage(id)]);
+      const [detail, usageData, locationsData] = await Promise.all([
+        fetchTenant(id),
+        fetchTenantUsage(id),
+        fetchTenantLocations(id),
+      ]);
       setTenant(detail);
       setUsage(usageData);
+      setLocations(locationsData.content);
     } catch (err) {
       setLoadError(readErrorMessage(err, 'Không tải được thông tin Tenant.'));
     }
@@ -76,6 +83,7 @@ export default function TenantDetailPage() {
   useEffect(() => {
     setTenant(null);
     setUsage(null);
+    setLocations(null);
     setBanner(null);
     load();
   }, [load]);
@@ -243,6 +251,38 @@ export default function TenantDetailPage() {
                 </div>
               
               </>
+            ) : (
+              <p className="state">Đang tải…</p>
+            )}
+          </section>
+
+          <section className="panel">
+            <div className="panel__head">
+              <h2>Danh sách cơ sở</h2>
+            </div>
+            {locations ? (
+              locations.length > 0 ? (
+                <div className="location-grid">
+                  {locations.map((loc) => (
+                    <div key={loc.id} className="location-card">
+                      <div className="location-card__head">
+                        <span>{loc.name}</span>
+                        <span className={`badge badge--${loc.status === 'OPERATIONAL' ? 'green' : 'grey'}`}>
+                          {loc.status === 'OPERATIONAL' ? 'Đang vận hành' : 'Chưa vận hành'}
+                        </span>
+                      </div>
+                      <p className="location-card__line">{loc.address}</p>
+                      <p className="location-card__line">{loc.phone}</p>
+                      <p className="location-card__line">
+                        {loc.starRating != null && <>⭐ {loc.starRating} · </>}
+                        🛏 {loc.totalRooms} phòng
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="state">Tenant chưa có cơ sở nào.</p>
+              )
             ) : (
               <p className="state">Đang tải…</p>
             )}

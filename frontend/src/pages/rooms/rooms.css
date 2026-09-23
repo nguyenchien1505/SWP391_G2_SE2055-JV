@@ -669,3 +669,97 @@
     min-height: 48px;
   }
 }
+
+/* ── F6: S-13 kiểm tra phòng sau dọn ───────────────────────────────── */
+/* Hai lựa chọn xếp cạnh nhau, mỗi ô là một vùng bấm lớn — người dùng đang đứng trong
+   phòng vừa dọn, thao tác phải nhanh và khó bấm nhầm (design.md mục 3, BR-ROOM-06). */
+.inspect-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.inspect-choices legend {
+  margin-bottom: 6px;
+}
+.inspect-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 64px;
+  padding: 12px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-card);
+  cursor: pointer;
+}
+/* Radio thật để bàn phím và trình đọc màn hình dùng được, chỉ giấu khỏi mắt. */
+.inspect-choice input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.inspect-choice b {
+  display: block;
+  font-size: 17px;
+}
+.inspect-choice small {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+/* Màu chỉ hiện khi ĐƯỢC CHỌN: hai nút cùng rực rỡ thì không còn nút nào nổi bật. */
+.inspect-choice--pass.is-selected {
+  border-color: var(--green);
+  background: #e9f5ea;
+}
+.inspect-choice--pass.is-selected b {
+  color: var(--green);
+}
+.inspect-choice--fail.is-selected {
+  border-color: var(--orange);
+  background: #fdf0dc;
+}
+.inspect-choice--fail.is-selected b {
+  color: #b85300;
+}
+.inspect-choice:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Kết quả + thời điểm của lần kiểm tra trước. */
+.inspect-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+/* ── F6: liên kết dạng chữ trên thẻ việc dọn (BR-HK-12) ────────────── */
+.link-btn {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-btn:hover {
+  color: var(--accent);
+}
+
+@media (max-width: 480px) {
+  /* Hai ô cạnh nhau ở 360px thì chữ gợi ý bị vỡ dòng liên tục → xếp dọc. */
+  .inspect-choices {
+    grid-template-columns: 1fr;
+  }
+}

@@ -112,3 +112,10 @@ VALUES
      '2026-03-01', '1993-01-30', 'MALE', '50 Tôn Đức Thắng, Đống Đa, Hà Nội',
      'https://ui-avatars.com/api/?name=Ky+Thuat')
 ON DUPLICATE KEY UPDATE id = id;
+
+-- ── Dữ liệu test cho Asset Categories ──────────────────────────────────────
+INSERT INTO asset_categories (id, tenant_id, name, asset_kind, purpose, unit, is_active, created_at, updated_at)
+VALUES 
+    ('11111111-1111-1111-1111-111111111111', '10000000-0000-0000-0000-000000000001', 'TS-CD-01 (Tủ lạnh mini bar)', 'FIXED', 'GUEST_USE', NULL, TRUE, NOW(), NOW()),
+    ('22222222-2222-2222-2222-222222222222', '10000000-0000-0000-0000-000000000001', 'TS-CD-02 (Smart TV 50 inch)', 'FIXED', 'GUEST_USE', NULL, TRUE, NOW(), NOW())
+ON DUPLICATE KEY UPDATE id = id;

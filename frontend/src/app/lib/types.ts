@@ -87,3 +87,18 @@ export interface SystemConfig {
   gracePeriodDays: number;
   updatedAt: string | null;
 }
+
+export type LocationStatus = "NOT_OPERATIONAL" | "OPERATIONAL";
+
+export interface LocationItem {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  starRating: number | null;
+  timezone: string;
+  status: LocationStatus;
+  totalRooms: number;
+  createdAt: string;
+  updatedAt: string | null;
+}

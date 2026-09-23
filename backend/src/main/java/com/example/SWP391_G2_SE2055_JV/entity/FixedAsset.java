@@ -13,7 +13,8 @@ import java.util.UUID;
  * Tài sản cố định — quản lý theo từng CÁ THỂ, mỗi bản ghi là một vật (BR-ASSET-01).
  *
  * <p>DM-10: tài sản gắn cứng vào một Location, KHÔNG chuyển giữa các Location
- * (BR-ASSET-13) — muốn đổi chỗ thì thanh lý rồi tạo mới.
+ * (BR-ASSET-13) — Manager có quyền thay đổi vị trí tài sản trong phạm vi location;
+ * - muốn chuyển tài sản giữa các location thì thanh lý rồi tạo mới.
  */
 @Entity
 @Table(name = "fixed_assets")

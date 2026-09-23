@@ -33,3 +33,9 @@ export async function updateLocationContact(id, payload) {
 export async function deleteLocation(id) {
   await api.delete(`/locations/${id}`);
 }
+
+/** GET /organization/areas?size=1000 — lấy toàn bộ danh sách Khu vực. */
+export async function fetchAllAreas() {
+  const { data } = await api.get('/organization/areas', { params: { size: 1000 } });
+  return data.content || [];
+}

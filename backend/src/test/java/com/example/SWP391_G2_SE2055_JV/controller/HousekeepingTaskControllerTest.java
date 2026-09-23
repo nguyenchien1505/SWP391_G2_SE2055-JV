@@ -3,8 +3,11 @@ package com.example.SWP391_G2_SE2055_JV.controller;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
+import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
@@ -26,6 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -354,6 +358,195 @@ class HousekeepingTaskControllerTest {
         }
     }
 
+    // ── F6: nghiệm thu phòng — chỉ Manager ─────────────────────
+
+    @Nested
+    class Inspection {
+
+        private static final String PASS_BODY = """
+            {"result": "PASS"}
+            """;
+
+        /** Mỗi lần kiểm tra sinh một biên bản mới → 201, không phải 200. */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnCreatedWhenManagerInspects() throws Exception {
+            when(housekeepingService.inspectTask(eq(TASK_ID), any())).thenReturn(sampleInspection());
+
+            mockMvc.perform(post("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(PASS_BODY))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.result").value("PASS"))
+                .andExpect(jsonPath("$.nextTaskId").doesNotExist());
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldPassResultAndReasonToService() throws Exception {
+            when(housekeepingService.inspectTask(eq(TASK_ID), any())).thenReturn(sampleInspection());
+
+            mockMvc.perform(post("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"result": "FAIL", "reason": "Nhà tắm còn bẩn"}
+                        """))
+                .andExpect(status().isCreated());
+
+            ArgumentCaptor<InspectTaskRequest> request = ArgumentCaptor.forClass(InspectTaskRequest.class);
+            verify(housekeepingService).inspectTask(eq(TASK_ID), request.capture());
+            assertThat(request.getValue().getResult()).isEqualTo(InspectionResult.FAIL);
+            assertThat(request.getValue().getReason()).isEqualTo("Nhà tắm còn bẩn");
+        }
+
+        /**
+         * Nghiệm thu là việc của Quản lý (BR-ROOM-02): người dọn không tự duyệt phòng mình
+         * vừa dọn. Chặn ngay ở tầng URL — POST /housekeeping/** chỉ dành cho Admin và Manager.
+         */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_STAFF,POSITION_RECEPTION",
+                                "ROLE_DIRECTOR"})
+        void shouldForbidNonManagerFromInspecting(String authorities) throws Exception {
+            mockMvc.perform(post("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(PASS_BODY)
+                    .with(authorities(authorities)))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        @Test
+        void shouldReturnUnauthorizedWithoutLogin() throws Exception {
+            mockMvc.perform(post("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(PASS_BODY))
+                .andExpect(status().isUnauthorized());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnUnprocessableWhenResultMissing() throws Exception {
+            mockMvc.perform(post("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("result"));
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** Q12: enum sai trong body là JSON không đọc được → 400, không phải 500. */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnBadRequestWhenResultIsNotAnEnumValue() throws Exception {
+            mockMvc.perform(post("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"result": "MAYBE"}
+                        """))
+                .andExpect(status().isBadRequest());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** BR-HK-08: thiếu lý do khi không đạt là luật có điều kiện → service chặn, trả 400. */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnBadRequestWhenFailHasNoReason() throws Exception {
+            when(housekeepingService.inspectTask(eq(TASK_ID), any()))
+                .thenThrow(new BusinessException("Kiểm tra không đạt thì bắt buộc nhập lý do."));
+
+            mockMvc.perform(post("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"result": "FAIL"}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Kiểm tra không đạt thì bắt buộc nhập lý do."));
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnNotFoundWhenTaskOutOfScope() throws Exception {
+            when(housekeepingService.inspectTask(eq(TASK_ID), any()))
+                .thenThrow(new ResourceNotFoundException("HousekeepingTask", "id", TASK_ID));
+
+            mockMvc.perform(post("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(PASS_BODY))
+                .andExpect(status().isNotFound());
+        }
+
+        /** Đọc biên bản: GET /housekeeping/** mở cho cả 4 vai trò, phạm vi do service lọc. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_DIRECTOR", "ROLE_MANAGER", "ROLE_STAFF,POSITION_HOUSEKEEPING",
+                                "ROLE_STAFF,POSITION_RECEPTION"})
+        void shouldReadInspectionForEveryTenantRole(String authorities) throws Exception {
+            when(housekeepingService.getInspection(TASK_ID)).thenReturn(sampleInspection());
+
+            mockMvc.perform(get("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .with(authorities(authorities)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.taskId").value(TASK_ID.toString()));
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnNotFoundWhenTaskHasNoInspection() throws Exception {
+            when(housekeepingService.getInspection(TASK_ID))
+                .thenThrow(new ResourceNotFoundException("InspectionRecord", "taskId", TASK_ID));
+
+            mockMvc.perform(get("/housekeeping/tasks/{id}/inspection", TASK_ID))
+                .andExpect(status().isNotFound());
+        }
+    }
+
+    // ── F6: hủy task ────────────────────────────────────
+
+    @Nested
+    class CancelTask {
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldCancelTaskForManager() throws Exception {
+            HousekeepingTaskResponse cancelled = sampleTask();
+            cancelled.setStatus(HousekeepingTaskStatus.CANCELLED);
+            when(housekeepingService.cancelTask(TASK_ID)).thenReturn(cancelled);
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_DIRECTOR"})
+        void shouldForbidNonManagerFromCancelling(String authorities) throws Exception {
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID)
+                    .with(authorities(authorities)))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        @Test
+        void shouldReturnUnauthorizedWithoutLogin() throws Exception {
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID))
+                .andExpect(status().isUnauthorized());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** Q13: hủy tay việc dọn sau check-out bị chặn ở service → 400 kèm lối đi đúng. */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnBadRequestWhenCancellingCheckoutTask() throws Exception {
+            when(housekeepingService.cancelTask(TASK_ID)).thenThrow(new BusinessException(
+                "Muốn dừng việc dọn sau khi khách trả phòng, hãy chuyển phòng sang «Không khả dụng»."));
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID))
+                .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnNotFoundWhenTaskOutOfScope() throws Exception {
+            when(housekeepingService.cancelTask(TASK_ID))
+                .thenThrow(new ResourceNotFoundException("HousekeepingTask", "id", TASK_ID));
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID))
+                .andExpect(status().isNotFound());
+        }
+    }
+
     // ── Dữ liệu mẫu ─────────────────────────────────────────────────────────
 
     /** Người đăng nhập mang đúng danh sách authority truyền vào — dùng cho test chạy theo tham số. */
@@ -373,6 +566,17 @@ class HousekeepingTaskControllerTest {
             .taskType(HousekeepingTaskType.CHECKOUT)
             .status(HousekeepingTaskStatus.UNASSIGNED)
             .createdSource(TaskCreatedSource.CHECKOUT_AUTO)
+            .build();
+    }
+
+    private static InspectionRecordResponse sampleInspection() {
+        return InspectionRecordResponse.builder()
+            .id(UUID.randomUUID())
+            .taskId(TASK_ID)
+            .roomId(ROOM_ID)
+            .inspectorId(UUID.randomUUID())
+            .result(InspectionResult.PASS)
+            .inspectedAt(LocalDateTime.now())
             .build();
     }
 }

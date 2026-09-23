@@ -15,8 +15,9 @@ import {
  * @param staffName  tên người làm, tra sẵn từ danh bạ (DTO chỉ có `assignedStaffId`)
  * @param today      hôm nay theo ISO — để đánh dấu việc TỒN ĐỌNG (BR-HK-04)
  * @param actions    [{ key, label, danger, onClick }] — nút hiện dưới thẻ
+ * @param onShowPreviousInspection  mở biên bản lần kiểm tra trước; chỉ có nghĩa với việc dọn lại
  */
-export default function TaskCard({ task, staffName, today, actions = [] }) {
+export default function TaskCard({ task, staffName, today, actions = [], onShowPreviousInspection }) {
   const tone = taskStatusMeta(task.status).tone;
   // BR-HK-04: hết ca chưa xong thì việc TỒN ĐỌNG chứ không tự hủy — phải nhìn ra ngay.
   const overdue = task.status === 'IN_PROGRESS' && task.assignedDate && task.assignedDate < today;
@@ -46,6 +47,13 @@ export default function TaskCard({ task, staffName, today, actions = [] }) {
 
       {task.status === 'UNASSIGNED' && unassignedReasonLabel(task.unassignedReason) && (
         <p className="task-card__meta muted">{unassignedReasonLabel(task.unassignedReason)}</p>
+      )}
+
+      {/* BR-HK-12: việc dọn lại phải xem được lý do không đạt, nằm ở biên bản của task cha. */}
+      {task.parentTaskId && onShowPreviousInspection && (
+        <button type="button" className="link-btn" onClick={() => onShowPreviousInspection(task)}>
+          Xem lần kiểm tra trước
+        </button>
       )}
 
       {actions.length > 0 && (
