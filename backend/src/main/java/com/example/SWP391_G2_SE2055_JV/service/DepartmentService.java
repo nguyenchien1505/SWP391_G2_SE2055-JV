@@ -106,7 +106,7 @@ public class DepartmentService {
         if (positionRepository.existsByDepartmentId(department.getId())) {
             throw new BusinessException(
                 "Không xóa được Phòng ban: vẫn còn chức danh thuộc phòng ban này. "
-                + "Hãy ẩn phòng ban thay vì xóa (BR-ORG-10, BR-ORG-14).");
+                + "Hãy ẩn phòng ban thay vì xóa.");
         }
 
         departmentRepository.delete(department);

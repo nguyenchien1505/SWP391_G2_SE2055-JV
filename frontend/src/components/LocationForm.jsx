@@ -169,8 +169,7 @@ export default function LocationForm({ editing, canManage, onSubmit, onCancel })
             : 'Khách sạn mới sẽ ở trạng thái “Chưa vận hành” cho tới khi được gán quản lý.'}
         </p>
         <small className="muted">
-          Trạng thái do hệ thống tự đặt theo việc có quản lý hay không, không chỉnh tay được
-          (BR-ORG-02).
+          Trạng thái do hệ thống tự đặt theo việc có quản lý hay không, không chỉnh tay được.
         </small>
       </div>
 

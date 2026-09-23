@@ -379,6 +379,10 @@ p {
   color: var(--text);
   cursor: pointer;
 }
+/* Mục điều hướng dạng liên kết (NavLink) — bỏ gạch chân mặc định của thẻ <a>. */
+a.nav-item {
+  text-decoration: none;
+}
 .nav-item:hover:not(:disabled) {
   background: #eef3f9;
 }

@@ -144,7 +144,7 @@ public class UserService {
 
         if (request.getEmail() != null && !request.getEmail().equals(user.getEmail())) {
             throw new BusinessException(
-                "Không đổi được email: email là username unique toàn hệ thống (BR-USER-06).");
+                "Không đổi được email: email là username unique toàn hệ thống.");
         }
         if (user.isTerminated()) {
             throw new BusinessException("Không sửa được hồ sơ của nhân viên đã nghỉ việc.");
@@ -160,7 +160,7 @@ public class UserService {
 
         if (request.getPositionId() != null) {
             if (!user.isStaff()) {
-                throw new BusinessException("Chỉ STAFF mới có Position (BR-USER-05).");
+                throw new BusinessException("Chỉ STAFF mới có Position.");
             }
             assertPositionExists(request.getPositionId(), user.getTenantId());
             user.setPositionId(request.getPositionId());
@@ -295,10 +295,10 @@ public class UserService {
     private static void assertCanManage(Role actor, Role target) {
         if (actor == Role.DIRECTOR && target != Role.MANAGER) {
             throw new BusinessException(
-                "Giám đốc chỉ quản lý tài khoản Manager; với Staff chỉ được xem (BR-PERM-02).");
+                "Giám đốc chỉ quản lý tài khoản Manager; với Staff chỉ được xem.");
         }
         if (actor == Role.MANAGER && target != Role.STAFF) {
-            throw new BusinessException("Manager chỉ thao tác được trên tài khoản STAFF (BR-PERM-03).");
+            throw new BusinessException("Manager chỉ thao tác được trên tài khoản STAFF.");
         }
     }
 
@@ -323,13 +323,13 @@ public class UserService {
         if (request.getRole() == Role.STAFF) {
             requireStaffProfile(request);
             if (request.getPositionId() == null) {
-                throw new BusinessException("Position là bắt buộc với STAFF (BR-USER-01).");
+                throw new BusinessException("Position là bắt buộc với STAFF.");
             }
             assertPositionExists(request.getPositionId(), tenantId);
         } else if (request.getRole() == Role.MANAGER) {
             requireStaffProfile(request);
             if (request.getPositionId() != null) {
-                throw new BusinessException("Manager KHÔNG có Position (BR-USER-05).");
+                throw new BusinessException("Manager KHÔNG có Position.");
             }
         }
 
@@ -376,7 +376,7 @@ public class UserService {
     }
 
     private static BusinessException missing(String field) {
-        return new BusinessException(field + " là bắt buộc (BR-USER-01).");
+        return new BusinessException(field + " là bắt buộc.");
     }
 
     private static boolean isBlank(String value) {

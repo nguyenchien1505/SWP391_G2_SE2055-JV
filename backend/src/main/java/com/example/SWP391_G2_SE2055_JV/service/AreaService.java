@@ -98,7 +98,7 @@ public class AreaService {
         if (fixedAssetRepository.existsByAreaId(area.getId())) {
             throw new BusinessException(
                 "Không xóa được Khu vực: vẫn còn tài sản cố định gắn vào. Hãy chuyển tài sản sang "
-                + "khu vực khác hoặc thanh lý trước (BR-ORG-15).");
+                + "khu vực khác hoặc thanh lý trước.");
         }
 
         areaRepository.delete(area);

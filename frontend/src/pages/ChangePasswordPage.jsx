@@ -209,7 +209,7 @@ export default function ChangePasswordPage() {
 
         <footer className="login-card__foot">
           <span className="dot dot--online" aria-hidden="true" />
-          <span>Mật khẩu tạm chỉ dùng một lần — BR-USER-07</span>
+          <span>Mật khẩu tạm chỉ dùng một lần</span>
         </footer>
       </div>
     </div>

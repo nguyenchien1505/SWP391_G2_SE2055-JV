@@ -10,26 +10,38 @@ const ROLE_LABEL = {
   STAFF: 'Nhân viên',
 };
 
+/** Giám đốc / Manager — Staff gọi các API quản trị (vd. GET /locations) sẽ nhận 403. */
+const isManagement = (user) => user?.role === 'DIRECTOR' || user?.role === 'MANAGER';
+
+/** Chỉ nhân viên Dọn dẹp mới có việc dọn của riêng mình — BR-PERM-05, BR-ORG-08. */
+const isHousekeeper = (user) => user?.positionType === 'HOUSEKEEPING';
+
+/** Chỉ Giám đốc quản lý tài khoản Manager — BR-PERM-02. */
+const isDirector = (user) => user?.role === 'DIRECTOR';
+
 /**
- * Khung màn hình sau đăng nhập. Mục có `to` là màn hình đã làm; mục chưa có màn hình được để
- * ở trạng thái vô hiệu thay vì ẩn đi — giữ đúng bố cục thiết kế và cho thấy lộ trình còn lại.
+ * Khung màn hình sau đăng nhập. Các mục điều hướng chưa có màn hình tương ứng được để ở
+ * trạng thái vô hiệu thay vì ẩn đi — giữ đúng bố cục thiết kế và cho thấy lộ trình còn lại.
+ *
+ * Mục đã có màn hình khai báo `to` (đường dẫn). `visible(user)` (tùy chọn) ẩn mục với vai trò
+ * không dùng được — chỉ để dễ dùng, quyền thật do backend quyết định.
  */
 const NAV_GROUPS = [
   {
     title: 'Vận hành chuỗi',
     items: [
       { label: 'Dashboard tổng quan' },
-      { label: 'Sơ đồ phòng' },
-      { label: 'Danh sách phòng' },
+      { label: 'Sơ đồ phòng', to: '/so-do-phong' },
+      { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
       { label: 'Xếp lịch làm việc' },
-      { label: 'Công việc dọn phòng' },
+      { label: 'Công việc dọn phòng', to: '/don-phong', visible: isManagement },
     ],
   },
   {
     title: 'Quản trị & hệ thống',
     items: [
-      { label: 'Danh sách khách sạn', to: '/khach-san' },
-      { label: 'Manager & Nhân sự', to: '/quan-ly' },
+      { label: 'Danh sách khách sạn', to: '/khach-san', visible: isManagement },
+      { label: 'Manager & Nhân sự', to: '/quan-ly', visible: isDirector },
       { label: 'Danh mục & Khu vực' },
       { label: 'Quy định & Mẫu ca' },
       { label: 'Quản lý tài sản' },
@@ -38,7 +50,10 @@ const NAV_GROUPS = [
   },
   {
     title: 'Cá nhân',
-    items: [{ label: 'Lịch cá nhân & Chấm công' }],
+    items: [
+      { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: isHousekeeper },
+      { label: 'Lịch cá nhân & Chấm công' },
+    ],
   },
 ];
 
@@ -67,28 +82,30 @@ export default function AppLayout({ children }) {
           {NAV_GROUPS.map((group) => (
             <div className="nav-group" key={group.title}>
               <p className="nav-group__title">{group.title}</p>
-              {group.items.map((item) =>
-                item.to ? (
-                  <NavLink
-                    key={item.label}
-                    to={item.to}
-                    className={({ isActive }) => `nav-item ${isActive ? 'nav-item--active' : ''}`}
-                    onClick={() => setNavOpen(false)}
-                  >
-                    {item.label}
-                  </NavLink>
-                ) : (
-                  <button
-                    key={item.label}
-                    type="button"
-                    className="nav-item"
-                    disabled
-                    title="Màn hình này chưa được phát triển"
-                  >
-                    {item.label}
-                  </button>
-                ),
-              )}
+              {group.items
+                .filter((item) => !item.visible || item.visible(user))
+                .map((item) =>
+                  item.to ? (
+                    <NavLink
+                      key={item.label}
+                      to={item.to}
+                      onClick={() => setNavOpen(false)}
+                      className={({ isActive }) => `nav-item ${isActive ? 'nav-item--active' : ''}`}
+                    >
+                      {item.label}
+                    </NavLink>
+                  ) : (
+                    <button
+                      key={item.label}
+                      type="button"
+                      className="nav-item"
+                      disabled
+                      title="Màn hình này chưa được phát triển"
+                    >
+                      {item.label}
+                    </button>
+                  ),
+                )}
             </div>
           ))}
         </nav>

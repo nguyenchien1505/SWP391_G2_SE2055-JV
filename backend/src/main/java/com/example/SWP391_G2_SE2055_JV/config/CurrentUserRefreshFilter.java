@@ -40,6 +40,9 @@ import java.util.Set;
  * <p>Đồng thời ép BR-USER-07 ở backend: còn mật khẩu tạm thì chỉ gọi được các endpoint
  * phục vụ việc đổi mật khẩu, không chỉ dựa vào frontend điều hướng.
  *
+ * <p>Cũng ở đây thực thi chế độ CHỈ ĐỌC của Giám đốc khi Tenant bị khóa do hết hạn dùng thử /
+ * thanh toán thất bại: chặn mọi thao tác ghi (xem {@link TenantAccessPolicy}).
+ *
  * <p>Chi phí: 1–3 query mỗi request (user, position, tenant) — chấp nhận được ở quy mô
  * Milestone 1.
  *
@@ -52,6 +55,15 @@ public class CurrentUserRefreshFilter extends OncePerRequestFilter {
     /** BR-USER-07: còn mật khẩu tạm thì chỉ được gọi các endpoint này. */
     private static final Set<String> ALLOWED_WHILE_MUST_CHANGE_PASSWORD =
         Set.of("/auth/me", "/auth/change-password", "/auth/logout");
+
+    /**
+     * Chế độ chỉ đọc (Giám đốc của Tenant hết hạn dùng thử / thanh toán thất bại): chỉ những
+     * request "đọc" mới đi qua. Ngoại lệ: đổi mật khẩu, đăng xuất, và /billing/** (để thanh toán).
+     */
+    private static final Set<String> READ_ONLY_HTTP_METHODS = Set.of("GET", "HEAD", "OPTIONS");
+    private static final Set<String> ALLOWED_WHILE_READ_ONLY =
+        Set.of("/auth/change-password", "/auth/logout");
+    private static final String BILLING_PATH = "/billing";
 
     private final UserRepository         userRepository;
     private final UserDetailsServiceImpl userDetailsService;
@@ -96,11 +108,28 @@ public class CurrentUserRefreshFilter extends OncePerRequestFilter {
         if (fresh.isMustChangePassword()
                 && !ALLOWED_WHILE_MUST_CHANGE_PASSWORD.contains(pathWithinApplication(request))) {
             writeError(request, response, HttpStatus.FORBIDDEN,
-                "Bạn phải đổi mật khẩu tạm trước khi sử dụng hệ thống (BR-USER-07).");
+                "Bạn phải đổi mật khẩu tạm trước khi sử dụng hệ thống.");
+            return;
+        }
+
+        // Tenant hết hạn dùng thử / thanh toán thất bại: Giám đốc vào được nhưng chỉ được xem.
+        if (fresh.isReadOnly() && !isAllowedWhileReadOnly(request)) {
+            writeError(request, response, HttpStatus.FORBIDDEN,
+                "Tenant đang bị tạm ngưng (hết hạn dùng thử hoặc thanh toán thất bại) nên tài khoản "
+                + "chỉ được xem. Vui lòng thanh toán để tiếp tục thao tác.");
             return;
         }
 
         chain.doFilter(request, response);
+    }
+
+    /** Request đọc, hoặc thuộc nhóm ngoại lệ được phép ghi khi ở chế độ chỉ đọc. */
+    private static boolean isAllowedWhileReadOnly(HttpServletRequest request) {
+        String path = pathWithinApplication(request);
+        return READ_ONLY_HTTP_METHODS.contains(request.getMethod())
+            || ALLOWED_WHILE_READ_ONLY.contains(path)
+            || path.equals(BILLING_PATH)
+            || path.startsWith(BILLING_PATH + "/");
     }
 
     /** Bỏ context-path "/api" để so khớp giống cách khai báo rule trong SecurityConfig. */

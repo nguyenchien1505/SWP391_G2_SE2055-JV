@@ -1,0 +1,18 @@
+# Profile "test" — dùng cho @DataJpaTest và test tích hợp (@ActiveProfiles("test")).
+#
+# Vì sao không dùng H2: schema dùng tính năng riêng của MySQL (cột sinh active_room_number,
+# open_task_key; CHECK constraint) nên DB nhúng không dựng được V1__init_schema.sql.
+#
+# Dùng DB RIÊNG hotel_workforce_test (tự tạo nếu chưa có) — không bao giờ chạm DB dev.
+# Tài khoản MySQL lấy từ backend/.env như khi chạy app (DB_USERNAME / DB_PASSWORD).
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/hotel_workforce_test?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true
+
+  flyway:
+    # CHỈ migration, KHÔNG nạp db/seed: test tự tạo dữ liệu của mình, không dựa vào seed.
+    locations: classpath:db/migration
+
+logging:
+  level:
+    org.springframework.security: INFO

@@ -356,9 +356,9 @@ export default function LocationsPage() {
           <b>Quy định thêm khách sạn mới</b>
           <p>
             Khách sạn mới luôn ở trạng thái <b>Chưa vận hành</b> và chỉ chuyển sang{' '}
-            <b>Đang hoạt động</b> sau khi được gán một Quản lý chi nhánh (BR-ORG-02). Mỗi khách
+            <b>Đang hoạt động</b> sau khi được gán một Quản lý chi nhánh. Mỗi khách
             sạn chỉ có đúng một quản lý. Chỉ Giám đốc được thêm và xóa khách sạn; Quản lý chi
-            nhánh chỉ cập nhật được địa chỉ và số điện thoại liên hệ (BR-ORG-03).
+            nhánh chỉ cập nhật được địa chỉ và số điện thoại liên hệ.
           </p>
         </div>
       </div>
@@ -381,7 +381,7 @@ export default function LocationsPage() {
           message={
             <>
               Bạn sắp xóa <b>{pendingDelete.name}</b>. Thao tác này không hoàn tác được. Hệ thống
-              sẽ từ chối nếu khách sạn còn nhân sự, phòng hoặc khu vực trực thuộc (BR-ORG-05).
+              sẽ từ chối nếu khách sạn còn nhân sự, phòng hoặc khu vực trực thuộc.
             </>
           }
           confirmLabel="Xóa khách sạn"

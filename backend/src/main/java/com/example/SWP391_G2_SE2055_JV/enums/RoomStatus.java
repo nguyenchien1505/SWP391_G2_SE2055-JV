@@ -11,39 +11,57 @@ import java.util.Set;
  * <p>Ma trận là nguồn duy nhất quyết định một bước chuyển có hợp lệ hay không;
  * service layer gọi {@link #canTransitionTo(RoomStatus)} trước khi ghi.
  *
- * <p><b>Lưu ý về RESERVED:</b> BR-ROOM-02 chỉ định nghĩa đường ĐI VÀO trạng thái này
- * (AVAILABLE → RESERVED, do Lễ tân) mà không định nghĩa đường đi ra, nên theo đúng
- * văn bản thì phòng đã đặt sẽ kẹt vĩnh viễn. Hai bước chuyển RESERVED → OCCUPIED
- * (khách đến nhận phòng) và RESERVED → AVAILABLE (khách hủy) được bổ sung ở đây để
- * luồng chạy được; <b>cần chốt lại với BA rồi cập nhật BR-ROOM-02.</b>
+ * <p><b>Lưu ý về RESERVED:</b> bản đầu của BR-ROOM-02 chỉ định nghĩa đường ĐI VÀO
+ * trạng thái này (AVAILABLE → RESERVED, do Lễ tân) mà thiếu đường đi ra, nên phòng đã
+ * đặt sẽ kẹt vĩnh viễn. Hai bước chuyển RESERVED → OCCUPIED (khách đến nhận phòng) và
+ * RESERVED → AVAILABLE (khách hủy hoặc no-show) đã được bổ sung chính thức vào ma trận
+ * BR-ROOM-02 ngày 20/09/2026, nên enum này khớp đúng văn bản BR.
+ *
+ * <p>BR-ROOM-01: RESERVED là cờ giữ phòng cho khách đến TRONG NGÀY, không phải lịch đặt
+ * phòng — không có ngày đến/đi, không có thông tin khách.
  */
 public enum RoomStatus {
 
     /** Đã đặt — cờ thủ công do Lễ tân bật khi khách đặt qua SĐT/email. */
-    RESERVED,
+    RESERVED("Đã đặt"),
 
     /** Trống / Sẵn sàng. */
-    AVAILABLE,
+    AVAILABLE("Trống / Sẵn sàng"),
 
     /** Đang sử dụng (có khách). */
-    OCCUPIED,
+    OCCUPIED("Đang sử dụng"),
 
     /** Chờ dọn. Vào trạng thái này là sinh task dọn — BR-HK-01. */
-    DIRTY,
+    DIRTY("Chờ dọn"),
 
     /** Đang dọn. */
-    CLEANING,
+    CLEANING("Đang dọn"),
 
     /** Chờ Manager kiểm tra. */
-    INSPECTION,
+    INSPECTION("Chờ kiểm tra"),
 
     /** Không khả dụng — gộp Bảo trì + Khóa phòng, bắt buộc kèm lý do (BR-ROOM-07). */
-    UNAVAILABLE;
+    UNAVAILABLE("Không khả dụng");
+
+    /**
+     * Nhãn tiếng Việt CHỈ để ghép vào câu báo lỗi của backend (design.md mục 1: lỗi phải là
+     * câu tiếng Việt nêu rõ vi phạm gì). Màn hình KHÔNG đọc trường này — nhãn hiển thị nằm ở
+     * frontend ({@code pages/rooms/roomLabels.js}); sửa nhãn thì sửa cả hai nơi.
+     */
+    private final String label;
+
+    RoomStatus(String label) {
+        this.label = label;
+    }
+
+    public String label() {
+        return label;
+    }
 
     private static final Map<RoomStatus, Set<RoomStatus>> ALLOWED = Map.of(
         // BR-ROOM-02: Lễ tân đặt trước / check-in; Manager khóa phòng.
         AVAILABLE,   EnumSet.of(RESERVED, OCCUPIED, UNAVAILABLE),
-        // Bổ sung ngoài BR-ROOM-02 — xem javadoc ở đầu enum.
+        // BR-ROOM-02: khách đến nhận phòng, hoặc hủy đặt/no-show.
         RESERVED,    EnumSet.of(OCCUPIED, AVAILABLE, UNAVAILABLE),
         // BR-ROOM-03: phòng có khách KHÔNG được chuyển sang UNAVAILABLE.
         OCCUPIED,    EnumSet.of(DIRTY),

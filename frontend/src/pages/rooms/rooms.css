@@ -1,0 +1,671 @@
+/*
+ * Bổ sung cho module Quản lý phòng — CHỈ thêm những lớp mà styles.css chung chưa có
+ * (cùng cách làm với pages/Admin_platform/admin.css). Bán kính, viền, bóng lấy biến :root
+ * của styles.css để giao diện đồng nhất.
+ */
+
+/* ── Tông màu trạng thái phòng — design.md mục 3 ────────────────────────
+ * Mỗi lớp room-tone--* đặt 3 biến; badge, thẻ phòng, thẻ số liệu, chip lọc đều đọc lại
+ * 3 biến này nên chỉ khai báo màu MỘT lần ở đây.
+ *   --tone      màu nhận diện (viền, vạch màu)
+ *   --tone-bg   nền nhạt
+ *   --tone-text chữ đậm trên nền nhạt
+ * "Đang dọn" dùng chữ vàng sẫm: vàng #F9A825 làm chữ trên nền nhạt gần như không đọc được.
+ * "Đã đặt" chưa có trong design.md (tài liệu viết cho 6 trạng thái) — dùng teal #00838F (Q9).
+ */
+.room-tone--available   { --tone: #2e7d32; --tone-bg: #e9f5ea; --tone-text: #2e7d32; }
+.room-tone--reserved    { --tone: #00838f; --tone-bg: #e0f4f5; --tone-text: #00707a; }
+.room-tone--occupied    { --tone: #1565c0; --tone-bg: #e3effb; --tone-text: #1565c0; }
+.room-tone--dirty       { --tone: #ef6c00; --tone-bg: #fdf0dc; --tone-text: #b85300; }
+.room-tone--cleaning    { --tone: #f9a825; --tone-bg: #fff5d6; --tone-text: #7a5a00; }
+.room-tone--inspection  { --tone: #6a1b9a; --tone-bg: #f3e5f5; --tone-text: #6a1b9a; }
+.room-tone--unavailable { --tone: #616161; --tone-bg: #eceef1; --tone-text: #4a4a4a; }
+
+/* Huy hiệu: nền nhạt + chữ đậm, luôn có chữ (design.md mục 3). */
+.badge--room {
+  background: var(--tone-bg);
+  color: var(--tone-text);
+}
+.badge--lg {
+  font-size: 14px;
+  padding: 7px 14px;
+}
+
+/* ── Thẻ số liệu bấm để lọc (design.md mục 5 — "Bấm được để lọc") ──────── */
+.room-stat-grid {
+  display: grid;
+  /* 120px để đủ 7 thẻ trên MỘT hàng ở màn 1280px (vùng nội dung ~980px). */
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.room-stat {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 4px solid var(--tone);
+}
+.room-stat:hover {
+  background: var(--tone-bg);
+}
+.room-stat.is-selected {
+  background: var(--tone-bg);
+  outline: 2px solid var(--tone);
+  outline-offset: -1px;
+}
+.room-stat .stat-card__value {
+  color: var(--tone-text);
+}
+
+/* ── Chip lọc gọn (sơ đồ phòng) ────────────────────────────────────── */
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--tone-bg, #eceef1);
+  color: var(--tone-text, var(--text));
+}
+.status-chip b {
+  font-size: 15px;
+}
+.status-chip.is-selected {
+  border-color: var(--tone, var(--primary));
+  box-shadow: inset 0 0 0 1px var(--tone, var(--primary));
+}
+.status-chip--all {
+  background: #fff;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* ── Thanh lọc ─────────────────────────────────────────────────────── */
+.rooms-toolbar input {
+  width: 150px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 11px 12px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+.rooms-toolbar input:focus {
+  outline: 2px solid rgba(46, 116, 181, 0.35);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+/* ── Bảng phòng (desktop) ──────────────────────────────────────────── */
+.table tr.is-clickable {
+  cursor: pointer;
+}
+.table tr.is-clickable:hover {
+  background: #f3f8fd;
+}
+.room-number-link {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--primary);
+  text-decoration: none;
+}
+.room-number-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Thẻ phòng: lưới trên điện thoại (S-02) và sơ đồ phòng (S-06) ──── */
+.room-grid {
+  display: grid;
+  /* 130px để điện thoại 360px vẫn đủ 2 cột (vùng nội dung ~282px). */
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+.room-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 48px; /* vùng bấm tối thiểu — design.md mục 3 */
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--tone-bg);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--tone);
+  border-radius: var(--radius-card);
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.room-card:hover,
+.room-card:focus-visible {
+  box-shadow: 0 4px 12px rgba(28, 35, 48, 0.12);
+  transform: translateY(-1px);
+}
+.room-card__number {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.room-card__meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+.room-card .badge {
+  background: #fff;
+  color: var(--tone-text);
+  /* Thẻ hẹp (2 cột trên điện thoại): nhãn dài như "Trống / Sẵn sàng" được xuống dòng, không tràn. */
+  max-width: 100%;
+  white-space: normal;
+}
+
+/* ── Sơ đồ phòng: nhóm theo tầng ───────────────────────────────────── */
+.floor-group + .floor-group {
+  margin-top: 20px;
+}
+.floor-group__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 15px;
+}
+.floor-group__title small {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ── Chi tiết phòng ────────────────────────────────────────────────── */
+.room-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+.room-facts dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.room-facts dd {
+  margin: 4px 0 0;
+  font-weight: 600;
+}
+.room-detail__note {
+  margin-top: 16px;
+}
+.back-link {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* ── F2: nút thao tác trên chi tiết phòng (S-04) ──────────────────── */
+.room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+/* Vùng bấm ≥ 48px (design.md mục 3) cho mọi nút thao tác trạng thái và nút trong hộp thoại. */
+.room-actions .btn,
+.room-modal .btn {
+  min-height: 48px;
+}
+
+/* ── F2: tab Thông tin / Lịch sử trạng thái ────────────────────────── */
+.room-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+.room-tab {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.room-tab:hover {
+  color: var(--accent);
+}
+.room-tab.is-active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* ── F2: S-05 Lịch sử trạng thái ───────────────────────────────────── */
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* Desktop: 1 hàng = thời điểm | từ → đến | người/nguồn; lý do xuống dòng riêng bên dưới. */
+.history-item {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) minmax(160px, 220px);
+  gap: 6px 16px;
+  align-items: center;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.history-item__when {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.history-item__change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.history-item__arrow {
+  color: var(--muted);
+}
+.history-item__actor b {
+  display: block;
+  font-size: 14px;
+}
+.history-item__actor small {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.history-item__reason {
+  grid-column: 2 / -1;
+  font-size: 14px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* ── F2: S-08 hộp thoại khóa / mở khóa + bảng thao tác trên sơ đồ ──── */
+.room-modal {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+.room-modal .modal__body {
+  color: var(--text);
+}
+.room-modal .alert {
+  margin-top: 0;
+}
+.room-modal .readonly-box {
+  margin-bottom: 14px;
+}
+.room-modal textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 11px 12px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+.room-modal textarea:focus {
+  outline: 2px solid rgba(46, 116, 181, 0.35);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.choice-list {
+  border: 0;
+  padding: 0;
+  margin: 0 0 14px;
+  display: grid;
+  gap: 8px;
+}
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+.choice.is-selected {
+  border-color: var(--primary);
+  background: #f3f8fd;
+}
+.choice input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+.choice b {
+  display: block;
+}
+.choice small {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.action-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.action-sheet__reason {
+  margin-top: 8px;
+  font-size: 14px;
+}
+.action-sheet__list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+/* ── Responsive — BR-ROOM-06 ───────────────────────────────────────── */
+.rooms-cards {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  /* S-02: bảng → lưới thẻ trên điện thoại (design.md mục 4.4, màn 19). */
+  .rooms-table-wrap {
+    display: none;
+  }
+  .rooms-cards {
+    display: grid;
+  }
+  .rooms-toolbar select,
+  .rooms-toolbar input {
+    flex: 1 1 140px;
+    min-width: 0;
+    width: auto;
+  }
+  .room-stat .stat-card__value {
+    font-size: 24px;
+  }
+  /* Điện thoại: chữ phụ trên thẻ phòng lớn hơn một bậc (design.md mục 3). */
+  .room-card__meta {
+    font-size: 14px;
+  }
+  /* Hai tab chia đều chiều ngang, chữ dài được xuống dòng — không cuộn ngang, không cắt chữ. */
+  .room-tabs {
+    overflow-x: visible;
+  }
+  .room-tab {
+    flex: 1 1 0;
+    min-height: 48px;
+    padding: 10px 8px;
+    white-space: normal;
+  }
+  /* S-05: lịch sử xếp dọc — thời điểm, từ → đến, người/nguồn, lý do. */
+  .history-item {
+    grid-template-columns: 1fr;
+  }
+  .history-item__reason {
+    grid-column: auto;
+  }
+  /* Nút thao tác trải hết chiều ngang cho dễ bấm bằng ngón tay. */
+  .room-actions .btn {
+    flex: 1 1 100%;
+  }
+  .room-modal .modal__actions .btn {
+    flex: 1;
+  }
+}
+
+/* ── F3: S-03 form tạo / sửa phòng ─────────────────────────────────── */
+/* styles.css mới định kiểu cho input và select trong .field, chưa có textarea. */
+.room-form textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 11px 12px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+.room-form textarea:focus {
+  outline: 2px solid rgba(46, 116, 181, 0.35);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+/* Ô sức chứa là số: bỏ mũi tên tăng/giảm cho khỏi chật trên điện thoại. */
+.room-form input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.room-form input[type='number']::-webkit-outer-spin-button,
+.room-form input[type='number']::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+@media (max-width: 860px) {
+  /* Vùng bấm ≥ 48px và nút trải hết chiều ngang — design.md mục 3. */
+  .room-form .form__actions {
+    flex-direction: column-reverse;
+  }
+  .room-form .form__actions .btn {
+    width: 100%;
+    min-height: 48px;
+  }
+}
+
+/* ── F4: S-15 bảng thao tác của Lễ tân ─────────────────────────────── */
+/* Trên điện thoại, bảng trượt lên từ cạnh dưới: đó là vùng ngón cái với tới được khi cầm một
+   tay ở quầy (design.md mục 2). Trên desktop giữ nguyên hộp thoại giữa màn hình. */
+@keyframes action-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (max-width: 860px) {
+  /* Ghi đè .modal-backdrop / .modal của styles.css — file dùng chung được nạp SAU rooms.css nên
+     phải dùng 2 lớp để thắng về độ ưu tiên, thay vì sửa file của cả nhóm. */
+  .modal-backdrop.action-sheet-backdrop {
+    place-items: end stretch;
+    padding: 0;
+  }
+  .modal.action-sheet {
+    max-width: none;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    padding-bottom: calc(22px + env(safe-area-inset-bottom));
+    animation: action-sheet-up 0.18s ease-out;
+  }
+  /* Nút thao tác trải hết chiều ngang, cao ≥ 48px — bấm bằng ngón cái. */
+  .action-sheet .action-sheet__list .btn {
+    width: 100%;
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-sheet {
+    animation: none;
+  }
+}
+
+/* ── F5: S-09/S-11 bảng lịch dọn phòng ─────────────────────────────── */
+/* Desktop: 4 cột cạnh nhau, Quản lý nhìn một phát ra cả bức tranh. */
+.task-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.task-column {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.task-column__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.task-column__head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.task-column--closed {
+  background: #f7f8fa;
+}
+/* Thanh tab chỉ có nghĩa khi bảng đã xếp thành 1 cột — desktop ẩn đi. */
+.task-tabs {
+  display: none;
+}
+
+/* ── F5: thẻ một việc dọn ──────────────────────────────────────────── */
+.task-card {
+  background: var(--tone-bg);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--tone);
+  border-radius: var(--radius-card);
+  padding: 12px;
+}
+.task-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.task-card__room {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.task-card__meta {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.task-card__meta b {
+  color: var(--text);
+}
+/* Tồn đọng: cam cảnh báo, không dùng đỏ — việc vẫn hợp lệ, chỉ là quá hạn (BR-HK-04). */
+.task-card__flag {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b85300;
+}
+.task-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ── F5: S-16/S-17 việc của tôi — mobile-first ─────────────────────── */
+/* Chữ lớn hơn một bậc so với màn khác: dùng khi đang đứng trong hành lang (design.md mục 3). */
+.my-tasks .task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.task-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.task-row__info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.task-row__room {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.task-row__meta {
+  font-size: 15px;
+  color: var(--muted);
+}
+.task-row__action {
+  min-height: 48px;
+  min-width: 140px;
+}
+.task-row--done {
+  opacity: 0.75;
+}
+
+@media (max-width: 860px) {
+  /* Bốn cột cạnh nhau trên điện thoại thì cột nào cũng quá hẹp → đổi thành tab. */
+  .task-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+    overflow-x: auto;
+  }
+  .task-tabs .chip {
+    margin-left: 6px;
+  }
+  .task-board {
+    grid-template-columns: 1fr;
+  }
+  .task-column {
+    display: none;
+  }
+  .task-column.is-active-tab {
+    display: grid;
+  }
+  .task-column__head {
+    display: none;   /* tên cột đã nằm trên tab đang chọn */
+  }
+  /* Nút "Hoàn thành" trải hết chiều ngang, bấm được bằng ngón cái. */
+  .task-row__action {
+    width: 100%;
+  }
+  .task-card__actions .btn {
+    flex: 1 1 100%;
+    min-height: 48px;
+  }
+}

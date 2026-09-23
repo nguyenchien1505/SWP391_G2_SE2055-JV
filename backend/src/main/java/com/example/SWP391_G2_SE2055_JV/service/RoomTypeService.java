@@ -99,7 +99,7 @@ public class RoomTypeService {
         if (roomRepository.existsByRoomTypeId(roomType.getId())) {
             throw new BusinessException(
                 "Không xóa được Loại phòng: vẫn còn phòng thuộc loại này. "
-                + "Hãy ẩn loại phòng thay vì xóa (BR-ORG-14).");
+                + "Hãy ẩn loại phòng thay vì xóa.");
         }
 
         roomTypeRepository.delete(roomType);

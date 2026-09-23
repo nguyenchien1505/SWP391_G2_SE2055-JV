@@ -5,6 +5,17 @@ import ChangePasswordPage from './pages/ChangePasswordPage';
 import LocationsPage from './pages/LocationsPage';
 import ManagersPage from './pages/ManagersPage';
 import AppLayout from './components/AppLayout';
+import AdminLayout from './components/AdminLayout';
+import TenantsPage from './pages/Admin_platform/TenantsPage';
+import TenantDetailPage from './pages/Admin_platform/TenantDetailPage';
+import PricingPage from './pages/Admin_platform/PricingPage';
+import SystemConfigPage from './pages/Admin_platform/SystemConfigPage';
+import RoomsPage from './pages/rooms/RoomsPage';
+import RoomDetailPage from './pages/rooms/RoomDetailPage';
+import RoomBoardPage from './pages/rooms/RoomBoardPage';
+import HousekeepingPage from './pages/rooms/HousekeepingPage';
+import MyTasksPage from './pages/rooms/MyTasksPage';
+import { homePathFor } from './homePath';
 
 /** Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). */
 function RequireAuth({ children }) {
@@ -29,6 +40,39 @@ function RequireLogin({ children }) {
   return user ? children : <Navigate to="/dang-nhap" replace />;
 }
 
+// Khu Quản trị nền tảng chỉ dành cho PLATFORM_ADMIN (BR-PERM-01). Đây chỉ là lớp bảo vệ giao
+// diện; quyền thật do backend quyết định (vai trò khác gọi /platform/** nhận 403).
+function RequireAdmin({ children }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div className="boot-screen">Đang tải…</div>;
+  }
+  if (!user) {
+    return <Navigate to="/dang-nhap" replace />;
+  }
+  return user.role === 'PLATFORM_ADMIN' ? children : <Navigate to="/khach-san" replace />;
+}
+
+/**
+ * Màn quản trị của Giám đốc / Manager. Staff bị đưa về trang chủ của mình thay vì thấy màn lỗi
+ * 403 — áp cho cả các lối vào cứng /khach-san (đăng nhập Google, sau khi đổi mật khẩu). Chỉ là
+ * lớp giao diện; quyền thật do backend quyết định. Dùng BÊN TRONG RequireAuth.
+ */
+function RequireManagementRole({ children }) {
+  const { user } = useAuth();
+  return user?.role === 'STAFF' ? <Navigate to={homePathFor(user)} replace /> : children;
+}
+
+/** Trang nghiệp vụ trong khung AppLayout, bắt buộc đã đăng nhập (và đã đổi mật khẩu tạm). */
+function inShell(page) {
+  return (
+    <RequireAuth>
+      <AppLayout>{page}</AppLayout>
+    </RequireAuth>
+  );
+}
+
 export default function App() {
   const { user, loading } = useAuth();
 
@@ -40,7 +84,7 @@ export default function App() {
           loading ? (
             <div className="boot-screen">Đang tải…</div>
           ) : user ? (
-            <Navigate to={user.mustChangePassword ? '/doi-mat-khau' : '/khach-san'} replace />
+            <Navigate to={homePathFor(user)} replace />
           ) : (
             <LoginPage />
           )
@@ -58,23 +102,39 @@ export default function App() {
         path="/khach-san"
         element={
           <RequireAuth>
-            <AppLayout>
-              <LocationsPage />
-            </AppLayout>
+            <RequireManagementRole>
+              <AppLayout>
+                <LocationsPage />
+              </AppLayout>
+            </RequireManagementRole>
           </RequireAuth>
         }
       />
+      {/* Quản lý tài khoản Manager — BR-PERM-02: chỉ Giám đốc; Manager vào thấy thông báo. */}
+      <Route path="/quan-ly" element={inShell(<RequireManagementRole><ManagersPage /></RequireManagementRole>)} />
+      {/* Quản lý phòng — BR-ROOM-*. S-02 dành cho Giám đốc/Manager; chi tiết và sơ đồ phòng mọi vai trò. */}
+      <Route path="/phong" element={inShell(<RequireManagementRole><RoomsPage /></RequireManagementRole>)} />
+      <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />
+      <Route path="/so-do-phong" element={inShell(<RoomBoardPage />)} />
+      {/* Dọn phòng — BR-HK-*. Bảng lịch dọn cho Quản lý; "việc của tôi" cho nhân viên dọn.
+          Không chặn theo vai trò ở đây: backend tự ép phạm vi (nhân viên chỉ thấy việc của
+          mình), và mở được cả hai trang giúp Quản lý kiểm chứng nhanh khi có sự cố. */}
+      <Route path="/don-phong" element={inShell(<RequireManagementRole><HousekeepingPage /></RequireManagementRole>)} />
+      <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
       <Route
-        path="/quan-ly"
         element={
-          <RequireAuth>
-            <AppLayout>
-              <ManagersPage />
-            </AppLayout>
-          </RequireAuth>
+          <RequireAdmin>
+            <AdminLayout />
+          </RequireAdmin>
         }
-      />
-      <Route path="*" element={<Navigate to="/khach-san" replace />} />
+      >
+        <Route path="/quan-tri/tenant" element={<TenantsPage />} />
+        <Route path="/quan-tri/tenant/:id" element={<TenantDetailPage />} />
+        <Route path="/quan-tri/bang-gia" element={<PricingPage />} />
+        <Route path="/quan-tri/cau-hinh" element={<SystemConfigPage />} />
+      </Route>
+      {/* Chưa đăng nhập: homePathFor(null) = /khach-san → RequireAuth đưa về /dang-nhap như cũ. */}
+      <Route path="*" element={<Navigate to={homePathFor(user)} replace />} />
     </Routes>
   );
 }

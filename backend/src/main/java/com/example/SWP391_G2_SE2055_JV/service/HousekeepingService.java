@@ -1,27 +1,33 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateStayoverTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
+import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
+import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
+import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.AssignableStaffRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
-import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -42,12 +48,19 @@ import java.util.stream.Collectors;
 /**
  * Lịch dọn phòng — BR-HK-01..12, DM-04, DM-05.
  *
- * <p><b>Giai đoạn 1 — chưa tích hợp module Quản lý phòng</b> (người khác đang làm).
- * Luồng STAYOVER chạy trọn vì phòng giữ nguyên "Đang sử dụng" suốt vòng đời task
- * (BR-HK-05). Luồng CHECKOUT thì MỖI bước phải đổi trạng thái phòng (BR-ROOM-02) và ghi
- * lịch sử (BR-ROOM-09) qua RoomStatusService của module kia, nên mọi bước CHECKOUT dừng
- * ở {@link #requireRoomIntegration}. Giai đoạn 2: thay từng lời gọi hàm đó bằng lời gọi
- * đổi trạng thái phòng ghi chú ngay tại chỗ.
+ * <p><b>Giai đoạn 2 — đã tích hợp module Quản lý phòng</b> (F5, 23/09/2026). Hai loại task
+ * đi hai đường khác hẳn nhau, đây là chỗ dễ sai nhất của cả lớp:
+ * <ul>
+ *   <li><b>STAYOVER</b> — dọn khi khách còn ở: phòng giữ nguyên "Đang sử dụng" suốt vòng đời
+ *       task (BR-HK-05). <b>Không bao giờ</b> gọi {@link RoomStatusService}.</li>
+ *   <li><b>CHECKOUT</b> — dọn sau khi khách trả phòng: MỖI bước của task kéo theo một bước
+ *       chuyển trạng thái phòng (BR-ROOM-02) và một dòng lịch sử (BR-ROOM-09), ủy quyền cho
+ *       {@link RoomStatusService} — nơi DUY NHẤT được ghi {@code rooms.status}.</li>
+ * </ul>
+ *
+ * <p>Mọi lời gọi {@code RoomStatusService} nằm trong CÙNG transaction với thay đổi của task:
+ * phòng sai trạng thái nguồn (ví dụ Manager vừa khóa phòng) thì task cũng rollback, không bao
+ * giờ để task và phòng lệch nhau.
  *
  * <p>Phản ứng khi PHÒNG đổi trạng thái (sinh/hủy task) nằm ở {@link HousekeepingRoomHooks}.
  *
@@ -64,7 +77,12 @@ public class HousekeepingService {
     private final UserRepository             userRepository;
     private final PositionRepository         positionRepository;
     private final ShiftRepository            shiftRepository;
-    private final EntityManager              entityManager;
+    // thay EntityManager bằng RoomRepository đúng như ghi chú cũ ở mục "Đọc phòng" — module
+    // Quản lý phòng đã có repository thật, và bản của nó lọc sẵn theo Tenant.
+    private final RoomRepository             roomRepository;
+    private final LocationRepository         locationRepository;
+    private final AssignableStaffRepository  assignableStaffRepository;
+    private final RoomStatusService          roomStatusService;
 
     /**
      * Lịch dọn. Nhân viên chỉ thấy task của chính mình (BR-PERM-05); Manager chỉ thấy task
@@ -117,11 +135,11 @@ public class HousekeepingService {
         assertManagesLocation(room.getLocationId());
 
         if (room.getStatus() != RoomStatus.OCCUPIED) {
-            throw new BusinessException("Chỉ tạo task dọn hằng ngày cho phòng đang có khách (BR-HK-05).");
+            throw new BusinessException("Chỉ tạo task dọn hằng ngày cho phòng đang có khách.");
         }
         if (taskRepository.existsByRoomIdAndTaskTypeAndStatusIn(
                 room.getId(), HousekeepingTaskType.STAYOVER, OPEN)) {
-            throw new BusinessException("Phòng này đã có task dọn hằng ngày đang mở (BR-HK-11).");
+            throw new BusinessException("Phòng này đã có task dọn hằng ngày đang mở.");
         }
 
         HousekeepingTask saved = taskRepository.save(HousekeepingTask.builder()
@@ -149,7 +167,6 @@ public class HousekeepingService {
                 : "Task đã đóng, không gán người được nữa.");
         }
         assertCanReceiveTask(request.getStaffId(), task, request.getAssignedDate());
-        requireRoomIntegration(task);   // CHECKOUT: phòng Chờ dọn → Đang dọn (BR-ROOM-02)
 
         task.setAssignedStaffId(request.getStaffId());
         task.setAssignedDate(request.getAssignedDate());
@@ -158,6 +175,12 @@ public class HousekeepingService {
         task.setUnassignedReason(null);
         // BR-HK-06: không có trạng thái "đã gán" riêng — gán là bắt đầu thực hiện.
         task.setStatus(HousekeepingTaskStatus.IN_PROGRESS);
+
+        // BR-ROOM-02: gán người = bắt đầu dọn, nên phòng sang "Đang dọn" NGAY, nguồn SYSTEM
+        // (không phải người bấm — Manager chỉ phân công, không tự tay đổi trạng thái phòng).
+        if (isCheckout(task)) {
+            roomStatusService.startCleaning(roomOf(task), task.getId());
+        }
 
         log.info("Gán task {} cho staff {} ngày {}", id, request.getStaffId(), request.getAssignedDate());
         return toResponse(taskRepository.save(task));
@@ -175,9 +198,14 @@ public class HousekeepingService {
         if (task.getStatus() != HousekeepingTaskStatus.IN_PROGRESS) {
             throw new BusinessException("Chỉ gỡ người khỏi task đang thực hiện.");
         }
-        requireRoomIntegration(task);   // CHECKOUT: phòng Đang dọn → Chờ dọn (BR-ROOM-02)
 
         release(task, UnassignedReason.MANAGER_MANUAL);
+        // Không còn ai dọn thì phòng phải quay lại hàng chờ. Task vẫn MỞ (Chưa phân công) nên
+        // không sinh task mới — đó là lý do dùng revertToDirty chứ không đi qua hook (BR-HK-11).
+        if (isCheckout(task)) {
+            roomStatusService.revertToDirty(roomOf(task), task.getId(),
+                releaseReason(UnassignedReason.MANAGER_MANUAL));
+        }
         log.info("Gỡ người khỏi task {}", id);
         return toResponse(taskRepository.save(task));
     }
@@ -196,12 +224,19 @@ public class HousekeepingService {
         if (task.getStatus() != HousekeepingTaskStatus.IN_PROGRESS) {
             throw new BusinessException("Task không ở trạng thái đang thực hiện.");
         }
-        requireRoomIntegration(task);   // CHECKOUT: task → Chờ kiểm tra, phòng Đang dọn → Chờ kiểm tra
 
-        task.setStatus(HousekeepingTaskStatus.COMPLETED);
-        task.setCompletedAt(LocalDateTime.now());
+        if (isCheckout(task)) {
+            // BR-HK-06: dọn sau check-out CHƯA xong ở đây — còn chờ Manager nghiệm thu, nên
+            // completedAt vẫn để trống (điền khi có kết quả kiểm tra, F6).
+            task.setStatus(HousekeepingTaskStatus.PENDING_INSPECTION);
+            roomStatusService.markPendingInspection(roomOf(task), task.getId());
+        } else {
+            // BR-HK-05: dọn hằng ngày xong là xong, khách vẫn đang ở nên KHÔNG đụng tới phòng.
+            task.setStatus(HousekeepingTaskStatus.COMPLETED);
+            task.setCompletedAt(LocalDateTime.now());
+        }
 
-        log.info("Hoàn thành task {}", id);
+        log.info("Hoàn thành task {} → {}", id, task.getStatus());
         return toResponse(taskRepository.save(task));
     }
 
@@ -219,11 +254,33 @@ public class HousekeepingService {
             staffId, HousekeepingTaskStatus.IN_PROGRESS, today);
 
         for (HousekeepingTask task : tasks) {
-            requireRoomIntegration(task);   // CHECKOUT: phòng Đang dọn → Chờ dọn (BR-HK-07)
             release(task, reason);
+            if (isCheckout(task)) {
+                roomStatusService.revertToDirty(roomOf(task), task.getId(), releaseReason(reason));
+            }
         }
         taskRepository.saveAll(tasks);
         return tasks.size();
+    }
+
+    /**
+     * S-10 — ai gán được việc dọn trong ngày {@code date} (BR-HK-02, BR-HK-03, BR-PERM-05).
+     *
+     * <p>Chỉ Manager gọi: phạm vi là Location của chính họ, không nhận tham số locationId để
+     * không có đường xem nhân sự khách sạn khác. Điều kiện lọc trùng khớp
+     * {@link #assertCanReceiveTask} nên mọi người trả về đều gán được.
+     */
+    @Transactional(readOnly = true)
+    public List<AssignableStaffResponse> getAssignableStaff(LocalDate date) {
+        UUID tenantId = SecurityUtils.getCurrentTenantId();
+        UUID locationId = SecurityUtils.getCurrentLocationId();
+
+        return assignableStaffRepository
+            .findAssignable(tenantId, locationId, date,
+                Role.STAFF, UserStatus.ACTIVE, PositionType.HOUSEKEEPING)
+            .stream()
+            .map(AssignableStaffResponse::fromEntity)
+            .toList();
     }
 
     // ── Nội bộ ──────────────────────────────────────────────────────────────
@@ -233,8 +290,17 @@ public class HousekeepingService {
      * (ví dụ chỉ cho gán trong ngày) thì chỉ sửa hàm này.
      */
     private void assertCanReceiveTask(UUID staffId, HousekeepingTask task, LocalDate date) {
-        if (date.isBefore(ShiftTimeUtils.todayInHanoi())) {
+        // BR-SCH-17: "hôm nay" tính theo múi giờ của KHÁCH SẠN, không phải giờ máy chủ — phải
+        // cùng mốc với lịch làm việc, nếu không thì ca và task lệch nhau một ngày.
+        LocalDate today = ShiftTimeUtils.todayAt(locationTimezoneOf(task));
+        if (date.isBefore(today)) {
             throw new BusinessException("Không gán task cho ngày đã qua.");
+        }
+        // Q5 (chốt 22/09/2026): gán task dọn sau check-out là phòng sang "Đang dọn" NGAY. Gán
+        // trước cho ngày mai sẽ khiến phòng hiện sai trạng thái suốt hôm nay, nên chặn.
+        if (task.getTaskType() == HousekeepingTaskType.CHECKOUT && date.isAfter(today)) {
+            throw new BusinessException("Việc dọn sau khi khách trả phòng chỉ gán được cho hôm nay, "
+                + "vì phòng chuyển sang «Đang dọn» ngay khi gán người.");
         }
 
         User staff = userRepository.findByIdAndTenantId(staffId, task.getTenantId())
@@ -251,30 +317,45 @@ public class HousekeepingService {
             .orElse(false);
         if (!housekeeping) {
             throw new BusinessException(
-                "Chỉ nhân viên có Position loại Dọn dẹp mới nhận task dọn phòng (BR-PERM-05).");
+                "Chỉ nhân viên có Position loại Dọn dẹp mới nhận task dọn phòng.");
         }
 
         // BR-HK-03: có ca trong ngày là đủ, không cần khớp khung giờ. BR-HK-02: không giới
         // hạn số task mỗi người.
         if (!shiftRepository.existsByStaffIdAndShiftDate(staffId, date)) {
             throw new BusinessException(String.format(
-                "Nhân viên không có ca làm việc ngày %s — chỉ gán task cho người có ca trong ngày (BR-HK-03).",
+                "Nhân viên không có ca làm việc ngày %s — chỉ gán task cho người có ca trong ngày.",
                 date));
         }
     }
 
     /**
-     * Mọi chỗ gọi hàm này là nơi task CHECKOUT phải đổi trạng thái phòng (BR-ROOM-02) và ghi
-     * lịch sử (BR-ROOM-09) — việc của RoomStatusService bên module Quản lý phòng, chưa có.
-     * Tới lúc đó chặn rõ ràng thay vì tự đổi trạng thái phòng ở đây: làm vậy sẽ bỏ qua lịch
-     * sử phòng và trùng code với module kia.
+     * Chỉ task dọn sau check-out mới kéo theo trạng thái phòng — BR-HK-05 vs BR-ROOM-02. Gói
+     * thành một hàm để mọi chỗ hỏi cùng một câu hỏi, và để đọc lướt cũng thấy ngay chỗ nào có
+     * hệ quả lên phòng.
      */
-    private static void requireRoomIntegration(HousekeepingTask task) {
-        if (task.getTaskType() == HousekeepingTaskType.CHECKOUT) {
-            throw new BusinessException(
-                "Task CHECKOUT chưa xử lý được: cần module Quản lý phòng đổi trạng thái phòng "
-                + "(BR-ROOM-02). Hiện chỉ hỗ trợ task STAYOVER.");
-        }
+    private static boolean isCheckout(HousekeepingTask task) {
+        return task.getTaskType() == HousekeepingTaskType.CHECKOUT;
+    }
+
+    /**
+     * Lý do ghi vào LỊCH SỬ PHÒNG khi task bị gỡ người. Người đọc lịch sử phòng không nhìn thấy
+     * task, nên câu chữ phải tự nó giải thích được vì sao phòng quay về "Chờ dọn".
+     */
+    private static String releaseReason(UnassignedReason reason) {
+        return switch (reason) {
+            case TERMINATION    -> "Người dọn phòng đã nghỉ việc";
+            case TRANSFER       -> "Người dọn phòng được điều chuyển";
+            case LEAVE_APPROVED -> "Người dọn phòng được duyệt nghỉ";
+            case MANAGER_MANUAL -> "Quản lý gỡ người khỏi việc dọn";
+        };
+    }
+
+    /** Múi giờ của khách sạn chứa phòng — BR-SCH-17. Không tra được coi như dữ liệu ngoài phạm vi. */
+    private String locationTimezoneOf(HousekeepingTask task) {
+        return locationRepository.findByIdAndTenantId(task.getLocationId(), task.getTenantId())
+            .map(Location::getTimezone)
+            .orElseThrow(() -> new ResourceNotFoundException("Location", "id", task.getLocationId()));
     }
 
     /** Task về Chưa phân công — DB ép UNASSIGNED thì không được có người (ck_hk_assignment_pair). */
@@ -293,39 +374,50 @@ public class HousekeepingService {
             .orElseThrow(() -> new ResourceNotFoundException("HousekeepingTask", "id", id));
     }
 
-    /** Manager chỉ thao tác trong Location của mình — BR-PERM-03. */
+    /**
+     * Manager chỉ thao tác trong Location của mình — BR-PERM-03.
+     *
+     * <p>Q8 (chốt 22/09/2026): trả 404 chứ không phải 403/400. Cùng lý do với cả codebase —
+     * 403 là thừa nhận "có tồn tại nhưng bạn không được đụng", tức là lộ dữ liệu của khách sạn
+     * khác. {@link #getTask} vốn đã trả 404, giờ ba endpoint ghi cũng vậy cho nhất quán.
+     */
     private void assertManagesLocation(UUID locationId) {
         if (SecurityUtils.hasRole(Role.MANAGER)
                 && !locationId.equals(SecurityUtils.getCurrentLocationId())) {
-            throw new BusinessException("Không có quyền thao tác trên Location khác.");
+            throw new ResourceNotFoundException("Location", "id", locationId);
         }
     }
 
     // ── Đọc phòng ───────────────────────────────────────────────────────────
-    // Đọc qua EntityManager thay vì RoomRepository: repository đó thuộc module Quản lý phòng
-    // (người khác đang làm) — tạo trùng sẽ xung đột khi merge. Có RoomRepository thì thay.
+    // F5: dùng RoomRepository của module Quản lý phòng. Bản findByIdAndTenantIdAndActiveTrue đã
+    // lọc sẵn Tenant và bỏ phòng xóa mềm, nên không phải tự kiểm tra lại như bản EntityManager cũ.
 
     private Room loadRoom(UUID roomId, UUID tenantId) {
-        Room room = entityManager.find(Room.class, roomId);
-        // Phòng đã xóa mềm (BR-ROOM-08) coi như không tồn tại.
-        if (room == null || !room.isActive() || !tenantId.equals(room.getTenantId())) {
-            throw new ResourceNotFoundException("Room", "id", roomId);
-        }
-        return room;
+        return roomRepository.findByIdAndTenantIdAndActiveTrue(roomId, tenantId)
+            .orElseThrow(() -> new ResourceNotFoundException("Room", "id", roomId));
     }
 
+    /** Phòng của task đang thao tác — dùng cho mọi lời gọi {@link RoomStatusService}. */
+    private Room roomOf(HousekeepingTask task) {
+        return loadRoom(task.getRoomId(), task.getTenantId());
+    }
+
+    /**
+     * Tra phòng cho CẢ trang task một lần, tránh N+1. Id lấy từ chính các task đã lọc theo
+     * Tenant nên không cần lọc lại; phòng thiếu thì DTO để trống số phòng.
+     */
     private Map<UUID, Room> loadRooms(Collection<HousekeepingTask> tasks) {
         Set<UUID> ids = tasks.stream().map(HousekeepingTask::getRoomId).collect(Collectors.toSet());
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return entityManager.createQuery("select r from Room r where r.id in :ids", Room.class)
-            .setParameter("ids", ids)
-            .getResultStream()
+        return roomRepository.findAllById(ids).stream()
             .collect(Collectors.toMap(Room::getId, Function.identity()));
     }
 
     private HousekeepingTaskResponse toResponse(HousekeepingTask task) {
-        return HousekeepingTaskResponse.fromEntity(task, entityManager.find(Room.class, task.getRoomId()));
+        return HousekeepingTaskResponse.fromEntity(
+            task, roomRepository.findByIdAndTenantIdAndActiveTrue(task.getRoomId(), task.getTenantId())
+                .orElse(null));
     }
 }

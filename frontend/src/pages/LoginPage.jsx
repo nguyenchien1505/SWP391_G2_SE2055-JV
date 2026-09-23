@@ -10,7 +10,7 @@ const REMEMBERED_EMAIL_KEY = 'saomai.rememberedEmail';
 /** Backend đẩy về đây kèm query khi luồng Google kết thúc — xem app.frontend.* trong application.yaml. */
 const REDIRECT_MESSAGES = {
   oauth_unauthorized:
-    'Tài khoản Google này chưa được cấp quyền truy cập. Liên hệ Quản lý hoặc Giám đốc để được tạo tài khoản (BR-USER-03).',
+    'Tài khoản Google này chưa được cấp quyền truy cập. Liên hệ Quản lý hoặc Giám đốc để được tạo tài khoản.',
   oauth_failed: 'Đăng nhập Google không thành công. Vui lòng thử lại.',
 };
 
@@ -48,12 +48,22 @@ export default function LoginPage() {
       }
 
       // BR-USER-07: tài khoản còn mật khẩu tạm phải đổi trước khi vào hệ thống.
-      navigate(me.mustChangePassword ? '/doi-mat-khau' : '/khach-san', { replace: true });
+      // Màn đổi mật khẩu chưa nằm trong phạm vi lần này nên chỉ cảnh báo, không chặn.
+      if (me.mustChangePassword) {
+        setHint('Tài khoản đang dùng mật khẩu tạm. Bạn nên đổi mật khẩu sớm.');
+      }
+      // Admin Platform vào khu quản trị; các vai trò khác giữ nguyên đích cũ /khach-san.
+      navigate(homePathFor(me), { replace: true });
     } catch (err) {
+      // Khi Tenant bị khóa (hết hạn dùng thử, thanh toán lỗi, Admin khóa) backend trả 401 kèm
+      // thông báo nêu rõ lý do — hiện thông báo đó. Sai mật khẩu thì body rỗng nên vẫn dùng
+      // câu cũ.
       setError(
-        err?.response?.status === 401
-          ? 'Email hoặc mật khẩu không đúng.'
-          : readErrorMessage(err, 'Đăng nhập không thành công.'),
+        err?.response?.data?.message
+          ? err.response.data.message
+          : err?.response?.status === 401
+            ? 'Email hoặc mật khẩu không đúng.'
+            : readErrorMessage(err, 'Đăng nhập không thành công.'),
       );
     } finally {
       setSubmitting(false);
@@ -109,7 +119,7 @@ export default function LoginPage() {
                   className="link-button"
                   onClick={() =>
                     setHint(
-                      'Hệ thống chưa có chức năng tự đặt lại mật khẩu. Liên hệ Quản lý hoặc Giám đốc để được cấp mật khẩu tạm (BR-USER-03).',
+                      'Hệ thống chưa có chức năng tự đặt lại mật khẩu. Liên hệ Quản lý hoặc Giám đốc để được cấp mật khẩu tạm.',
                     )
                   }
                 >
