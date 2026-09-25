@@ -5,13 +5,14 @@
 --
 -- Mật khẩu chung: Test@123  (must_change_password = FALSE để vào thẳng hệ thống)
 --
---   Email                   Role            Position type   Ghi chú
---   admin@swp391.test       PLATFORM_ADMIN  -               Đứng ngoài mọi Tenant
---   trantrungd83@gmail.com  DIRECTOR        -               Dùng test Google OAuth
---   manager@swp391.test     MANAGER         -               Quản lý Location Hà Nội
---   letan@swp391.test       STAFF           RECEPTION       Lễ tân
---   dondep@swp391.test      STAFF           HOUSEKEEPING    Dọn dẹp
---   kythuat@swp391.test     STAFF           OTHER           Position loại Khác
+--   Email                   Role            Quyền nghiệp vụ         Ghi chú
+--   admin@swp391.test       PLATFORM_ADMIN  -                       Đứng ngoài mọi Tenant
+--   trantrungd83@gmail.com  DIRECTOR        -                       Dùng test Google OAuth
+--   manager@swp391.test     MANAGER         -                       Quản lý Location Hà Nội
+--   letan@swp391.test       STAFF           Lễ tân                  Vị trí Lễ tân
+--   dondep@swp391.test      STAFF           Dọn dẹp                 Vị trí Buồng phòng
+--   kiemnhiem@swp391.test   STAFF           Lễ tân + Dọn dẹp        Vị trí Lễ tân, tick thêm Dọn dẹp
+--   kythuat@swp391.test     STAFF           (chỉ quyền chung)       Vị trí loại Khác
 --
 -- Repeatable migration (R__): chạy SAU các migration V*, và chạy lại mỗi khi file
 -- này đổi nội dung. Mọi INSERT dùng "ON DUPLICATE KEY UPDATE id = id" — thêm dòng
@@ -110,8 +111,25 @@ VALUES
      'Kỹ thuật Test', '0900000015', '20000000-0000-0000-0000-000000000001',
      '40000000-0000-0000-0000-000000000003',
      '2026-03-01', '1993-01-30', 'MALE', '50 Tôn Đức Thắng, Đống Đa, Hà Nội',
-     'https://ui-avatars.com/api/?name=Ky+Thuat')
+     'https://ui-avatars.com/api/?name=Ky+Thuat'),
+
+    ('50000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000001', 'STAFF',
+     'kiemnhiem@swp391.test',
+     '$2a$10$fscqy3oQjGzezQ9ymSXCxOmp7fjPEKkqpMbZ2Qo/szgUUOu.j2SCq', FALSE, 'ACTIVE',
+     'Kiêm nhiệm Test', '0900000016', '20000000-0000-0000-0000-000000000001',
+     '40000000-0000-0000-0000-000000000001',
+     '2026-03-15', '1997-04-12', 'FEMALE', '12 Hai Bà Trưng, Hoàn Kiếm, Hà Nội',
+     'https://ui-avatars.com/api/?name=Kiem+Nhiem')
 ON DUPLICATE KEY UPDATE id = id;
+
+-- ── Quyền nghiệp vụ Manager tick cho từng nhân viên (bảng user_permissions — V2) ──
+-- "Kỹ thuật" không có dòng nào: chỉ quyền chung (BR-PERM-06).
+INSERT INTO user_permissions (user_id, permission) VALUES
+    ('50000000-0000-0000-0000-000000000004', 'RECEPTION'),
+    ('50000000-0000-0000-0000-000000000005', 'HOUSEKEEPING'),
+    ('50000000-0000-0000-0000-000000000007', 'RECEPTION'),
+    ('50000000-0000-0000-0000-000000000007', 'HOUSEKEEPING')
+ON DUPLICATE KEY UPDATE permission = permission;
 
 -- ── Dữ liệu test cho Asset Categories ──────────────────────────────────────
 INSERT INTO asset_categories (id, tenant_id, name, asset_kind, purpose, unit, is_active, created_at, updated_at)

@@ -1,8 +1,8 @@
 package com.example.SWP391_G2_SE2055_JV.utils;
 
 import com.example.SWP391_G2_SE2055_JV.config.CustomUserDetails;
-import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.exception.UnauthorizedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -95,12 +95,9 @@ public final class SecurityUtils {
         return false;
     }
 
-    /**
-     * Quyền nghiệp vụ đặc thù đi theo Loại Position, không theo role — BR-ORG-08. Tính cả vị trí
-     * kiêm nhiệm của nhân viên đa nhiệm.
-     */
-    public static boolean hasPositionType(PositionType type) {
+    /** Quyền nghiệp vụ đặc thù Manager đã tick cho người đang đăng nhập — không theo role. */
+    public static boolean hasPermission(StaffPermission permission) {
         CustomUserDetails user = getCurrentUserOrNull();
-        return user != null && user.getPositionTypes().contains(type);
+        return user != null && user.hasPermission(permission);
     }
 }

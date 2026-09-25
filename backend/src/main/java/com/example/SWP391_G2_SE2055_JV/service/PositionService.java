@@ -91,11 +91,11 @@ public class PositionService {
     }
 
     /**
-     * Đổi tên luôn được; đổi Loại chức danh CHỈ khi chưa ai được gán.
+     * Đổi tên và Loại chức danh.
      *
-     * <p>Quyền nghiệp vụ của Lễ tân/Dọn dẹp bám vào Loại (BR-ORG-08), nên sửa Loại của một
-     * chức danh đang có người giữ sẽ âm thầm cấp hoặc thu quyền của họ. Cho sửa lúc chưa ai
-     * dùng là đủ để sửa sai sót lúc tạo.
+     * <p>Loại giờ chỉ là gợi ý tick sẵn quyền khi Manager chọn chức danh này cho nhân viên MỚI;
+     * quyền của người đang giữ nằm ở từng hồ sơ (Manager tick), nên đổi Loại không âm thầm cấp
+     * hay thu quyền của ai.
      */
     @Transactional
     public PositionResponse updatePosition(UUID id, UpdatePositionRequest request) {
@@ -109,11 +109,6 @@ public class PositionService {
 
         boolean changingType = request.getPositionType() != null
             && request.getPositionType() != position.getPositionType();
-        if (changingType && userRepository.isPositionHeld(position.getId())) {
-            throw new BusinessException(
-                "Không đổi được Loại chức danh khi đã có nhân viên được gán: quyền nghiệp vụ "
-                + "đi theo Loại. Hãy tạo chức danh mới.");
-        }
 
         position.setName(name);
         if (changingType) {

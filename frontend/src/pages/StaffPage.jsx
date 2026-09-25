@@ -11,7 +11,8 @@ import {
   terminateUser,
   updateUser,
 } from '../api/users';
-import StaffForm, { POSITION_TYPE_LABEL } from '../components/StaffForm';
+import StaffForm from '../components/StaffForm';
+import { STAFF_PERMISSIONS, permissionSummary } from '../permissions';
 import StaffDetail from '../components/StaffDetail';
 import FormModal from '../components/FormModal';
 import StatCard from '../components/StatCard';
@@ -40,8 +41,8 @@ function formatDate(value) {
 }
 
 /** Xuất CSV có BOM để Excel đọc đúng tiếng Việt. */
-function downloadCsv(rows, positionOf, extraPositionsOf) {
-  const header = ['Họ và tên', 'Email', 'Số điện thoại', 'Phòng ban', 'Vị trí', 'Kiêm nhiệm', 'Ngày vào làm', 'Trạng thái'];
+function downloadCsv(rows, positionOf) {
+  const header = ['Họ và tên', 'Email', 'Số điện thoại', 'Phòng ban', 'Vị trí', 'Quyền nghiệp vụ', 'Ngày vào làm', 'Trạng thái'];
   const lines = rows.map((u) => {
     const position = positionOf(u);
     return [
@@ -50,7 +51,7 @@ function downloadCsv(rows, positionOf, extraPositionsOf) {
       u.phone,
       position?.departmentName,
       position?.name,
-      extraPositionsOf(u).map((p) => p.name).join(', '),
+      permissionSummary(u.permissions),
       formatDate(u.startWorkDate),
       displayStatus(u).label,
     ]
@@ -92,6 +93,7 @@ export default function StaffPage() {
   const [keyword, setKeyword] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('ALL');
   const [positionFilter, setPositionFilter] = useState('ALL');
+  const [permissionFilter, setPermissionFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(0);
 
@@ -142,23 +144,6 @@ export default function StaffPage() {
 
   const positionById = useMemo(() => Object.fromEntries(positions.map((p) => [p.id, p])), [positions]);
   const positionOf = useCallback((member) => positionById[member.positionId], [positionById]);
-  // Nhân viên đa nhiệm: các vị trí kiêm nhiệm ngoài vị trí chính.
-  const extraPositionsOf = useCallback(
-    (member) => (member.extraPositionIds ?? []).map((id) => positionById[id]).filter(Boolean),
-    [positionById],
-  );
-  const allPositionsOf = useCallback(
-    (member) => [positionOf(member), ...extraPositionsOf(member)].filter(Boolean),
-    [positionOf, extraPositionsOf],
-  );
-  /** "Lễ tân · Dọn dẹp" — mọi loại vị trí người này giữ, không lặp. */
-  const typeLabelsOf = useCallback(
-    (member) =>
-      [...new Set(allPositionsOf(member).map((p) => POSITION_TYPE_LABEL[p.positionType]).filter(Boolean))].join(
-        ' · ',
-      ),
-    [allPositionsOf],
-  );
 
   const departments = useMemo(
     () => [...new Set(positions.map((p) => p.departmentName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')),
@@ -172,21 +157,25 @@ export default function StaffPage() {
   const filtered = useMemo(() => {
     const needle = keyword.trim().toLowerCase();
     return staff.filter((member) => {
-      // Lọc theo MỌI vị trí người đó giữ — nhân viên kiêm nhiệm Dọn dẹp cũng hiện khi lọc Dọn dẹp.
-      const held = allPositionsOf(member);
+      const position = positionOf(member);
+      const permissions = member.permissions ?? [];
       const matchKeyword =
         needle === '' ||
-        [member.fullName, member.email, member.phone, ...held.map((p) => p.name)].some((v) =>
+        [member.fullName, member.email, member.phone, position?.name].some((v) =>
           (v ?? '').toLowerCase().includes(needle),
         );
-      const matchDepartment = departmentFilter === 'ALL' || held.some((p) => p.departmentName === departmentFilter);
-      const matchPosition = positionFilter === 'ALL' || held.some((p) => p.id === positionFilter);
+      const matchDepartment = departmentFilter === 'ALL' || position?.departmentName === departmentFilter;
+      const matchPosition = positionFilter === 'ALL' || member.positionId === positionFilter;
+      // Lọc theo quyền đã tick — người Lễ tân kiêm Dọn dẹp hiện ở cả hai bộ lọc.
+      const matchPermission =
+        permissionFilter === 'ALL' ||
+        (permissionFilter === 'NONE' ? permissions.length === 0 : permissions.includes(permissionFilter));
       const matchStatus = statusFilter === 'ALL' || displayStatus(member).key === statusFilter;
-      return matchKeyword && matchDepartment && matchPosition && matchStatus;
+      return matchKeyword && matchDepartment && matchPosition && matchPermission && matchStatus;
     });
-  }, [staff, keyword, departmentFilter, positionFilter, statusFilter, allPositionsOf]);
+  }, [staff, keyword, departmentFilter, positionFilter, permissionFilter, statusFilter, positionOf]);
 
-  useEffect(() => setPage(0), [keyword, departmentFilter, positionFilter, statusFilter]);
+  useEffect(() => setPage(0), [keyword, departmentFilter, positionFilter, permissionFilter, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -194,8 +183,8 @@ export default function StaffPage() {
   const stats = useMemo(() => {
     const count = (key) => staff.filter((m) => displayStatus(m).key === key).length;
     const working = staff.filter((m) => m.status !== 'TERMINATED');
-    // Nhân viên đa nhiệm được đếm ở mọi loại mình giữ.
-    const byType = (type) => working.filter((m) => allPositionsOf(m).some((p) => p.positionType === type)).length;
+    // Nhân viên đa nhiệm được đếm ở mọi quyền mình có.
+    const byType = (permission) => working.filter((m) => (m.permissions ?? []).includes(permission)).length;
     return {
       working: working.length,
       active: count('ACTIVE'),
@@ -205,7 +194,7 @@ export default function StaffPage() {
       reception: byType('RECEPTION'),
       housekeeping: byType('HOUSEKEEPING'),
     };
-  }, [staff, allPositionsOf]);
+  }, [staff]);
 
   async function handleSubmit(values) {
     try {
@@ -317,10 +306,10 @@ export default function StaffPage() {
       label: 'Xóa vĩnh viễn',
       message: (t) => (
         <>
-          Không hoàn tác được. Tài khoản <b>{t.fullName}</b> ({t.email}) bị xóa hẳn khỏi hệ thống và email
-          được giải phóng để dùng lại. Chỉ xóa được khi nhân viên <b>chưa phát sinh dữ liệu nào</b> (được
-          xếp ca, giao việc dọn phòng, bản ghi do họ tạo hoặc sửa…); nếu đã có, hệ thống sẽ từ chối và giữ
-          nguyên tài khoản.
+          Không hoàn tác được. Tài khoản đã nghỉ việc <b>{t.fullName}</b> ({t.email}) bị xóa hẳn khỏi hệ
+          thống và email được giải phóng để dùng lại. Chỉ xóa được khi nhân viên <b>chưa phát sinh dữ liệu
+          nào</b> (được xếp ca, giao việc dọn phòng, bản ghi do họ tạo hoặc sửa…); nếu đã có, hệ thống sẽ từ
+          chối và giữ tài khoản ở trạng thái "Đã nghỉ việc".
         </>
       ),
     },
@@ -358,7 +347,7 @@ export default function StaffPage() {
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={() => downloadCsv(filtered, positionOf, extraPositionsOf)}
+            onClick={() => downloadCsv(filtered, positionOf)}
             disabled={filtered.length === 0}
           >
             ⤓ Xuất danh sách
@@ -422,6 +411,15 @@ export default function StaffPage() {
               </option>
             ))}
           </select>
+          <select value={permissionFilter} onChange={(e) => setPermissionFilter(e.target.value)}>
+            <option value="ALL">Tất cả quyền</option>
+            {STAFF_PERMISSIONS.map((p) => (
+              <option key={p.value} value={p.value}>
+                Có quyền {p.label}
+              </option>
+            ))}
+            <option value="NONE">Chỉ quyền chung</option>
+          </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="ALL">Trạng thái: Tất cả</option>
             <option value="ACTIVE">Đang hoạt động</option>
@@ -466,7 +464,6 @@ export default function StaffPage() {
                   const status = displayStatus(member);
                   const closed = status.key === 'TERMINATED';
                   const position = positionOf(member);
-                  const extras = extraPositionsOf(member);
                   return (
                     <tr key={member.id} className={editing?.id === member.id ? 'is-editing' : ''}>
                       <td>
@@ -480,17 +477,14 @@ export default function StaffPage() {
                           )}
                           <div>
                             <b>{member.fullName}</b>
-                            <small>{typeLabelsOf(member) || 'Nhân viên'}</small>
+                            <small>{permissionSummary(member.permissions)}</small>
                           </div>
                         </div>
                       </td>
                       <td>
                         <div className="cell-manager">
                           <b>{position?.departmentName ?? '—'}</b>
-                          <small>
-                            {position?.name ?? '—'}
-                            {extras.length > 0 && ` · kiêm ${extras.map((p) => p.name).join(', ')}`}
-                          </small>
+                          <small>{position?.name ?? '—'}</small>
                         </div>
                       </td>
                       <td>
@@ -546,15 +540,19 @@ export default function StaffPage() {
                             </button>
                           </>
                         )}
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          title="Xóa vĩnh viễn (chỉ khi chưa phát sinh dữ liệu)"
-                          aria-label="Xóa vĩnh viễn"
-                          onClick={() => setPending({ action: 'purge', target: member })}
-                        >
-                          🗑
-                        </button>
+                        {/* Chỉ người đã nghỉ việc mới xóa vĩnh viễn được — người đang làm phải
+                            "Cho nghỉ việc" trước (BR-USER-04). */}
+                        {closed && (
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            title="Xóa vĩnh viễn (chỉ khi chưa phát sinh dữ liệu)"
+                            aria-label="Xóa vĩnh viễn"
+                            onClick={() => setPending({ action: 'purge', target: member })}
+                          >
+                            🗑
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -621,7 +619,6 @@ export default function StaffPage() {
           <StaffDetail
             staff={viewing}
             position={positionOf(viewing)}
-            extraPositions={extraPositionsOf(viewing)}
             locationName={location?.name}
             status={displayStatus(viewing)}
             onClose={() => setViewing(null)}

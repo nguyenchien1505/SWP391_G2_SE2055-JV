@@ -1,9 +1,9 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.enums.ChangeSource;
-import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.UnauthorizedException;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
@@ -78,7 +78,7 @@ public class RoomTransitionPolicy {
      * sửa hàm này, ví dụ cho {@code Role.MANAGER} dùng thêm {@link #isReceptionStep}.
      */
     private static Optional<ChangeSource> actingAs(RoomStatus from, RoomStatus target) {
-        if (SecurityUtils.hasPositionType(PositionType.RECEPTION) && isReceptionStep(from, target)) {
+        if (SecurityUtils.hasPermission(StaffPermission.RECEPTION) && isReceptionStep(from, target)) {
             return Optional.of(ChangeSource.RECEPTION);
         }
         if (SecurityUtils.hasRole(Role.MANAGER) && isManagerStep(from, target)) {

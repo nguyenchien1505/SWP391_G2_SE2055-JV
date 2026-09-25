@@ -93,8 +93,8 @@ public class UserController {
     }
 
     /**
-     * Xóa VĨNH VIỄN tài khoản chưa phát sinh dữ liệu nào: Manager xóa Staff (mọi trạng thái),
-     * Giám đốc xóa Manager đã nghỉ việc. Còn dữ liệu tham chiếu thì từ chối, tài khoản giữ nguyên.
+     * Xóa VĨNH VIỄN tài khoản ĐÃ NGHỈ VIỆC và chưa phát sinh dữ liệu nào: Manager xóa Staff,
+     * Giám đốc xóa Manager. Còn dữ liệu tham chiếu thì từ chối, tài khoản giữ nguyên.
      */
     @DeleteMapping("/{id}/permanent")
     @PreAuthorize("hasAnyRole('DIRECTOR','MANAGER')")

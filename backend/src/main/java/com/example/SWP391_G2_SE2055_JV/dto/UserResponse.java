@@ -3,6 +3,7 @@ package com.example.SWP391_G2_SE2055_JV.dto;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.Gender;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import lombok.Builder;
 import lombok.Data;
@@ -26,8 +27,8 @@ public class UserResponse {
     private String        phone;
     private UUID          locationId;
     private UUID          positionId;
-    /** Vị trí kiêm nhiệm (nhân viên đa nhiệm) — không gồm {@code positionId}. */
-    private List<UUID>    extraPositionIds;
+    /** Quyền nghiệp vụ Manager đã tick (Lễ tân, Dọn dẹp…); rỗng với người không phải STAFF. */
+    private List<StaffPermission> permissions;
     private LocalDate     startWorkDate;
     private LocalDate     dateOfBirth;
     private Gender        gender;
@@ -48,7 +49,7 @@ public class UserResponse {
             .phone(user.getPhone())
             .locationId(user.getLocationId())
             .positionId(user.getPositionId())
-            .extraPositionIds(List.copyOf(user.getExtraPositionIds()))
+            .permissions(user.getPermissions().stream().sorted().toList())
             .startWorkDate(user.getStartWorkDate())
             .dateOfBirth(user.getDateOfBirth())
             .gender(user.getGender())

@@ -13,6 +13,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.Subscription;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
@@ -37,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -105,8 +106,7 @@ public class UserService {
 
         assertCanCreateRole(request.getRole());
         Location location = validateProfile(request, tenantId);
-        Set<UUID> extraPositions = resolveExtraPositions(
-            request.getExtraPositionIds(), request.getPositionId(), Set.of(), tenantId);
+        Set<StaffPermission> permissions = resolveInitialPermissions(request, tenantId);
 
         // BR-USER-06: email của người đã nghỉ việc VẪN chiếm chỗ, không dùng lại được.
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -129,7 +129,7 @@ public class UserService {
             .phone(request.getPhone())
             .locationId(request.getLocationId())
             .positionId(request.getPositionId())
-            .extraPositionIds(extraPositions)
+            .permissions(permissions)
             .startWorkDate(request.getStartWorkDate())
             .dateOfBirth(request.getDateOfBirth())
             .gender(request.getGender())
@@ -166,13 +166,6 @@ public class UserService {
             throw new BusinessException("Không sửa được hồ sơ của nhân viên đã nghỉ việc.");
         }
 
-        // Chỉ kiểm khi ĐỔI ngày: người đã đi làm thì ngày cũ nằm trong quá khứ, sửa hồ sơ
-        // khác mà gửi lại nguyên ngày đó vẫn phải lưu được.
-        if (request.getStartWorkDate() != null
-                && !request.getStartWorkDate().equals(user.getStartWorkDate())) {
-            assertStartWorkDateAfterToday(request.getStartWorkDate());
-        }
-
         if (request.getFullName() != null)      user.setFullName(request.getFullName());
         if (request.getPhone() != null)         user.setPhone(request.getPhone());
         if (request.getStartWorkDate() != null) user.setStartWorkDate(request.getStartWorkDate());
@@ -190,17 +183,16 @@ public class UserService {
             user.setPositionId(request.getPositionId());
         }
 
-        if (request.getExtraPositionIds() != null) {
-            if (!user.isStaff() && !request.getExtraPositionIds().isEmpty()) {
-                throw new BusinessException("Chỉ STAFF mới kiêm nhiệm được nhiều vị trí.");
+        // Quyền nghiệp vụ Manager tick — thay trọn bộ. Đổi Position KHÔNG tự đổi quyền: form đã
+        // tick sẵn theo vị trí mới, Manager xác nhận rồi gửi lên cùng lúc.
+        if (request.getPermissions() != null) {
+            if (!user.isStaff() && !request.getPermissions().isEmpty()) {
+                throw new BusinessException("Chỉ nhân viên (STAFF) mới được cấp quyền nghiệp vụ.");
             }
-            Set<UUID> extras = resolveExtraPositions(request.getExtraPositionIds(), user.getPositionId(),
-                user.getExtraPositionIds(), user.getTenantId());
-            user.getExtraPositionIds().retainAll(extras);
-            user.getExtraPositionIds().addAll(extras);
+            Set<StaffPermission> requested = toPermissionSet(request.getPermissions());
+            user.getPermissions().retainAll(requested);
+            user.getPermissions().addAll(requested);
         }
-        // Đổi vị trí chính sang một vị trí đang kiêm nhiệm thì nó thôi là kiêm nhiệm.
-        user.getExtraPositionIds().remove(user.getPositionId());
 
         if (request.getEnabled() != null) {
             user.setStatus(request.getEnabled() ? UserStatus.ACTIVE : UserStatus.INACTIVE);
@@ -279,7 +271,7 @@ public class UserService {
         newManager.setRole(Role.MANAGER);
         newManager.setLocationId(user.getLocationId());
         newManager.setPositionId(null);
-        newManager.setExtraPositionIds(null);
+        newManager.setPermissions(null);
         // Người cũ đã TERMINATED ở trên nên chốt "1 Location 1 Manager" trong createUser cho qua.
         TempPasswordResponse created = createUser(newManager);
         log.info("Bàn giao khách sạn {} từ {} cho Manager mới {}",
@@ -289,14 +281,13 @@ public class UserService {
     }
 
     /**
-     * Xóa VĨNH VIỄN tài khoản chưa để lại dữ liệu nào — ví dụ tạo nhầm, hoặc nghỉ trước khi bắt
-     * đầu làm. Khác cho nghỉ việc (xóa mềm, BR-USER-04): dòng dữ liệu biến mất hẳn và email được
-     * giải phóng.
-     * <ul>
-     *   <li>STAFF: Manager xóa thẳng, ở trạng thái nào cũng được.</li>
-     *   <li>MANAGER: Giám đốc chỉ xóa được người ĐÃ NGHỈ VIỆC — Manager đang phụ trách khách sạn
-     *       phải qua luồng cho nghỉ việc có bàn giao trước, để khách sạn không "mồ côi".</li>
-     * </ul>
+     * Xóa VĨNH VIỄN tài khoản ĐÃ NGHỈ VIỆC mà chưa để lại dữ liệu nào — ví dụ tạo nhầm, hoặc nghỉ
+     * trước khi bắt đầu làm. Khác cho nghỉ việc (xóa mềm, BR-USER-04): dòng dữ liệu biến mất hẳn
+     * và email được giải phóng — đây là ngoại lệ của BR-USER-06, cần ghi vào tài liệu BR.
+     *
+     * <p>Phải cho nghỉ việc TRƯỚC rồi mới xóa được, với cả hai vai trò: Manager xóa Staff, Giám
+     * đốc xóa Manager. Người đang làm luôn đi qua luồng nghỉ việc chuẩn trước (gỡ ca/task tương
+     * lai; với Manager còn phải bàn giao khách sạn), không có đường tắt xóa thẳng.
      *
      * <p>"Chưa tương tác với hệ thống" = không bản ghi nào tham chiếu tới tài khoản này. Mọi
      * cột trỏ tới {@code users} (created_by / updated_by, ca làm, task dọn, biên bản kiểm tra,
@@ -311,8 +302,9 @@ public class UserService {
         if (user.getRole() != Role.STAFF && user.getRole() != Role.MANAGER) {
             throw new BusinessException("Chỉ xóa vĩnh viễn được tài khoản Staff hoặc Manager.");
         }
-        if (user.getRole() == Role.MANAGER && !user.isTerminated()) {
-            throw new BusinessException("Chỉ xóa vĩnh viễn được tài khoản Manager đã nghỉ việc.");
+        if (!user.isTerminated()) {
+            throw new BusinessException(
+                "Chỉ xóa vĩnh viễn được tài khoản đã nghỉ việc. Hãy \"Cho nghỉ việc\" trước.");
         }
 
         try {
@@ -321,10 +313,8 @@ public class UserService {
         } catch (DataIntegrityViolationException ex) {
             throw new BusinessException(
                 "Không xóa vĩnh viễn được: tài khoản này đã phát sinh dữ liệu trong hệ thống (ca làm, "
-                + "công việc, bản ghi do người này tạo hoặc sửa…). "
-                + (user.isTerminated()
-                    ? "Tài khoản vẫn giữ ở trạng thái Đã nghỉ việc để tra cứu lịch sử."
-                    : "Hãy dùng \"Cho nghỉ việc\" để ngừng tài khoản mà vẫn giữ lịch sử."));
+                + "công việc, bản ghi do người này tạo hoặc sửa…). Tài khoản vẫn giữ ở trạng thái "
+                + "Đã nghỉ việc để tra cứu lịch sử.");
         }
         log.info("Xóa vĩnh viễn tài khoản {} {}", user.getRole(), user.getEmail());
     }
@@ -505,8 +495,8 @@ public class UserService {
         }
 
         if (request.getRole() != Role.STAFF
-                && request.getExtraPositionIds() != null && !request.getExtraPositionIds().isEmpty()) {
-            throw new BusinessException("Chỉ STAFF mới kiêm nhiệm được nhiều vị trí.");
+                && request.getPermissions() != null && !request.getPermissions().isEmpty()) {
+            throw new BusinessException("Chỉ nhân viên (STAFF) mới được cấp quyền nghiệp vụ.");
         }
 
         if (request.getRole() != Role.STAFF && request.getRole() != Role.MANAGER
@@ -546,16 +536,8 @@ public class UserService {
         if (request.getGender() == null)        throw missing("Giới tính");
         if (isBlank(request.getAddress()))      throw missing("Địa chỉ");
         if (isBlank(request.getAvatarUrl()))    throw missing("Ảnh đại diện");
-        assertStartWorkDateAfterToday(request.getStartWorkDate());
-    }
-
-    /** Ngày bắt đầu làm việc phải SAU hôm nay (giờ Hà Nội) — hôm nay cũng không được. */
-    private static void assertStartWorkDateAfterToday(LocalDate startWorkDate) {
-        LocalDate today = ShiftTimeUtils.todayInHanoi();
-        if (!startWorkDate.isAfter(today)) {
-            throw new BusinessException(String.format(
-                "Ngày bắt đầu làm việc phải sau ngày hôm nay (%s).", today));
-        }
+        // Ngày bắt đầu làm việc nhận cả ngày đã qua: khách sạn mới lên hệ thống phải nhập được
+        // nhân viên đã đi làm từ trước, và Manager nhận bàn giao thì làm ngay trong hôm nay.
     }
 
     /** Position thuộc Tenant và chưa bị ẩn — BR-ORG-14: mục đã ẩn không còn được chọn. */
@@ -568,24 +550,29 @@ public class UserService {
     }
 
     /**
-     * Vị trí kiêm nhiệm của nhân viên đa nhiệm. Bỏ trùng lặp và bỏ chính vị trí chính. Mục MỚI thêm
-     * phải thuộc Tenant và chưa bị ẩn (BR-ORG-14); mục đang giữ từ trước thì giữ tiếp được, giống
-     * cách xử lý vị trí chính ở {@link #updateUser}.
+     * Quyền nghiệp vụ lúc tạo tài khoản. Chỉ STAFF có quyền; Manager không gửi gì ({@code null})
+     * thì lấy mặc định theo Loại của Position đã chọn, còn gửi danh sách (kể cả rỗng) thì dùng
+     * đúng danh sách đó.
      */
-    private Set<UUID> resolveExtraPositions(List<UUID> requested, UUID primaryPositionId,
-                                            Set<UUID> alreadyHeld, UUID tenantId) {
-        Set<UUID> result = new LinkedHashSet<>();
-        if (requested == null) {
-            return result;
+    private Set<StaffPermission> resolveInitialPermissions(CreateUserRequest request, UUID tenantId) {
+        if (request.getRole() != Role.STAFF) {
+            return EnumSet.noneOf(StaffPermission.class);
         }
-        for (UUID positionId : requested) {
-            if (positionId == null || positionId.equals(primaryPositionId) || result.contains(positionId)) {
-                continue;
+        if (request.getPermissions() != null) {
+            return toPermissionSet(request.getPermissions());
+        }
+        return positionRepository.findByIdAndTenantId(request.getPositionId(), tenantId)
+            .map(position -> StaffPermission.defaultFor(position.getPositionType()))
+            .orElseGet(() -> EnumSet.noneOf(StaffPermission.class));
+    }
+
+    /** Bỏ phần tử null và trùng lặp — giá trị lạ đã bị chặn từ lúc đọc JSON (enum). */
+    private static Set<StaffPermission> toPermissionSet(List<StaffPermission> requested) {
+        Set<StaffPermission> result = EnumSet.noneOf(StaffPermission.class);
+        for (StaffPermission permission : requested) {
+            if (permission != null) {
+                result.add(permission);
             }
-            if (!alreadyHeld.contains(positionId)) {
-                assertPositionSelectable(positionId, tenantId);
-            }
-            result.add(positionId);
         }
         return result;
     }

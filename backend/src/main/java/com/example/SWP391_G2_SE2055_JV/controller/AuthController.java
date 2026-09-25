@@ -23,8 +23,8 @@ public class AuthController {
     /**
      * Thông tin người đang đăng nhập — frontend gọi ngay sau khi login.
      *
-     * <p>Trả cả {@code positionType} vì Lễ tân / Dọn dẹp không phải role mà là Loại
-     * Position (BR-ORG-08); frontend dựa vào đây để bật/tắt màn hình nghiệp vụ đặc thù.
+     * <p>Trả cả {@code permissions} vì Lễ tân / Dọn dẹp không phải role mà là quyền nghiệp vụ
+     * Manager tick cho từng nhân viên; frontend dựa vào đây để bật/tắt màn hình nghiệp vụ đặc thù.
      */
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> me(@AuthenticationPrincipal CustomUserDetails user) {
@@ -35,9 +35,8 @@ public class AuthController {
         body.put("tenantId",           user.getTenantId());
         body.put("locationId",         user.getLocationId());
         body.put("positionId",         user.getPositionId());
-        body.put("positionType",       user.getPositionType() == null ? null : user.getPositionType().name());
-        // Mọi Loại người này giữ — vị trí chính và kiêm nhiệm (nhân viên đa nhiệm).
-        body.put("positionTypes",      user.getPositionTypes().stream().map(Enum::name).toList());
+        // Quyền nghiệp vụ đã được tick — ví dụ ["RECEPTION", "HOUSEKEEPING"]; rỗng = quyền chung.
+        body.put("permissions",        user.getPermissions().stream().map(Enum::name).sorted().toList());
         // BR-USER-07: frontend phải ép về màn hình đổi mật khẩu khi cờ này bật.
         body.put("mustChangePassword", user.isMustChangePassword());
         // Tenant hết hạn dùng thử / thanh toán thất bại: Giám đốc chỉ được xem, frontend hiển thị

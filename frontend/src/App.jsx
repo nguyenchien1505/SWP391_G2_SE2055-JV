@@ -185,8 +185,17 @@ export default function App() {
       <Route path="/don-phong" element={inShell(<RequireBranchManager><HousekeepingPage /></RequireBranchManager>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
 
-      {/* New Asset Routes */}
-      <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+      {/* Tài sản & dashboard — chỉ Giám đốc / Manager, khớp sidebar. Staff chỉ có quyền báo hỏng
+          (BR-ASSET-05), không quản lý tài sản hay tồn kho; gõ thẳng URL thì về trang chủ của mình. */}
+      <Route
+        element={
+          <RequireAuth>
+            <RequireManagementRole>
+              <AppLayout />
+            </RequireManagementRole>
+          </RequireAuth>
+        }
+      >
         <Route path="/tong-quan" element={<OverviewWrapper />} />
         <Route path="/tai-san" element={<FixedAssetWrapper />} />
         <Route path="/tai-san/batch" element={<BatchCreateWrapper />} />

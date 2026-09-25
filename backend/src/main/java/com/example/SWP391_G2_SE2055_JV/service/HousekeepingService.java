@@ -14,7 +14,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
-import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
@@ -27,7 +27,6 @@ import com.example.SWP391_G2_SE2055_JV.repository.AssignableStaffRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.InspectionRecordRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
-import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
@@ -44,7 +43,6 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -84,7 +82,6 @@ public class HousekeepingService {
 
     private final HousekeepingTaskRepository taskRepository;
     private final UserRepository             userRepository;
-    private final PositionRepository         positionRepository;
     private final ShiftRepository            shiftRepository;
     // thay EntityManager bằng RoomRepository đúng như ghi chú cũ ở mục "Đọc phòng" — module
     // Quản lý phòng đã có repository thật, và bản của nó lọc sẵn theo Tenant.
@@ -279,7 +276,7 @@ public class HousekeepingService {
 
         return assignableStaffRepository
             .findAssignable(tenantId, locationId, date,
-                Role.STAFF, UserStatus.ACTIVE, PositionType.HOUSEKEEPING)
+                Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING)
             .stream()
             .map(AssignableStaffResponse::fromEntity)
             .toList();
@@ -392,12 +389,9 @@ public class HousekeepingService {
             throw new BusinessException("Nhân viên không thuộc Location của phòng này.");
         }
 
-        // Nhân viên đa nhiệm: vị trí Dọn dẹp là vị trí chính hay kiêm nhiệm đều được.
-        Set<UUID> heldPositions = new HashSet<>(staff.getExtraPositionIds());
-        heldPositions.add(staff.getPositionId());
-        if (!positionRepository.existsByIdInAndPositionType(heldPositions, PositionType.HOUSEKEEPING)) {
-            throw new BusinessException(
-                "Chỉ nhân viên có vị trí loại Dọn dẹp (chính hoặc kiêm nhiệm) mới nhận task dọn phòng.");
+        // Quyền Dọn dẹp do Manager tick cho từng người (có thể kiêm Lễ tân).
+        if (!staff.getPermissions().contains(StaffPermission.HOUSEKEEPING)) {
+            throw new BusinessException("Chỉ nhân viên được cấp quyền Dọn dẹp mới nhận task dọn phòng.");
         }
 
         // BR-HK-03: có ca trong ngày là đủ, không cần khớp khung giờ. BR-HK-02: không giới

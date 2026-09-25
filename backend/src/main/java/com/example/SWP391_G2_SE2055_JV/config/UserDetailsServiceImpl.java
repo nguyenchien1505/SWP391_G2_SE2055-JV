@@ -1,9 +1,8 @@
 package com.example.SWP391_G2_SE2055_JV.config;
 
-import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
-import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
-import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
+import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -11,6 +10,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
 import java.util.Set;
 
 @Service
@@ -18,7 +18,6 @@ import java.util.Set;
 public class UserDetailsServiceImpl implements UserDetailsService {
 
     private final UserRepository      userRepository;
-    private final PositionRepository  positionRepository;
     private final TenantAccessPolicy  tenantAccessPolicy;
 
     @Override
@@ -33,15 +32,11 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     /** Dùng chung cho cả formLogin và Google OAuth2 để hai luồng không lệch nhau. */
     @Transactional(readOnly = true)
     public CustomUserDetails toPrincipal(User user) {
-        PositionType positionType = user.getPositionId() == null
-            ? null
-            : positionRepository.findById(user.getPositionId())
-                .map(Position::getPositionType)
-                .orElse(null);
-        // Chỉ STAFF có Position, nên người không có vị trí chính thì cũng không có kiêm nhiệm.
-        Set<PositionType> extraPositionTypes = user.getPositionId() == null
-            ? Set.of()
-            : Set.copyOf(positionRepository.findExtraPositionTypesOfUser(user.getId()));
+        // Chỉ STAFF có quyền nghiệp vụ. Đọc bằng truy vấn riêng: entity truyền vào có thể đã tách
+        // khỏi session (open-in-view tắt) nên collection lazy không nạp được.
+        Set<StaffPermission> permissions = user.getRole() == Role.STAFF
+            ? toSet(userRepository.findPermissionsOfUser(user.getId()))
+            : Set.of();
 
         // Trạng thái Tenant quyết định người này vào được tới đâu — xem TenantAccessPolicy.
         // BR-SAAS-11 (chặn hoàn toàn khi SUSPENDED) được điều chỉnh: Giám đốc của Tenant hết hạn
@@ -56,11 +51,14 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             .tenantId(user.getTenantId())
             .locationId(user.getLocationId())
             .positionId(user.getPositionId())
-            .positionType(positionType)
-            .extraPositionTypes(extraPositionTypes)
+            .permissions(permissions)
             .mustChangePassword(user.isMustChangePassword())
             .enabled(user.isActive() && access != TenantAccessPolicy.Mode.BLOCKED)
             .readOnly(access == TenantAccessPolicy.Mode.READ_ONLY)
             .build();
+    }
+
+    private static Set<StaffPermission> toSet(java.util.Collection<StaffPermission> permissions) {
+        return permissions.isEmpty() ? Set.of() : Set.copyOf(EnumSet.copyOf(permissions));
     }
 }

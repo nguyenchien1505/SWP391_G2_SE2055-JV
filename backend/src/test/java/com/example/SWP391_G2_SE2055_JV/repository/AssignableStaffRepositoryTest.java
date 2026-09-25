@@ -10,6 +10,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,11 +25,13 @@ import org.springframework.test.context.ActiveProfiles;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.LinkedHashSet;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import static com.example.SWP391_G2_SE2055_JV.enums.StaffPermission.HOUSEKEEPING;
+import static com.example.SWP391_G2_SE2055_JV.enums.StaffPermission.RECEPTION;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -71,11 +74,11 @@ class AssignableStaffRepositoryTest {
         housekeepingPosition = persistPosition(department, "Nhân viên dọn phòng", PositionType.HOUSEKEEPING);
         receptionPosition = persistPosition(department, "Nhân viên lễ tân", PositionType.RECEPTION);
 
-        persistStaffWithShift("Phạm Dọn Dẹp", hanoi, housekeepingPosition, UserStatus.ACTIVE, today);
-        persistStaffWithShift("Lê Lễ Tân", hanoi, receptionPosition, UserStatus.ACTIVE, today);
-        persistStaffWithShift("Trần Đà Nẵng", danang, housekeepingPosition, UserStatus.ACTIVE, today);
-        persistStaffWithShift("Nguyễn Nghỉ Việc", hanoi, housekeepingPosition, UserStatus.TERMINATED, today);
-        persistStaffWithShift("Vũ Không Ca", hanoi, housekeepingPosition, UserStatus.ACTIVE, today.plusDays(1));
+        persistStaffWithShift("Phạm Dọn Dẹp", hanoi, housekeepingPosition, HOUSEKEEPING, UserStatus.ACTIVE, today);
+        persistStaffWithShift("Lê Lễ Tân", hanoi, receptionPosition, RECEPTION, UserStatus.ACTIVE, today);
+        persistStaffWithShift("Trần Đà Nẵng", danang, housekeepingPosition, HOUSEKEEPING, UserStatus.ACTIVE, today);
+        persistStaffWithShift("Nguyễn Nghỉ Việc", hanoi, housekeepingPosition, HOUSEKEEPING, UserStatus.TERMINATED, today);
+        persistStaffWithShift("Vũ Không Ca", hanoi, housekeepingPosition, HOUSEKEEPING, UserStatus.ACTIVE, today.plusDays(1));
 
         em.flush();
         em.clear();
@@ -86,9 +89,9 @@ class AssignableStaffRepositoryTest {
         assertThat(names(findAssignable(hanoi, today))).containsExactly("Phạm Dọn Dẹp");
     }
 
-    /** Lễ tân có ca cùng ngày nhưng sai Loại Position — BR-ORG-08: quyền theo LOẠI, không theo tên. */
+    /** Lễ tân có ca cùng ngày nhưng không được tick quyền Dọn dẹp. */
     @Test
-    void shouldExcludeStaffOfOtherPositionType() {
+    void shouldExcludeStaffWithoutHousekeepingPermission() {
         assertThat(names(findAssignable(hanoi, today))).doesNotContain("Lê Lễ Tân");
     }
 
@@ -124,11 +127,11 @@ class AssignableStaffRepositoryTest {
         assertThat(findAssignable(hanoi, today)).hasSize(1);
     }
 
-    /** Nhân viên đa nhiệm: vị trí chính Lễ tân, KIÊM NHIỆM Dọn dẹp — vẫn nhận được việc dọn. */
+    /** Nhân viên đa nhiệm: vị trí Lễ tân, được tick CẢ Lễ tân và Dọn dẹp — nhận được việc dọn. */
     @Test
-    void shouldIncludeStaffHoldingHousekeepingAsExtraPosition() {
-        persistStaffWithShift("Đỗ Đa Nhiệm", hanoi, receptionPosition, Set.of(housekeepingPosition),
-            UserStatus.ACTIVE, today);
+    void shouldIncludeStaffWithHousekeepingAmongSeveralPermissions() {
+        persistStaffWithShift("Đỗ Đa Nhiệm", hanoi, receptionPosition,
+            EnumSet.of(StaffPermission.RECEPTION, StaffPermission.HOUSEKEEPING), UserStatus.ACTIVE, today);
         em.flush();
         em.clear();
 
@@ -136,30 +139,28 @@ class AssignableStaffRepositoryTest {
             .containsExactlyInAnyOrder("Phạm Dọn Dẹp", "Đỗ Đa Nhiệm");
     }
 
-    /** Giữ HAI vị trí cùng Loại Dọn dẹp (chính + kiêm nhiệm) vẫn chỉ hiện MỘT lần. */
+    /** Quyền quyết định theo ô Manager tick, KHÔNG theo Loại của vị trí: vị trí Dọn dẹp mà bỏ tick thì không nhận việc. */
     @Test
-    void shouldNotDuplicateStaffHoldingTwoHousekeepingPositions() {
-        UUID supervisor = persistPosition(department, "Giám sát buồng", PositionType.HOUSEKEEPING);
-        persistStaffWithShift("Hồ Hai Vị Trí", hanoi, housekeepingPosition, Set.of(supervisor),
-            UserStatus.ACTIVE, today);
+    void shouldExcludeHousekeepingPositionWithoutTickedPermission() {
+        persistStaffWithShift("Hà Bỏ Tick", hanoi, housekeepingPosition,
+            EnumSet.noneOf(StaffPermission.class), UserStatus.ACTIVE, today);
         em.flush();
         em.clear();
 
-        assertThat(names(findAssignable(hanoi, today)))
-            .containsExactlyInAnyOrder("Phạm Dọn Dẹp", "Hồ Hai Vị Trí");
+        assertThat(names(findAssignable(hanoi, today))).doesNotContain("Hà Bỏ Tick");
     }
 
     @Test
     void shouldNotReturnStaffOfAnotherTenant() {
         assertThat(repository.findAssignable(UUID.randomUUID(), hanoi, today,
-            Role.STAFF, UserStatus.ACTIVE, PositionType.HOUSEKEEPING)).isEmpty();
+            Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING)).isEmpty();
     }
 
     // ── Dữ liệu ─────────────────────────────────────────────────────────────
 
     private List<User> findAssignable(UUID locationId, LocalDate date) {
         return repository.findAssignable(tenantId, locationId, date,
-            Role.STAFF, UserStatus.ACTIVE, PositionType.HOUSEKEEPING);
+            Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING);
     }
 
     private static List<String> names(List<User> staff) {
@@ -167,15 +168,15 @@ class AssignableStaffRepositoryTest {
     }
 
     private void persistStaffWithShift(String fullName, UUID locationId, UUID positionId,
-                                       UserStatus status, LocalDate shiftDate) {
-        persistStaffWithShift(fullName, locationId, positionId, Set.of(), status, shiftDate);
+                                       StaffPermission permission, UserStatus status, LocalDate shiftDate) {
+        persistStaffWithShift(fullName, locationId, positionId, EnumSet.of(permission), status, shiftDate);
     }
 
     private void persistStaffWithShift(String fullName, UUID locationId, UUID positionId,
-                                       Set<UUID> extraPositionIds, UserStatus status, LocalDate shiftDate) {
+                                       Set<StaffPermission> permissions, UserStatus status, LocalDate shiftDate) {
         User staff = persist(User.builder()
             .tenantId(tenantId).locationId(locationId).positionId(positionId)
-            .extraPositionIds(new LinkedHashSet<>(extraPositionIds))
+            .permissions(permissions.isEmpty() ? EnumSet.noneOf(StaffPermission.class) : EnumSet.copyOf(permissions))
             .role(Role.STAFF).status(status)
             .email(uniqueEmail()).passwordHash("x").fullName(fullName).phone("0900000000")
             .build());

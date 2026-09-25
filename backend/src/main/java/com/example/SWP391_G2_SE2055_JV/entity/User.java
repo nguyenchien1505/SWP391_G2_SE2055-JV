@@ -2,6 +2,7 @@ package com.example.SWP391_G2_SE2055_JV.entity;
 
 import com.example.SWP391_G2_SE2055_JV.enums.Gender;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -11,7 +12,7 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
+import java.util.EnumSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -25,9 +26,9 @@ import java.util.UUID;
  *   STAFF          : có đủ tenantId + locationId + positionId (BR-USER-01)
  * </pre>
  *
- * <p>Lễ tân / Dọn dẹp KHÔNG phải role — là {@code PositionType} của Position được
- * gán (BR-ORG-08). Department suy ra từ Position, không lưu ở đây (BR-ORG-07). STAFF đa nhiệm
- * giữ thêm các Position kiêm nhiệm ở {@link #extraPositionIds}.
+ * <p>Lễ tân / Dọn dẹp KHÔNG phải role — là quyền nghiệp vụ Manager tick cho từng nhân viên
+ * ({@link #permissions}); một người có thể có nhiều quyền. Department suy ra từ Position, không
+ * lưu ở đây (BR-ORG-07).
  */
 @Entity
 @Table(name = "users")
@@ -75,24 +76,25 @@ public class User extends AuditableEntity {
     @Column(name = "location_id", length = 36)
     private UUID locationId;
 
-    /** Chỉ STAFF mới có Position — BR-USER-05, DM-01. Đây là vị trí CHÍNH: Department suy ra từ nó. */
+    /** Chỉ STAFF mới có Position — BR-USER-05, DM-01. Mỗi người đúng MỘT; Department suy ra từ nó. */
     @Column(name = "position_id", length = 36)
     private UUID positionId;
 
     /**
-     * Position KIÊM NHIỆM của nhân viên đa nhiệm — không gồm vị trí chính {@link #positionId}.
-     * Quyền nghiệp vụ là hợp các Loại của vị trí chính và kiêm nhiệm (BR-ORG-08).
+     * Quyền nghiệp vụ Manager tick cho nhân viên này (Lễ tân, Dọn dẹp…) — chỉ STAFF. Rỗng = chỉ có
+     * quyền chung (BR-PERM-06).
      *
      * <p>LAZY + BatchSize: danh sách nhân sự nạp theo lô thay vì mỗi người một câu. Principal
      * trong session KHÔNG đọc qua đây — entity khi đó có thể đã tách khỏi session (open-in-view
-     * tắt) — mà truy vấn riêng qua {@code PositionRepository.findExtraPositionTypesOfUser}.
+     * tắt) — mà truy vấn riêng qua {@code UserRepository.findPermissionsOfUser}.
      */
     @ElementCollection
-    @CollectionTable(name = "user_extra_positions", joinColumns = @JoinColumn(name = "user_id"))
-    @Column(name = "position_id", length = 36, nullable = false)
+    @CollectionTable(name = "user_permissions", joinColumns = @JoinColumn(name = "user_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "permission", length = 30, nullable = false)
     @org.hibernate.annotations.BatchSize(size = 100)
     @lombok.Builder.Default
-    private Set<UUID> extraPositionIds = new LinkedHashSet<>();
+    private Set<StaffPermission> permissions = EnumSet.noneOf(StaffPermission.class);
 
     @Column(name = "start_work_date")
     private LocalDate startWorkDate;

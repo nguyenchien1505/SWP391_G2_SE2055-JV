@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { tomorrowIso } from '../pages/rooms/format';
+import PermissionPicker from './PermissionPicker';
+import { defaultPermissionsFor } from '../permissions';
 
 const GENDERS = [
   { value: 'MALE', label: 'Nam' },
@@ -7,7 +8,7 @@ const GENDERS = [
   { value: 'OTHER', label: 'Khác' },
 ];
 
-/** Loại Position quyết định quyền nghiệp vụ — BR-ORG-08. */
+/** Loại Position — chỉ còn dùng để tick sẵn quyền khi chọn vị trí. */
 export const POSITION_TYPE_LABEL = {
   RECEPTION: 'Lễ tân',
   HOUSEKEEPING: 'Dọn dẹp',
@@ -19,7 +20,7 @@ const EMPTY = {
   email: '',
   phone: '',
   positionId: '',
-  extraPositionIds: [],
+  permissions: [],
   startWorkDate: '',
   dateOfBirth: '',
   gender: '',
@@ -41,6 +42,9 @@ const EMPTY = {
  *   <li>Khách sạn luôn là khách sạn của Manager đang đăng nhập (BR-PERM-03), không chọn.</li>
  * </ul>
  *
+ * <p>Quyền nghiệp vụ (Lễ tân, Dọn dẹp…) Manager tick trong ô thả xuống, không suy từ vị trí: chọn
+ * vị trí thì ô quyền tự tick sẵn theo Loại của vị trí đó, Manager tick thêm / bỏ bớt tùy người.
+ *
  * <p>Sửa: không đổi được email (username unique toàn hệ thống — BR-USER-06).
  */
 export default function StaffForm({ editing, positions, locationName, onSubmit, onCancel, onTerminate }) {
@@ -51,7 +55,7 @@ export default function StaffForm({ editing, positions, locationName, onSubmit, 
           fullName: editing.fullName ?? '',
           phone: editing.phone ?? '',
           positionId: editing.positionId ?? '',
-          extraPositionIds: editing.extraPositionIds ?? [],
+          permissions: editing.permissions ?? [],
           startWorkDate: editing.startWorkDate ?? '',
           dateOfBirth: editing.dateOfBirth ?? '',
           gender: editing.gender ?? '',
@@ -77,26 +81,17 @@ export default function StaffForm({ editing, positions, locationName, onSubmit, 
   const selected = positions.find((p) => p.id === values.positionId);
   const noPosition = groups.length === 0;
 
-  // Nhân viên đa nhiệm: mọi vị trí khác vị trí chính đều kiêm nhiệm được. Vị trí đã ẩn không chọn
-  // mới được, nhưng mục đang giữ vẫn hiện để không bị bỏ ngầm khi bấm lưu (BR-ORG-14).
-  const extraOptions = useMemo(
-    () =>
-      positions.filter(
-        (p) => p.id !== values.positionId && (p.active || editing?.extraPositionIds?.includes(p.id)),
-      ),
-    [positions, values.positionId, editing],
-  );
-
   function setField(field, value) {
     setValues((prev) => ({ ...prev, [field]: value }));
   }
 
-  function toggleExtraPosition(positionId) {
+  /** Đổi vị trí thì tick lại quyền theo Loại của vị trí mới — Manager chỉnh tiếp nếu cần. */
+  function choosePosition(positionId) {
+    const position = positions.find((p) => p.id === positionId);
     setValues((prev) => ({
       ...prev,
-      extraPositionIds: prev.extraPositionIds.includes(positionId)
-        ? prev.extraPositionIds.filter((id) => id !== positionId)
-        : [...prev.extraPositionIds, positionId],
+      positionId,
+      permissions: position ? defaultPermissionsFor(position.positionType) : prev.permissions,
     }));
   }
 
@@ -109,22 +104,13 @@ export default function StaffForm({ editing, positions, locationName, onSubmit, 
   async function handleSubmit(event) {
     event.preventDefault();
     setError('');
-
-    // Ngày bắt đầu làm việc phải sau hôm nay. Sửa hồ sơ mà giữ nguyên ngày cũ thì không kiểm —
-    // người đã đi làm có ngày bắt đầu nằm trong quá khứ.
-    const startDateChanged = !editing || values.startWorkDate !== (editing.startWorkDate ?? '');
-    if (startDateChanged && values.startWorkDate && values.startWorkDate < tomorrowIso()) {
-      setError('Ngày bắt đầu làm việc phải sau ngày hôm nay.');
-      return;
-    }
     setSubmitting(true);
 
     const profile = {
       fullName: values.fullName.trim(),
       phone: values.phone.trim(),
       positionId: values.positionId || null,
-      // Vị trí chính đổi sang một mục đang tick kiêm nhiệm thì mục đó thôi là kiêm nhiệm.
-      extraPositionIds: values.extraPositionIds.filter((id) => id !== values.positionId),
+      permissions: values.permissions,
       startWorkDate: values.startWorkDate || null,
       dateOfBirth: values.dateOfBirth || null,
       gender: values.gender || null,
@@ -254,7 +240,7 @@ export default function StaffForm({ editing, positions, locationName, onSubmit, 
         <select
           id="stf-position"
           value={values.positionId}
-          onChange={(e) => setField('positionId', e.target.value)}
+          onChange={(e) => choosePosition(e.target.value)}
           disabled={noPosition}
         >
           <option value="">{noPosition ? '— Chưa có vị trí nào —' : '— Chọn chức danh —'}</option>
@@ -274,38 +260,24 @@ export default function StaffForm({ editing, positions, locationName, onSubmit, 
             ? 'Giám đốc chưa tạo vị trí nào ở "Danh mục" — cần có vị trí trước khi tạo nhân viên.'
             : selected
               ? `Phòng ban: ${selected.departmentName ?? '—'} (tự suy ra từ vị trí).`
-              : 'Phòng ban tự suy ra từ vị trí; quyền nghiệp vụ theo loại vị trí (Lễ tân / Dọn dẹp / Khác).'}
+              : 'Phòng ban tự suy ra từ vị trí.'}
         </span>
       </label>
 
-      {!noPosition && (
-        <div className="field">
-          <span className="field__label">Kiêm nhiệm thêm (nhân viên đa nhiệm)</span>
-          {extraOptions.length === 0 ? (
-            <div className="readonly-box">Chưa có vị trí nào khác để kiêm nhiệm.</div>
-          ) : (
-            <div className="check-list">
-              {extraOptions.map((p) => (
-                <label key={p.id} className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={values.extraPositionIds.includes(p.id)}
-                    onChange={() => toggleExtraPosition(p.id)}
-                  />
-                  <span>
-                    {p.name} ({POSITION_TYPE_LABEL[p.positionType] ?? p.positionType})
-                    {p.active ? '' : ' — đã ngừng sử dụng'}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
-          <span className="field__help">
-            Không bắt buộc. Nhân viên có thêm quyền nghiệp vụ theo loại của từng vị trí kiêm nhiệm — ví dụ
-            Lễ tân kiêm Dọn dẹp thì nhận được cả việc dọn phòng.
-          </span>
-        </div>
-      )}
+      <div className="field">
+        <label className="field__label" htmlFor="stf-permissions">
+          Quyền nghiệp vụ
+        </label>
+        <PermissionPicker
+          id="stf-permissions"
+          value={values.permissions}
+          onChange={(permissions) => setField('permissions', permissions)}
+        />
+        <span className="field__help">
+          Tick sẵn theo vị trí đã chọn; tick thêm để cấp nhiều quyền — ví dụ Lễ tân kiêm Dọn dẹp thì nhận được
+          cả việc dọn phòng. Không tick ô nào: nhân viên chỉ có quyền chung (xem lịch, chấm công, xin nghỉ).
+        </span>
+      </div>
 
       <div className="field-row">
         <label className="field" htmlFor="stf-start">
@@ -315,7 +287,6 @@ export default function StaffForm({ editing, positions, locationName, onSubmit, 
           <input
             id="stf-start"
             type="date"
-            min={tomorrowIso()}
             value={values.startWorkDate}
             onChange={(e) => setField('startWorkDate', e.target.value)}
           />

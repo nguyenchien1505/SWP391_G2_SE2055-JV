@@ -21,6 +21,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
 import com.example.SWP391_G2_SE2055_JV.enums.ChangeSource;
 import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
@@ -47,6 +48,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.EnumSet;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -102,7 +104,8 @@ class HousekeepingFlowTest {
             .email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
             .fullName("Trần Quản Lý").phone("0900000000").build());
         cleaner = persist(User.builder().tenantId(tenantId).locationId(hanoi).role(Role.STAFF)
-            .positionId(cleanerPosition).email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
+            .positionId(cleanerPosition).permissions(EnumSet.of(StaffPermission.HOUSEKEEPING))
+            .email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
             .fullName("Phạm Dọn Dẹp").phone("0900000001").build());
         // BR-HK-03: có ca trong ngày mới nhận được task.
         persist(Shift.builder().tenantId(tenantId).locationId(hanoi).staffId(cleaner.getId())

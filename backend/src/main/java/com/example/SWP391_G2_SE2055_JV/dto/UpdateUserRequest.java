@@ -1,6 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.dto;
 
 import com.example.SWP391_G2_SE2055_JV.enums.Gender;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import jakarta.validation.constraints.Email;
 import lombok.Data;
 
@@ -22,8 +23,8 @@ public class UpdateUserRequest {
     private String    phone;
     private UUID      positionId;
 
-    /** Vị trí kiêm nhiệm — {@code null} = giữ nguyên, danh sách rỗng = bỏ hết kiêm nhiệm. */
-    private List<UUID> extraPositionIds;
+    /** Quyền nghiệp vụ — {@code null} = giữ nguyên, danh sách rỗng = bỏ hết (chỉ còn quyền chung). */
+    private List<StaffPermission> permissions;
 
     /**
      * CHỈ để gán khách sạn cho Manager dự bị (đang chưa có Location). Người đã có Location

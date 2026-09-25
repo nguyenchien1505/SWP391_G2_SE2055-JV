@@ -30,10 +30,3 @@ export function formatDate(value) {
 export function todayIso(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
-
-/** Ngày mai dạng "YYYY-MM-DD" — ngày sớm nhất được chọn làm ngày bắt đầu làm việc. */
-export function tomorrowIso() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return todayIso(date);
-}

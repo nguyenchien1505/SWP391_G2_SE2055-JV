@@ -2,6 +2,7 @@ package com.example.SWP391_G2_SE2055_JV.dto;
 
 import com.example.SWP391_G2_SE2055_JV.enums.Gender;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -46,10 +47,10 @@ public class CreateUserRequest {
     /** Vị trí CHÍNH. Department tự suy ra từ Position này, không nhập riêng — BR-ORG-07. */
     private UUID      positionId;
     /**
-     * Vị trí KIÊM NHIỆM cho nhân viên đa nhiệm — chỉ STAFF. Không bắt buộc; trùng lặp hoặc trùng
-     * vị trí chính thì tự bỏ qua.
+     * Quyền nghiệp vụ Manager tick (Lễ tân, Dọn dẹp…) — chỉ STAFF, được chọn nhiều ô hoặc không
+     * ô nào. {@code null} = lấy mặc định theo Loại của Position ({@code StaffPermission.defaultFor}).
      */
-    private List<UUID> extraPositionIds;
+    private List<StaffPermission> permissions;
     private LocalDate startWorkDate;
     private LocalDate dateOfBirth;
     private Gender    gender;

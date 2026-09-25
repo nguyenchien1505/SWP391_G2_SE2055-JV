@@ -1,7 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.config;
 
-import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -11,7 +11,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -23,12 +22,11 @@ import java.util.UUID;
  * <p>Cấp HAI loại authority vì phân quyền Milestone 1 đi theo hai trục (BR-ORG-08):
  * <ul>
  *   <li>{@code ROLE_*} theo {@link Role} — 4 giá trị của DM-01.</li>
- *   <li>{@code POSITION_*} theo {@link PositionType} — chỉ có với STAFF. Đây mới là
- *       thứ quyết định quyền nghiệp vụ đặc thù của Lễ tân / Dọn dẹp, vì hai vai trò
- *       này KHÔNG phải role mà là Loại Position.</li>
+ *   <li>{@code POSITION_*} theo {@link StaffPermission} — chỉ có với STAFF: mỗi quyền nghiệp vụ
+ *       Manager đã tick cho người này là một authority (Lễ tân kiêm Dọn dẹp có cả hai). Đây mới là
+ *       thứ quyết định quyền đặc thù của Lễ tân / Dọn dẹp, vì hai vai trò này KHÔNG phải role.</li>
  * </ul>
- * Position loại OTHER không nhận thêm quyền đặc thù nào — BR-ORG-09, BR-PERM-06. Nhân viên đa
- * nhiệm nhận một {@code POSITION_*} cho MỖI Loại mình giữ (vị trí chính và kiêm nhiệm).
+ * Nhân viên không được tick quyền nào chỉ có quyền chung — BR-ORG-09, BR-PERM-06.
  *
  * <p>{@code equals}/{@code hashCode} CHỈ theo {@code id}: SessionRegistry của
  * {@code maximumSessions(1)} dùng chúng để nhận ra "cùng một người" giữa các lần đăng
@@ -46,12 +44,11 @@ public class CustomUserDetails implements UserDetails {
     private final Role         role;
     private final UUID         tenantId;      // null với PLATFORM_ADMIN
     private final UUID         locationId;    // null với PLATFORM_ADMIN và DIRECTOR
-    private final UUID         positionId;    // vị trí chính — chỉ STAFF mới có
-    private final PositionType positionType;  // Loại của vị trí chính — chỉ STAFF mới có
+    private final UUID         positionId;    // chỉ STAFF mới có
 
-    /** Loại của các vị trí KIÊM NHIỆM (nhân viên đa nhiệm); rỗng nếu không kiêm nhiệm. */
+    /** Quyền nghiệp vụ Manager đã tick — chỉ STAFF; rỗng = chỉ có quyền chung. */
     @Builder.Default
-    private final Set<PositionType> extraPositionTypes = Set.of();
+    private final Set<StaffPermission> permissions = Set.of();
 
     private final boolean      mustChangePassword;
     private final boolean      enabled;
@@ -70,8 +67,7 @@ public class CustomUserDetails implements UserDetails {
     public boolean hasSameStateAs(CustomUserDetails other) {
         return other != null
             && role == other.role
-            && positionType == other.positionType
-            && getPositionTypes().equals(other.getPositionTypes())
+            && Objects.equals(permissions, other.permissions)
             && mustChangePassword == other.mustChangePassword
             && enabled == other.enabled
             && readOnly == other.readOnly
@@ -80,27 +76,16 @@ public class CustomUserDetails implements UserDetails {
             && Objects.equals(positionId, other.positionId);
     }
 
-    /**
-     * Mọi Loại Position người này giữ — vị trí chính và kiêm nhiệm. Quyền nghiệp vụ là HỢP của
-     * chúng: Lễ tân kiêm Dọn dẹp có cả quyền Lễ tân lẫn quyền Dọn dẹp.
-     */
-    public Set<PositionType> getPositionTypes() {
-        Set<PositionType> all = EnumSet.noneOf(PositionType.class);
-        if (positionType != null) {
-            all.add(positionType);
-        }
-        if (extraPositionTypes != null) {
-            all.addAll(extraPositionTypes);
-        }
-        return all;
+    public boolean hasPermission(StaffPermission permission) {
+        return permissions != null && permissions.contains(permission);
     }
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         List<GrantedAuthority> authorities = new ArrayList<>();
         authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name()));
-        for (PositionType type : getPositionTypes()) {
-            authorities.add(new SimpleGrantedAuthority("POSITION_" + type.name()));
+        for (StaffPermission permission : permissions) {
+            authorities.add(new SimpleGrantedAuthority(permission.authority()));
         }
         return authorities;
     }

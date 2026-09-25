@@ -3,6 +3,7 @@ package com.example.SWP391_G2_SE2055_JV.support;
 import com.example.SWP391_G2_SE2055_JV.config.CustomUserDetails;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -31,7 +32,10 @@ public final class TestAuth {
         return loginAs(Role.MANAGER, tenantId, locationId, null);
     }
 
-    /** Staff — trục 2 là Loại Position (BR-ORG-08): Lễ tân, Dọn dẹp hay Khác. */
+    /**
+     * Staff với quyền mặc định của một Loại Position: Lễ tân, Dọn dẹp hay Khác (không quyền nào).
+     * Cần tổ hợp quyền khác thì dựng {@link CustomUserDetails} trực tiếp.
+     */
     public static CustomUserDetails loginAsStaff(UUID tenantId, UUID locationId, PositionType positionType) {
         return loginAs(Role.STAFF, tenantId, locationId, positionType);
     }
@@ -53,7 +57,7 @@ public final class TestAuth {
             .role(role)
             .tenantId(tenantId)
             .locationId(locationId)
-            .positionType(positionType)
+            .permissions(role == Role.STAFF ? StaffPermission.defaultFor(positionType) : java.util.Set.of())
             .enabled(true)
             .build();
         SecurityContextHolder.getContext().setAuthentication(

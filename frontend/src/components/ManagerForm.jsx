@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { tomorrowIso } from '../pages/rooms/format';
 
 const GENDERS = [
   { value: 'MALE', label: 'Nam' },
@@ -86,13 +85,6 @@ export default function ManagerForm({
     // Để trống thì backend hiểu là Manager dự bị — bắt chọn rõ "Khác" để không tạo nhầm.
     if (!editing && !handover && values.locationId === '') {
       setError('Chọn khách sạn điều hành, hoặc chọn "Khác" để tạo Manager dự bị.');
-      return;
-    }
-    // Ngày bắt đầu làm phải sau hôm nay. Sửa hồ sơ mà giữ nguyên ngày cũ thì không kiểm —
-    // người đã đi làm có ngày bắt đầu nằm trong quá khứ.
-    const startDateChanged = !editing || values.startWorkDate !== (editing.startWorkDate ?? '');
-    if (startDateChanged && values.startWorkDate && values.startWorkDate < tomorrowIso()) {
-      setError('Ngày bắt đầu làm phải sau ngày hôm nay.');
       return;
     }
     setSubmitting(true);
@@ -293,7 +285,6 @@ export default function ManagerForm({
           <input
             id="mgr-start"
             type="date"
-            min={tomorrowIso()}
             value={values.startWorkDate}
             onChange={(e) => setField('startWorkDate', e.target.value)}
           />
