@@ -59,7 +59,10 @@ export async function terminateWithHandover(id, handover) {
   return data; // { user, replacement, tempPassword }
 }
 
-/** Xóa vĩnh viễn Manager đã nghỉ việc; backend từ chối nếu tài khoản đã phát sinh dữ liệu. */
+/**
+ * Xóa vĩnh viễn: Manager xóa Staff (mọi trạng thái), Giám đốc xóa Manager đã nghỉ việc. Backend
+ * từ chối nếu tài khoản đã phát sinh dữ liệu.
+ */
 export async function deleteUserPermanently(id) {
   await api.delete(`/users/${id}/permanent`);
 }

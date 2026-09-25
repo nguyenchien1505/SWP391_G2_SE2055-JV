@@ -8,7 +8,6 @@ import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
-import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
@@ -47,8 +46,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -80,6 +81,7 @@ class HousekeepingServiceTest {
     private static final UUID ROOM_ID           = UUID.randomUUID();
     private static final UUID STAFF_ID          = UUID.randomUUID();
     private static final UUID POSITION_ID       = UUID.randomUUID();
+    private static final UUID EXTRA_POSITION_ID = UUID.randomUUID();
 
     /** Múi giờ của khách sạn mẫu; "hôm nay" trong test luôn tính theo đúng mốc này (BR-SCH-17). */
     private static final String TIMEZONE = "Asia/Ho_Chi_Minh";
@@ -178,12 +180,27 @@ class HousekeepingServiceTest {
             stubTask(task);
             stubLocation();
             stubStaff(housekeepingStaff());
-            when(positionRepository.findById(POSITION_ID))
-                .thenReturn(Optional.of(position(PositionType.RECEPTION)));
+            when(positionRepository.existsByIdInAndPositionType(any(), eq(PositionType.HOUSEKEEPING)))
+                .thenReturn(false);
 
             assertThatThrownBy(() -> service.assignTask(task.getId(), request(today)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Dọn dẹp");
+        }
+
+        /** Nhân viên đa nhiệm: Loại Dọn dẹp được tìm trên CẢ vị trí chính lẫn vị trí kiêm nhiệm. */
+        @Test
+        void shouldCheckHousekeepingAcrossPrimaryAndExtraPositions() {
+            HousekeepingTask task = unassignedTask(HousekeepingTaskType.STAYOVER);
+            User multiRole = housekeepingStaff();
+            multiRole.setExtraPositionIds(new LinkedHashSet<>(List.of(EXTRA_POSITION_ID)));
+            stubAssignReady(task, multiRole);
+
+            service.assignTask(task.getId(), request(today));
+
+            verify(positionRepository).existsByIdInAndPositionType(
+                Set.of(POSITION_ID, EXTRA_POSITION_ID), PositionType.HOUSEKEEPING);
+            assertThat(task.getAssignedStaffId()).isEqualTo(STAFF_ID);
         }
 
         @Test
@@ -722,9 +739,13 @@ class HousekeepingServiceTest {
 
     /** Stub đủ để một lệnh gán chạy trót lọt; trả về phòng để test verify lời gọi RoomStatusService. */
     private Room stubAssignReady(HousekeepingTask task) {
+        return stubAssignReady(task, housekeepingStaff());
+    }
+
+    private Room stubAssignReady(HousekeepingTask task, User staff) {
         stubTask(task);
         stubLocation();
-        stubStaff(housekeepingStaff());
+        stubStaff(staff);
         lenient().when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_ID, today)).thenReturn(true);
         Room room = room();
         lenient().when(roomRepository.findByIdAndTenantIdAndActiveTrue(ROOM_ID, TENANT_ID))
@@ -755,8 +776,8 @@ class HousekeepingServiceTest {
 
     private void stubStaff(User staff) {
         when(userRepository.findByIdAndTenantId(STAFF_ID, TENANT_ID)).thenReturn(Optional.of(staff));
-        lenient().when(positionRepository.findById(POSITION_ID))
-            .thenReturn(Optional.of(position(PositionType.HOUSEKEEPING)));
+        lenient().when(positionRepository.existsByIdInAndPositionType(any(), eq(PositionType.HOUSEKEEPING)))
+            .thenReturn(true);
     }
 
     private static AssignTaskRequest request(LocalDate date) {
@@ -772,11 +793,6 @@ class HousekeepingServiceTest {
             .role(Role.STAFF).status(UserStatus.ACTIVE)
             .email("dondep@test.local").passwordHash("x").fullName("Phạm Dọn Dẹp").phone("0900000000")
             .build();
-    }
-
-    private static Position position(PositionType type) {
-        return Position.builder().id(POSITION_ID).tenantId(TENANT_ID)
-            .departmentId(UUID.randomUUID()).name("Nhân viên dọn phòng").positionType(type).build();
     }
 
     private static Room room() {

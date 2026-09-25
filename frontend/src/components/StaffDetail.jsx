@@ -7,7 +7,7 @@ function formatDate(value) {
 }
 
 /** Xem hồ sơ nhân viên (chỉ đọc). Đặt trong FormModal; `onEdit` null thì ẩn nút sửa. */
-export default function StaffDetail({ staff, position, locationName, status, onClose, onEdit }) {
+export default function StaffDetail({ staff, position, extraPositions = [], locationName, status, onClose, onEdit }) {
   return (
     <div className="form">
       <header className="form__head">
@@ -34,6 +34,14 @@ export default function StaffDetail({ staff, position, locationName, status, onC
         <dd>{staff.phone}</dd>
         <dt>Loại vị trí</dt>
         <dd>{POSITION_TYPE_LABEL[position?.positionType] ?? '—'}</dd>
+        <dt>Kiêm nhiệm</dt>
+        <dd>
+          {extraPositions.length === 0
+            ? 'Không'
+            : extraPositions
+                .map((p) => `${p.name} (${POSITION_TYPE_LABEL[p.positionType] ?? p.positionType})`)
+                .join(', ')}
+        </dd>
         <dt>Khách sạn công tác</dt>
         <dd>🏨 {locationName ?? '—'}</dd>
         <dt>Ngày bắt đầu làm việc</dt>

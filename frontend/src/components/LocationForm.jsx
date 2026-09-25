@@ -1,21 +1,17 @@
 import { useState } from 'react';
 
-// Backend validate múi giờ bằng ZoneId.of() và chặn giá trị lạ (BR-SCH-17 dùng nó để xác
-// định "ca tương lai"), nên cho chọn từ danh sách thay vì gõ tay.
-const TIMEZONES = [
-  'Asia/Ho_Chi_Minh',
-  'Asia/Bangkok',
-  'Asia/Singapore',
-  'Asia/Tokyo',
-  'Asia/Seoul',
-];
+// Hệ thống chỉ chạy theo giờ Hà Nội — backend từ chối mọi múi giờ khác (BR-SCH-17 dùng nó để
+// xác định "ca tương lai"). IANA không có mã riêng cho Hà Nội; cả Việt Nam dùng Asia/Ho_Chi_Minh.
+const HANOI_TIMEZONE = 'Asia/Ho_Chi_Minh';
+
+// Khách sạn chỉ được chọn 1–3 sao.
+const STAR_OPTIONS = [1, 2, 3];
 
 const EMPTY = {
   name: '',
   address: '',
   phone: '',
   starRating: '3',
-  timezone: 'Asia/Ho_Chi_Minh',
 };
 
 export default function LocationForm({ editing, canManage, onSubmit, onCancel }) {
@@ -26,10 +22,14 @@ export default function LocationForm({ editing, canManage, onSubmit, onCancel })
           address: editing.address ?? '',
           phone: editing.phone ?? '',
           starRating: editing.starRating ? String(editing.starRating) : '',
-          timezone: editing.timezone ?? 'Asia/Ho_Chi_Minh',
         }
       : EMPTY,
   );
+
+  // Khách sạn cũ đã lưu 4–5 sao: vẫn hiện đúng hạng hiện tại để sửa thông tin khác được, nhưng
+  // không chọn lại được hạng đó sau khi đã đổi sang 1–3 sao (backend chặn nâng lên trên 3 sao).
+  const starOptions =
+    editing?.starRating > STAR_OPTIONS.length ? [...STAR_OPTIONS, editing.starRating] : STAR_OPTIONS;
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -50,7 +50,7 @@ export default function LocationForm({ editing, canManage, onSubmit, onCancel })
       address: values.address.trim(),
       phone: values.phone.trim(),
       starRating: values.starRating === '' ? null : Number(values.starRating),
-      timezone: values.timezone,
+      timezone: HANOI_TIMEZONE,
     };
 
     const message = await onSubmit(payload);
@@ -131,7 +131,7 @@ export default function LocationForm({ editing, canManage, onSubmit, onCancel })
             disabled={contactOnly}
           >
             <option value="">Chưa xếp hạng</option>
-            {[1, 2, 3, 4, 5].map((n) => (
+            {starOptions.map((n) => (
               <option key={n} value={String(n)}>
                 {n} sao
               </option>
@@ -140,24 +140,13 @@ export default function LocationForm({ editing, canManage, onSubmit, onCancel })
         </label>
       </div>
 
-      <label className="field" htmlFor="loc-tz">
+      <div className="field">
         <span className="field__label">Múi giờ hoạt động</span>
-        <select
-          id="loc-tz"
-          value={values.timezone}
-          onChange={(e) => setField('timezone', e.target.value)}
-          disabled={contactOnly}
-        >
-          {TIMEZONES.map((tz) => (
-            <option key={tz} value={tz}>
-              {tz}
-            </option>
-          ))}
-        </select>
+        <div className="readonly-box">🕒 Hà Nội (GMT+7)</div>
         <span className="field__help">
-          Dùng để xác định ca làm việc thuộc ngày nào tại chi nhánh này.
+          Mọi chi nhánh dùng chung giờ Hà Nội để xác định ca làm việc thuộc ngày nào.
         </span>
-      </label>
+      </div>
 
       <div className="readonly-box">
         <b>Trạng thái vận hành</b>

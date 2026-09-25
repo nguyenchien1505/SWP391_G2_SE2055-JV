@@ -9,6 +9,7 @@ import lombok.Data;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -25,6 +26,8 @@ public class UserResponse {
     private String        phone;
     private UUID          locationId;
     private UUID          positionId;
+    /** Vị trí kiêm nhiệm (nhân viên đa nhiệm) — không gồm {@code positionId}. */
+    private List<UUID>    extraPositionIds;
     private LocalDate     startWorkDate;
     private LocalDate     dateOfBirth;
     private Gender        gender;
@@ -45,6 +48,7 @@ public class UserResponse {
             .phone(user.getPhone())
             .locationId(user.getLocationId())
             .positionId(user.getPositionId())
+            .extraPositionIds(List.copyOf(user.getExtraPositionIds()))
             .startWorkDate(user.getStartWorkDate())
             .dateOfBirth(user.getDateOfBirth())
             .gender(user.getGender())

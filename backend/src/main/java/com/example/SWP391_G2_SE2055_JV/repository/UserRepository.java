@@ -6,6 +6,8 @@ import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -40,7 +42,15 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     /** BR-ORG-05, BR-ORG-10: chặn xóa khi còn tham chiếu, TÍNH CẢ người đã nghỉ việc. */
     boolean existsByLocationId(UUID locationId);
 
-    boolean existsByPositionId(UUID positionId);
+    /**
+     * Có ai giữ Position này không — làm vị trí chính HOẶC kiêm nhiệm, tính cả người đã nghỉ việc
+     * (BR-ORG-10). Dùng để chặn xóa và chặn đổi Loại chức danh.
+     */
+    @Query("""
+        select case when count(u) > 0 then true else false end from User u
+        where u.positionId = :positionId or :positionId member of u.extraPositionIds
+        """)
+    boolean isPositionHeld(@Param("positionId") UUID positionId);
 
     /** BR-ORG-02: Location phải có Manager mới được vận hành chính thức. */
     Optional<User> findFirstByLocationIdAndRoleAndStatus(UUID locationId, Role role, UserStatus status);

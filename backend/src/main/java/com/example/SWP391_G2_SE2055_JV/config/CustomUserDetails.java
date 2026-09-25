@@ -11,8 +11,10 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -25,7 +27,8 @@ import java.util.UUID;
  *       thứ quyết định quyền nghiệp vụ đặc thù của Lễ tân / Dọn dẹp, vì hai vai trò
  *       này KHÔNG phải role mà là Loại Position.</li>
  * </ul>
- * Position loại OTHER không nhận thêm quyền đặc thù nào — BR-ORG-09, BR-PERM-06.
+ * Position loại OTHER không nhận thêm quyền đặc thù nào — BR-ORG-09, BR-PERM-06. Nhân viên đa
+ * nhiệm nhận một {@code POSITION_*} cho MỖI Loại mình giữ (vị trí chính và kiêm nhiệm).
  *
  * <p>{@code equals}/{@code hashCode} CHỈ theo {@code id}: SessionRegistry của
  * {@code maximumSessions(1)} dùng chúng để nhận ra "cùng một người" giữa các lần đăng
@@ -43,8 +46,13 @@ public class CustomUserDetails implements UserDetails {
     private final Role         role;
     private final UUID         tenantId;      // null với PLATFORM_ADMIN
     private final UUID         locationId;    // null với PLATFORM_ADMIN và DIRECTOR
-    private final UUID         positionId;    // chỉ STAFF mới có
-    private final PositionType positionType;  // chỉ STAFF mới có
+    private final UUID         positionId;    // vị trí chính — chỉ STAFF mới có
+    private final PositionType positionType;  // Loại của vị trí chính — chỉ STAFF mới có
+
+    /** Loại của các vị trí KIÊM NHIỆM (nhân viên đa nhiệm); rỗng nếu không kiêm nhiệm. */
+    @Builder.Default
+    private final Set<PositionType> extraPositionTypes = Set.of();
+
     private final boolean      mustChangePassword;
     private final boolean      enabled;
 
@@ -63,6 +71,7 @@ public class CustomUserDetails implements UserDetails {
         return other != null
             && role == other.role
             && positionType == other.positionType
+            && getPositionTypes().equals(other.getPositionTypes())
             && mustChangePassword == other.mustChangePassword
             && enabled == other.enabled
             && readOnly == other.readOnly
@@ -71,12 +80,27 @@ public class CustomUserDetails implements UserDetails {
             && Objects.equals(positionId, other.positionId);
     }
 
+    /**
+     * Mọi Loại Position người này giữ — vị trí chính và kiêm nhiệm. Quyền nghiệp vụ là HỢP của
+     * chúng: Lễ tân kiêm Dọn dẹp có cả quyền Lễ tân lẫn quyền Dọn dẹp.
+     */
+    public Set<PositionType> getPositionTypes() {
+        Set<PositionType> all = EnumSet.noneOf(PositionType.class);
+        if (positionType != null) {
+            all.add(positionType);
+        }
+        if (extraPositionTypes != null) {
+            all.addAll(extraPositionTypes);
+        }
+        return all;
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        List<GrantedAuthority> authorities = new ArrayList<>(2);
+        List<GrantedAuthority> authorities = new ArrayList<>();
         authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name()));
-        if (positionType != null) {
-            authorities.add(new SimpleGrantedAuthority("POSITION_" + positionType.name()));
+        for (PositionType type : getPositionTypes()) {
+            authorities.add(new SimpleGrantedAuthority("POSITION_" + type.name()));
         }
         return authorities;
     }

@@ -5,8 +5,11 @@ import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,4 +45,18 @@ public interface PositionRepository extends JpaRepository<Position, UUID> {
 
     /** BR-ORG-10: chặn xóa Department khi còn Position trỏ vào. */
     boolean existsByDepartmentId(UUID departmentId);
+
+    /** Trong các Position này có cái nào thuộc Loại cho trước không — nhân viên đa nhiệm. */
+    boolean existsByIdInAndPositionType(Collection<UUID> ids, PositionType positionType);
+
+    /**
+     * Loại của các Position KIÊM NHIỆM mà một người giữ — để dựng principal trong session. Truy
+     * vấn riêng thay vì đọc {@code User.extraPositionIds}: entity truyền vào lúc đó có thể đã tách
+     * khỏi session (open-in-view tắt) nên collection lazy không nạp được.
+     */
+    @Query("""
+        select p.positionType from User u join u.extraPositionIds x, Position p
+        where u.id = :userId and p.id = x
+        """)
+    List<PositionType> findExtraPositionTypesOfUser(@Param("userId") UUID userId);
 }

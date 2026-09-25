@@ -20,8 +20,12 @@ const isManagement = (user) => user?.role === 'DIRECTOR' || user?.role === 'MANA
  */
 const isBranchManager = (user) => user?.role === 'MANAGER';
 
-/** Chỉ nhân viên Dọn dẹp mới có việc dọn của riêng mình — BR-PERM-05, BR-ORG-08. */
-const isHousekeeper = (user) => user?.positionType === 'HOUSEKEEPING';
+/**
+ * Chỉ nhân viên Dọn dẹp mới có việc dọn của riêng mình — BR-PERM-05, BR-ORG-08. Tính cả nhân viên
+ * đa nhiệm kiêm Dọn dẹp (`positionTypes` gồm vị trí chính và kiêm nhiệm).
+ */
+const isHousekeeper = (user) =>
+  (user?.positionTypes ?? [user?.positionType]).includes('HOUSEKEEPING');
 
 /** Chỉ Giám đốc quản lý tài khoản Manager — BR-PERM-02. */
 const isDirector = (user) => user?.role === 'DIRECTOR';

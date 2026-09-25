@@ -93,13 +93,13 @@ public class UserController {
     }
 
     /**
-     * Xóa VĨNH VIỄN Manager đã nghỉ việc và chưa phát sinh dữ liệu nào. Còn dữ liệu tham chiếu
-     * thì từ chối, tài khoản giữ ở trạng thái "Đã nghỉ việc".
+     * Xóa VĨNH VIỄN tài khoản chưa phát sinh dữ liệu nào: Manager xóa Staff (mọi trạng thái),
+     * Giám đốc xóa Manager đã nghỉ việc. Còn dữ liệu tham chiếu thì từ chối, tài khoản giữ nguyên.
      */
     @DeleteMapping("/{id}/permanent")
-    @PreAuthorize("hasRole('DIRECTOR')")
-    public ResponseEntity<Void> deleteTerminatedManager(@PathVariable UUID id) {
-        userService.deleteTerminatedManager(id);
+    @PreAuthorize("hasAnyRole('DIRECTOR','MANAGER')")
+    public ResponseEntity<Void> deleteUserPermanently(@PathVariable UUID id) {
+        userService.deleteUserPermanently(id);
         return ResponseEntity.noContent().build();
     }
 

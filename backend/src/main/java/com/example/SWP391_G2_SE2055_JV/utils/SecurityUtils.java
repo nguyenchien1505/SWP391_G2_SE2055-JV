@@ -95,9 +95,12 @@ public final class SecurityUtils {
         return false;
     }
 
-    /** Quyền nghiệp vụ đặc thù đi theo Loại Position, không theo role — BR-ORG-08. */
+    /**
+     * Quyền nghiệp vụ đặc thù đi theo Loại Position, không theo role — BR-ORG-08. Tính cả vị trí
+     * kiêm nhiệm của nhân viên đa nhiệm.
+     */
     public static boolean hasPositionType(PositionType type) {
         CustomUserDetails user = getCurrentUserOrNull();
-        return user != null && user.getPositionType() == type;
+        return user != null && user.getPositionTypes().contains(type);
     }
 }

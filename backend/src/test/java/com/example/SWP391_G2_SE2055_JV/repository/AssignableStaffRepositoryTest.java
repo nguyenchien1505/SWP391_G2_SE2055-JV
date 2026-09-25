@@ -24,7 +24,9 @@ import org.springframework.test.context.ActiveProfiles;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,6 +50,7 @@ class AssignableStaffRepositoryTest {
     private UUID tenantId;
     private UUID hanoi;
     private UUID danang;
+    private UUID department;
     private UUID housekeepingPosition;
     private UUID receptionPosition;
     private LocalDate today;
@@ -64,7 +67,7 @@ class AssignableStaffRepositoryTest {
         hanoi = persistLocation("Sao Mai Hà Nội");
         danang = persistLocation("Sao Mai Đà Nẵng");
 
-        UUID department = persist(Department.builder().tenantId(tenantId).name("Buồng phòng").build()).getId();
+        department = persist(Department.builder().tenantId(tenantId).name("Buồng phòng").build()).getId();
         housekeepingPosition = persistPosition(department, "Nhân viên dọn phòng", PositionType.HOUSEKEEPING);
         receptionPosition = persistPosition(department, "Nhân viên lễ tân", PositionType.RECEPTION);
 
@@ -121,6 +124,31 @@ class AssignableStaffRepositoryTest {
         assertThat(findAssignable(hanoi, today)).hasSize(1);
     }
 
+    /** Nhân viên đa nhiệm: vị trí chính Lễ tân, KIÊM NHIỆM Dọn dẹp — vẫn nhận được việc dọn. */
+    @Test
+    void shouldIncludeStaffHoldingHousekeepingAsExtraPosition() {
+        persistStaffWithShift("Đỗ Đa Nhiệm", hanoi, receptionPosition, Set.of(housekeepingPosition),
+            UserStatus.ACTIVE, today);
+        em.flush();
+        em.clear();
+
+        assertThat(names(findAssignable(hanoi, today)))
+            .containsExactlyInAnyOrder("Phạm Dọn Dẹp", "Đỗ Đa Nhiệm");
+    }
+
+    /** Giữ HAI vị trí cùng Loại Dọn dẹp (chính + kiêm nhiệm) vẫn chỉ hiện MỘT lần. */
+    @Test
+    void shouldNotDuplicateStaffHoldingTwoHousekeepingPositions() {
+        UUID supervisor = persistPosition(department, "Giám sát buồng", PositionType.HOUSEKEEPING);
+        persistStaffWithShift("Hồ Hai Vị Trí", hanoi, housekeepingPosition, Set.of(supervisor),
+            UserStatus.ACTIVE, today);
+        em.flush();
+        em.clear();
+
+        assertThat(names(findAssignable(hanoi, today)))
+            .containsExactlyInAnyOrder("Phạm Dọn Dẹp", "Hồ Hai Vị Trí");
+    }
+
     @Test
     void shouldNotReturnStaffOfAnotherTenant() {
         assertThat(repository.findAssignable(UUID.randomUUID(), hanoi, today,
@@ -140,8 +168,14 @@ class AssignableStaffRepositoryTest {
 
     private void persistStaffWithShift(String fullName, UUID locationId, UUID positionId,
                                        UserStatus status, LocalDate shiftDate) {
+        persistStaffWithShift(fullName, locationId, positionId, Set.of(), status, shiftDate);
+    }
+
+    private void persistStaffWithShift(String fullName, UUID locationId, UUID positionId,
+                                       Set<UUID> extraPositionIds, UserStatus status, LocalDate shiftDate) {
         User staff = persist(User.builder()
             .tenantId(tenantId).locationId(locationId).positionId(positionId)
+            .extraPositionIds(new LinkedHashSet<>(extraPositionIds))
             .role(Role.STAFF).status(status)
             .email(uniqueEmail()).passwordHash("x").fullName(fullName).phone("0900000000")
             .build());

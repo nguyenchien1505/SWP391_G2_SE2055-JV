@@ -11,6 +11,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Set;
+
 @Service
 @RequiredArgsConstructor
 public class UserDetailsServiceImpl implements UserDetailsService {
@@ -36,6 +38,10 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             : positionRepository.findById(user.getPositionId())
                 .map(Position::getPositionType)
                 .orElse(null);
+        // Chỉ STAFF có Position, nên người không có vị trí chính thì cũng không có kiêm nhiệm.
+        Set<PositionType> extraPositionTypes = user.getPositionId() == null
+            ? Set.of()
+            : Set.copyOf(positionRepository.findExtraPositionTypesOfUser(user.getId()));
 
         // Trạng thái Tenant quyết định người này vào được tới đâu — xem TenantAccessPolicy.
         // BR-SAAS-11 (chặn hoàn toàn khi SUSPENDED) được điều chỉnh: Giám đốc của Tenant hết hạn
@@ -51,6 +57,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             .locationId(user.getLocationId())
             .positionId(user.getPositionId())
             .positionType(positionType)
+            .extraPositionTypes(extraPositionTypes)
             .mustChangePassword(user.isMustChangePassword())
             .enabled(user.isActive() && access != TenantAccessPolicy.Mode.BLOCKED)
             .readOnly(access == TenantAccessPolicy.Mode.READ_ONLY)

@@ -27,11 +27,15 @@ public class UpdateLocationRequest {
     @Size(max = 30, message = "Số điện thoại tối đa 30 ký tự")
     private String phone;
 
+    /**
+     * Để 1–5 cho khách sạn cũ đã lưu 4–5 sao vẫn sửa được thông tin khác; ĐỔI sang hạng trên 3
+     * sao bị chặn ở {@code LocationService}, cùng mức với lúc tạo.
+     */
     @Min(value = 1, message = "Hạng sao phải từ 1 đến 5")
     @Max(value = 5, message = "Hạng sao phải từ 1 đến 5")
     private Integer starRating;
 
-    /** Đổi múi giờ làm dịch mốc "ca tương lai" (BR-SCH-17) nên chỉ Giám đốc được sửa. */
+    /** Chỉ nhận giờ Hà Nội ({@code Asia/Ho_Chi_Minh}) — xem {@code LocationService}. */
     @NotBlank(message = "Múi giờ là bắt buộc")
     @Size(max = 64, message = "Múi giờ tối đa 64 ký tự")
     private String timezone;

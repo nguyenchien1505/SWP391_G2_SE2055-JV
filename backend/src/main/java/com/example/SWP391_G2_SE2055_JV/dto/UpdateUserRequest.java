@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Email;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -20,6 +21,9 @@ public class UpdateUserRequest {
     private String    fullName;
     private String    phone;
     private UUID      positionId;
+
+    /** Vị trí kiêm nhiệm — {@code null} = giữ nguyên, danh sách rỗng = bỏ hết kiêm nhiệm. */
+    private List<UUID> extraPositionIds;
 
     /**
      * CHỈ để gán khách sạn cho Manager dự bị (đang chưa có Location). Người đã có Location

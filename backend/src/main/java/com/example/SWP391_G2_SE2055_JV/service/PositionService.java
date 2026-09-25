@@ -109,7 +109,7 @@ public class PositionService {
 
         boolean changingType = request.getPositionType() != null
             && request.getPositionType() != position.getPositionType();
-        if (changingType && userRepository.existsByPositionId(position.getId())) {
+        if (changingType && userRepository.isPositionHeld(position.getId())) {
             throw new BusinessException(
                 "Không đổi được Loại chức danh khi đã có nhân viên được gán: quyền nghiệp vụ "
                 + "đi theo Loại. Hãy tạo chức danh mới.");
@@ -134,14 +134,15 @@ public class PositionService {
     }
 
     /**
-     * BR-ORG-10: chặn cứng nếu đang có nhân viên gắn với chức danh này, TÍNH CẢ người đã
-     * nghỉ việc — hồ sơ của họ vẫn trỏ vào Position để tra lịch sử (BR-USER-04).
+     * BR-ORG-10: chặn cứng nếu đang có nhân viên gắn với chức danh này — làm vị trí chính hoặc
+     * kiêm nhiệm — TÍNH CẢ người đã nghỉ việc: hồ sơ của họ vẫn trỏ vào Position để tra lịch sử
+     * (BR-USER-04).
      */
     @Transactional
     public void deletePosition(UUID id) {
         Position position = getOwnedPosition(id);
 
-        if (userRepository.existsByPositionId(position.getId())) {
+        if (userRepository.isPositionHeld(position.getId())) {
             throw new BusinessException(
                 "Không xóa được Chức danh: vẫn còn nhân viên được gán (tính cả người đã nghỉ việc). "
                 + "Hãy ẩn chức danh thay vì xóa.");

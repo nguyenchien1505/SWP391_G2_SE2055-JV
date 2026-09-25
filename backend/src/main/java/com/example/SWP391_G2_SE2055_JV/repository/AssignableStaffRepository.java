@@ -16,7 +16,8 @@ import java.util.UUID;
  * Ai nhận được task dọn phòng trong một ngày — BR-HK-02, BR-HK-03, BR-PERM-05.
  *
  * <p>Điều kiện ở đây là BẢN SAO ĐÚNG của {@code HousekeepingService.assertCanReceiveTask}: nhân
- * viên đang làm việc, cùng Location với phòng, Position loại Dọn dẹp, và CÓ CA trong ngày đó.
+ * viên đang làm việc, cùng Location với phòng, có Position loại Dọn dẹp (vị trí chính hoặc kiêm
+ * nhiệm), và CÓ CA trong ngày đó.
  * Nhờ vậy mọi người hiện ra trong hộp thoại phân công đều gán được — Manager không bấm rồi mới
  * nhận lỗi. Đổi luật ở một nơi thì phải đổi cả hai.
  *
@@ -31,17 +32,19 @@ public interface AssignableStaffRepository extends Repository<User, UUID> {
      * Enum truyền bằng tham số thay vì viết chuỗi thẳng trong JPQL — cùng cách với
      * {@code TenantUsageRepository.countUsers}, để đổi tên hằng enum là trình biên dịch báo ngay.
      *
-     * <p>Điều kiện có ca dùng {@code exists} chứ không {@code join}: một người có thể có nhiều ca
-     * trong ngày, {@code join} sẽ nhân dòng và trả trùng tên.
+     * <p>Điều kiện có ca và điều kiện Position đều dùng {@code exists} chứ không {@code join}: một
+     * người có thể có nhiều ca trong ngày, hoặc giữ nhiều Position cùng Loại (vị trí chính và kiêm
+     * nhiệm) — {@code join} sẽ nhân dòng và trả trùng tên.
      */
     @Query("""
-        select u from User u, Position p
-        where p.id = u.positionId
-          and u.tenantId = :tenantId
+        select u from User u
+        where u.tenantId = :tenantId
           and u.locationId = :locationId
           and u.role = :role
           and u.status = :status
-          and p.positionType = :positionType
+          and exists (select 1 from Position p
+                      where p.positionType = :positionType
+                        and (p.id = u.positionId or p.id member of u.extraPositionIds))
           and exists (select 1 from Shift s where s.staffId = u.id and s.shiftDate = :date)
         order by u.fullName
         """)

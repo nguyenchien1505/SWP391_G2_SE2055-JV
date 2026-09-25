@@ -16,6 +16,7 @@ import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.SubscriptionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
+import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -23,8 +24,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.DateTimeException;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -116,6 +115,7 @@ public class LocationService {
         location.setName(request.getName().trim());
         location.setAddress(request.getAddress().trim());
         location.setPhone(request.getPhone().trim());
+        assertStarRatingAllowed(request.getStarRating(), location.getStarRating());
         location.setStarRating(request.getStarRating());
         location.setTimezone(normalizeTimezone(request.getTimezone()));
 
@@ -234,19 +234,29 @@ public class LocationService {
     }
 
     /**
-     * Múi giờ sai làm lệch mốc "ca tương lai" của cả Location (BR-SCH-17), và job dọn ca
-     * chạy theo giá trị này — chặn ngay từ lúc nhập thay vì để hỏng lúc chạy.
+     * Hệ thống chỉ chạy theo giờ Hà Nội: bỏ trống thì lấy mặc định, múi giờ khác bị từ chối
+     * (mốc "ca tương lai" — BR-SCH-17 — và job dọn ca đều đọc giá trị này).
      */
     private static String normalizeTimezone(String timezone) {
+        String hanoi = ShiftTimeUtils.HANOI_ZONE.getId();
         if (timezone == null || timezone.isBlank()) {
-            return "Asia/Ho_Chi_Minh";
+            return hanoi;
         }
-        String value = timezone.trim();
-        try {
-            ZoneId.of(value);
-        } catch (DateTimeException ex) {
-            throw new BusinessException("Múi giờ không hợp lệ: " + value);
+        if (!hanoi.equals(timezone.trim())) {
+            throw new BusinessException("Chỉ hỗ trợ múi giờ Hà Nội (" + hanoi + ").");
         }
-        return value;
+        return hanoi;
+    }
+
+    /**
+     * Khách sạn mới chỉ được 1–3 sao (chặn ở {@link CreateLocationRequest}). Khi sửa chỉ kiểm lúc
+     * ĐỔI hạng: khách sạn cũ đã lưu 4–5 sao vẫn sửa được thông tin khác, nhưng không ai nâng
+     * một khách sạn lên trên 3 sao được.
+     */
+    private static void assertStarRatingAllowed(Integer newRating, Integer currentRating) {
+        int max = CreateLocationRequest.MAX_STAR_RATING;
+        if (newRating != null && !newRating.equals(currentRating) && newRating > max) {
+            throw new BusinessException("Hạng sao chỉ được chọn từ 1 đến " + max + ".");
+        }
     }
 }

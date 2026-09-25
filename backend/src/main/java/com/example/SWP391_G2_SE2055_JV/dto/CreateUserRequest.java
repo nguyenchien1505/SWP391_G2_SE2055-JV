@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -42,8 +43,13 @@ public class CreateUserRequest {
     private String phone;
 
     private UUID      locationId;
-    /** Department tự suy ra từ Position, không nhập riêng — BR-ORG-07. */
+    /** Vị trí CHÍNH. Department tự suy ra từ Position này, không nhập riêng — BR-ORG-07. */
     private UUID      positionId;
+    /**
+     * Vị trí KIÊM NHIỆM cho nhân viên đa nhiệm — chỉ STAFF. Không bắt buộc; trùng lặp hoặc trùng
+     * vị trí chính thì tự bỏ qua.
+     */
+    private List<UUID> extraPositionIds;
     private LocalDate startWorkDate;
     private LocalDate dateOfBirth;
     private Gender    gender;

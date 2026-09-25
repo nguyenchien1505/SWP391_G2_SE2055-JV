@@ -16,6 +16,9 @@ import lombok.Data;
 @Data
 public class CreateLocationRequest {
 
+    /** Hạng sao cao nhất được chọn khi tạo khách sạn — BR-ORG-04 nhắm phân khúc bình dân. */
+    public static final int MAX_STAR_RATING = 3;
+
     @NotBlank(message = "Tên khách sạn là bắt buộc")
     @Size(max = 255, message = "Tên khách sạn tối đa 255 ký tự")
     private String name;
@@ -28,14 +31,14 @@ public class CreateLocationRequest {
     @Size(max = 30, message = "Số điện thoại tối đa 30 ký tự")
     private String phone;
 
-    /** BR-ORG-04: thị trường mục tiêu 2-3 sao; cho phép 1-5 để không chặn oan. */
-    @Min(value = 1, message = "Hạng sao phải từ 1 đến 5")
-    @Max(value = 5, message = "Hạng sao phải từ 1 đến 5")
+    /** Chỉ 1–3 sao. DB vẫn để CHECK 1–5 cho dữ liệu cũ, siết ở tầng validate. */
+    @Min(value = 1, message = "Hạng sao chỉ được chọn từ 1 đến 3")
+    @Max(value = MAX_STAR_RATING, message = "Hạng sao chỉ được chọn từ 1 đến 3")
     private Integer starRating;
 
     /**
-     * Mốc xác định "ca tương lai" của Location này — BR-SCH-17. Bỏ trống thì dùng
-     * {@code Asia/Ho_Chi_Minh}.
+     * Mốc xác định "ca tương lai" của Location này — BR-SCH-17. Chỉ nhận giờ Hà Nội
+     * ({@code Asia/Ho_Chi_Minh}); bỏ trống thì dùng luôn giá trị đó.
      */
     @Size(max = 64, message = "Múi giờ tối đa 64 ký tự")
     private String timezone;

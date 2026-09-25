@@ -9,7 +9,6 @@ import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
-import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
@@ -45,6 +44,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -392,12 +392,12 @@ public class HousekeepingService {
             throw new BusinessException("Nhân viên không thuộc Location của phòng này.");
         }
 
-        boolean housekeeping = positionRepository.findById(staff.getPositionId())
-            .map(Position::isHousekeeping)
-            .orElse(false);
-        if (!housekeeping) {
+        // Nhân viên đa nhiệm: vị trí Dọn dẹp là vị trí chính hay kiêm nhiệm đều được.
+        Set<UUID> heldPositions = new HashSet<>(staff.getExtraPositionIds());
+        heldPositions.add(staff.getPositionId());
+        if (!positionRepository.existsByIdInAndPositionType(heldPositions, PositionType.HOUSEKEEPING)) {
             throw new BusinessException(
-                "Chỉ nhân viên có Position loại Dọn dẹp mới nhận task dọn phòng.");
+                "Chỉ nhân viên có vị trí loại Dọn dẹp (chính hoặc kiêm nhiệm) mới nhận task dọn phòng.");
         }
 
         // BR-HK-03: có ca trong ngày là đủ, không cần khớp khung giờ. BR-HK-02: không giới

@@ -36,6 +36,8 @@ public class AuthController {
         body.put("locationId",         user.getLocationId());
         body.put("positionId",         user.getPositionId());
         body.put("positionType",       user.getPositionType() == null ? null : user.getPositionType().name());
+        // Mọi Loại người này giữ — vị trí chính và kiêm nhiệm (nhân viên đa nhiệm).
+        body.put("positionTypes",      user.getPositionTypes().stream().map(Enum::name).toList());
         // BR-USER-07: frontend phải ép về màn hình đổi mật khẩu khi cờ này bật.
         body.put("mustChangePassword", user.isMustChangePassword());
         // Tenant hết hạn dùng thử / thanh toán thất bại: Giám đốc chỉ được xem, frontend hiển thị
