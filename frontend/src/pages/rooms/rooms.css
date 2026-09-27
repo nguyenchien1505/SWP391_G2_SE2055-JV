@@ -407,9 +407,21 @@
     flex: 1 1 140px;
     min-width: 0;
     width: auto;
+    min-height: 48px;
+  }
+  /* Liên kết quay lại ở đầu S-04: vùng bấm cao 48px, chữ vẫn sát lề trái. */
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
+    margin-bottom: 4px;
   }
   .room-stat .stat-card__value {
     font-size: 24px;
+  }
+  /* S-15 làm mobile-first: chip lọc cũng là vùng bấm, phải ≥ 48px (design.md mục 3). */
+  .status-chip {
+    min-height: 48px;
   }
   /* Điện thoại: chữ phụ trên thẻ phòng lớn hơn một bậc (design.md mục 3). */
   .room-card__meta {
@@ -554,6 +566,15 @@
   display: none;
 }
 
+/* Khổ trung gian (máy tính bảng nằm ngang, cửa sổ không mở hết): 4 cột cạnh nhau thì mỗi cột
+   chỉ còn ~167px trong khi thẻ việc cần ~205px, thẻ tràn đè sang cột bên. Xếp 2 hàng × 2 cột.
+   Khối này phải đứng TRƯỚC khối 860px ở cuối file: dưới 860px thì khối đó mới là khối thắng. */
+@media (max-width: 1200px) {
+  .task-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ── F5: thẻ một việc dọn ──────────────────────────────────────────── */
 .task-card {
   background: var(--tone-bg);
@@ -568,6 +589,12 @@
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
+  /* Cột hẹp: huy hiệu xuống dòng dưới số phòng thay vì đẩy thẻ rộng ra ngoài cột. */
+  flex-wrap: wrap;
+}
+/* Nhãn dài ("Chưa phân công", "Chờ kiểm tra") được xuống dòng — .badge chung là nowrap. */
+.task-card .badge {
+  white-space: normal;
 }
 .task-card__room {
   font-size: 22px;
@@ -755,6 +782,16 @@
 }
 .link-btn:hover {
   color: var(--accent);
+}
+
+@media (max-width: 860px) {
+  /* Liên kết chữ cao 17px thì không bấm nổi bằng ngón tay, mà S-16 lại là màn dùng khi đang
+     đứng trong hành lang: nới chiều cao vùng bấm lên 48px, chữ vẫn nằm sát lề trái. */
+  .link-btn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
+  }
 }
 
 @media (max-width: 480px) {
