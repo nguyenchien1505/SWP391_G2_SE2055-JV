@@ -17,6 +17,7 @@ import RoomBoardPage from './pages/rooms/RoomBoardPage';
 import HousekeepingPage from './pages/rooms/HousekeepingPage';
 import MyTasksPage from './pages/rooms/MyTasksPage';
 import ReserveManagerPage from './pages/ReserveManagerPage';
+import AssetCategoriesPage from './pages/AssetCategoriesPage';
 import { homePathFor } from './homePath';
 
 /**
@@ -120,15 +121,23 @@ function OverviewWrapper() {
 function FixedAssetWrapper() {
   return <AssetManagementScreen onNavigate={useAssetNavigate()} />;
 }
+/** Chỉ Manager tạo tài sản trong khách sạn của mình (BR-ASSET-09) — vai trò khác về danh sách. */
 function BatchCreateWrapper() {
-  return <BatchCreateAssetsScreen onNavigate={useAssetNavigate()} />;
+  const { user } = useAuth();
+  const onNavigate = useAssetNavigate();
+  if (user?.role !== 'MANAGER') return <Navigate to="/tai-san" replace />;
+  return <BatchCreateAssetsScreen onNavigate={onNavigate} />;
 }
+/** Tồn kho tiêu hao chỉ mở cho Giám đốc (xem) và Manager (sửa) — Staff không đụng tới (BR-PERM). */
 function ConsumableWrapper() {
-  return <ConsumableInventoryScreen onNavigate={useAssetNavigate()} />;
+  const { user } = useAuth();
+  const onNavigate = useAssetNavigate();
+  if (user?.role !== 'DIRECTOR' && user?.role !== 'MANAGER') return <Navigate to={homePathFor(user)} replace />;
+  return <ConsumableInventoryScreen onNavigate={onNavigate} />;
 }
 function DetailWrapper() {
-  const { code } = useParams();
-  return <AssetDetailScreen assetCode={code} onNavigate={useAssetNavigate()} />;
+  const { ref } = useParams();
+  return <AssetDetailScreen key={ref} assetRef={ref} onNavigate={useAssetNavigate()} />;
 }
 function IncidentWrapper() {
   const { id } = useParams();
@@ -184,15 +193,19 @@ export default function App() {
           chặn vai trò vì backend tự ép nhân viên về việc của chính mình (BR-PERM-05). */}
       <Route path="/don-phong" element={inShell(<RequireBranchManager><HousekeepingPage /></RequireBranchManager>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
+      {/* Danh mục tài sản cấp Tenant — BR-ASSET-09: Giám đốc CRUD, Manager chỉ xem. */}
+      <Route path="/danh-muc-tai-san" element={inShell(<RequireManagementRole><AssetCategoriesPage /></RequireManagementRole>)} />
 
       {/* New Asset Routes */}
       <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
         <Route path="/tong-quan" element={<OverviewWrapper />} />
         <Route path="/tai-san" element={<FixedAssetWrapper />} />
         <Route path="/tai-san/batch" element={<BatchCreateWrapper />} />
-        <Route path="/tai-san/:code" element={<DetailWrapper />} />
+        {/* :ref là id tài sản; mã tài sản (link cũ) vẫn được nhận. */}
+        <Route path="/tai-san/:ref" element={<DetailWrapper />} />
         <Route path="/vat-tu" element={<ConsumableWrapper />} />
         <Route path="/bao-hong" element={<IncidentWrapper />} />
+        <Route path="/bao-hong/:id" element={<IncidentWrapper />} />
       </Route>
 
       {/* Admin Platform Routes */}
