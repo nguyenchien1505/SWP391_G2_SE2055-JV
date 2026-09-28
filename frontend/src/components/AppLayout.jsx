@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { hasPermission } from '../permissions';
+import { STAFF_PERMISSIONS, hasPermission } from '../permissions';
 import Logo from './Logo';
 
 const ROLE_LABEL = {
@@ -29,6 +29,8 @@ const isHousekeeper = (user) => hasPermission(user, 'HOUSEKEEPING');
 
 /** Được tick quyền Lễ tân — BR-PERM-04. */
 const isReception = (user) => hasPermission(user, 'RECEPTION');
+
+const isStaff = (user) => user?.role === 'STAFF';
 
 /** Chỉ Giám đốc quản lý tài khoản Manager — BR-PERM-02. */
 const isDirector = (user) => user?.role === 'DIRECTOR';
@@ -59,8 +61,8 @@ const NAV_GROUPS = [
     title: 'Vận hành chuỗi',
     items: [
       { label: 'Dashboard tổng quan', to: '/tong-quan', visible: isManagement },
-      // Mọi vai trò xem được sơ đồ phòng; chỉ Lễ tân và Manager có nút đổi trạng thái.
-      { label: 'Sơ đồ phòng', to: '/so-do-phong' },
+      // Nhân viên có mục sơ đồ phòng riêng trong nhóm nghiệp vụ của mình (bên dưới).
+      { label: 'Sơ đồ phòng', to: '/so-do-phong', visible: isManagement },
       { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
       { label: 'Xếp lịch làm việc', visible: isBranchManager },
       { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
@@ -84,15 +86,45 @@ const NAV_GROUPS = [
       { label: 'Quy định & Mẫu ca', visible: isDirector },
     ],
   },
+  // ── Nhóm theo NGHIỆP VỤ của nhân viên ──────────────────────────────────────────────────
+  // Mỗi quyền Manager đã tick hiện thêm một nhóm — nhân viên đa nhiệm (Lễ tân + Dọn dẹp) thấy cả
+  // hai nhóm, không phụ thuộc vị trí của họ là gì.
+  {
+    title: 'Lễ tân',
+    items: [
+      // Sơ đồ phòng có nút đặt / hủy đặt phòng, check-in, check-out cho người có quyền Lễ tân (BR-PERM-04).
+      { label: 'Nhận / trả phòng', to: '/so-do-phong', visible: (user) => isStaff(user) && isReception(user) },
+    ],
+  },
+  {
+    title: 'Dọn dẹp',
+    items: [
+      { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: (user) => isStaff(user) && isHousekeeper(user) },
+    ],
+  },
+  {
+    title: 'Tra cứu',
+    items: [
+      // Không có quyền Lễ tân vẫn xem được tình trạng phòng, chỉ không có nút thao tác.
+      { label: 'Sơ đồ phòng (xem)', to: '/so-do-phong', visible: (user) => isStaff(user) && !isReception(user) },
+    ],
+  },
   {
     title: 'Cá nhân',
     items: [
-      { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: isHousekeeper },
       { label: 'Gửi báo hỏng tài sản', visible: canReportDamage },
       { label: 'Lịch cá nhân & Chấm công', visible: hasShifts },
     ],
   },
 ];
+
+/** "Nhân viên · Lễ tân + Dọn dẹp" — cho nhân viên thấy ngay mình đang có những quyền nào. */
+function roleLabelOf(user) {
+  const role = ROLE_LABEL[user?.role] ?? user?.role;
+  if (!isStaff(user)) return role;
+  const permissions = STAFF_PERMISSIONS.filter((p) => hasPermission(user, p.value)).map((p) => p.label);
+  return `${role} · ${permissions.length > 0 ? permissions.join(' + ') : 'quyền chung'}`;
+}
 
 function formatToday() {
   const now = new Date();
@@ -172,7 +204,7 @@ export default function AppLayout({ children }) {
           <div className="topbar__user">
             <div>
               <b>{user?.email}</b>
-              <small>{ROLE_LABEL[user?.role] ?? user?.role}</small>
+              <small>{roleLabelOf(user)}</small>
             </div>
             <button type="button" className="btn btn--ghost" onClick={signOut}>
               Đăng xuất
