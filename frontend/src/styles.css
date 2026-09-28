@@ -447,14 +447,29 @@ a.nav-item {
   align-items: center;
   gap: 12px;
   text-align: right;
+  /* Cho phép co lại: email là MỘT từ dài không ngắt được, nếu không co thì thanh trên rộng hơn
+     màn điện thoại và kéo cả trang phình ngang theo (bảng thao tác, thẻ phòng bị cắt mép phải). */
+  min-width: 0;
+}
+.topbar__user > div {
+  min-width: 0;
+}
+.topbar__user b,
+.topbar__user small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .topbar__user b {
-  display: block;
   font-size: 14px;
 }
 .topbar__user small {
   color: var(--muted);
   font-size: 12px;
+}
+.topbar__user .btn {
+  flex-shrink: 0;
 }
 .shell__content {
   padding: 22px;
@@ -813,6 +828,18 @@ a.nav-item {
   }
   .topbar__clock {
     display: none;
+  }
+  /* Thanh trên chật trên điện thoại: bớt đệm và khoảng cách để email hiện được nhiều chữ nhất. */
+  .topbar {
+    padding: 8px 16px;
+    gap: 8px;
+  }
+  .topbar__user {
+    gap: 8px;
+  }
+  .topbar__user .btn {
+    padding-left: 12px;
+    padding-right: 12px;
   }
   /* Mọi nút bấm trên điện thoại đều phải cao ≥ 48px; nút mũi tên phân trang thêm bề ngang. */
   .btn {
