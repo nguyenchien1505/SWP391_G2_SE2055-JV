@@ -18,21 +18,23 @@ export const ROOM_STATUS_ORDER = [
   'UNAVAILABLE',
 ];
 
+// `icon` là tên biểu tượng Material Symbols (font nạp sẵn trong index.html). Biểu tượng chỉ đi
+// KÈM chữ, không thay chữ — người khó phân biệt màu vẫn phải đọc được trạng thái (design.md mục 3).
 export const ROOM_STATUS = {
-  AVAILABLE: { label: 'Trống / Sẵn sàng', tone: 'available' },
+  AVAILABLE: { label: 'Trống / Sẵn sàng', tone: 'available', icon: 'check_circle' },
   // "Đã đặt" là cờ giữ phòng TRONG NGÀY, không có dữ liệu khách (BR-ROOM-01).
-  RESERVED: { label: 'Đã đặt', tone: 'reserved' },
-  OCCUPIED: { label: 'Đang sử dụng', tone: 'occupied' },
-  DIRTY: { label: 'Chờ dọn', tone: 'dirty' },
-  CLEANING: { label: 'Đang dọn', tone: 'cleaning' },
-  INSPECTION: { label: 'Chờ kiểm tra', tone: 'inspection' },
+  RESERVED: { label: 'Đã đặt', tone: 'reserved', icon: 'bookmark_added' },
+  OCCUPIED: { label: 'Đang sử dụng', tone: 'occupied', icon: 'person' },
+  DIRTY: { label: 'Chờ dọn', tone: 'dirty', icon: 'cleaning_services' },
+  CLEANING: { label: 'Đang dọn', tone: 'cleaning', icon: 'mop' },
+  INSPECTION: { label: 'Chờ kiểm tra', tone: 'inspection', icon: 'fact_check' },
   // Gộp Bảo trì + Khóa phòng, luôn kèm lý do (BR-ROOM-07).
-  UNAVAILABLE: { label: 'Không khả dụng', tone: 'unavailable' },
+  UNAVAILABLE: { label: 'Không khả dụng', tone: 'unavailable', icon: 'lock' },
 };
 
 /** Mã lạ (backend thêm trạng thái mà FE chưa biết) vẫn hiện được, không làm vỡ màn hình. */
 export function roomStatusMeta(status) {
-  return ROOM_STATUS[status] ?? { label: status ?? '—', tone: 'unavailable' };
+  return ROOM_STATUS[status] ?? { label: status ?? '—', tone: 'unavailable', icon: 'help' };
 }
 
 /**
