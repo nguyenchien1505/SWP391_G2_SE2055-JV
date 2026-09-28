@@ -78,8 +78,10 @@ const NAV_GROUPS = [
       { label: 'Danh sách khách sạn', to: '/khach-san', visible: isManagement },
       { label: 'Manager & Nhân sự', to: '/quan-ly', visible: isDirector },
       { label: 'Nhân viên chi nhánh', to: '/nhan-vien', visible: isManager },
-      // Phòng ban, Vị trí, Loại phòng, Danh mục tài sản — Giám đốc (BR-ORG-06, BR-ORG-11, BR-ASSET-09).
-      { label: 'Danh mục', visible: isDirector },
+      // Danh mục tài sản cố định + tiêu hao — Giám đốc CRUD, Manager chỉ xem (BR-ASSET-08, BR-ASSET-09).
+      { label: 'Danh mục tài sản', to: '/danh-muc-tai-san', visible: isManagement },
+      // Phòng ban, Vị trí, Loại phòng — Giám đốc (BR-ORG-06, BR-ORG-11). Chưa có màn hình.
+      { label: 'Phòng ban, Vị trí & Loại phòng', visible: isDirector },
       // Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12).
       { label: 'Khu vực', visible: isManager },
       // Schedule Policy và Shift Template — Giám đốc (BR-SCH-01, BR-SCH-22).

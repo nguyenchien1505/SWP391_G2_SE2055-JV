@@ -757,6 +757,10 @@ a.nav-item {
   max-width: 460px;
   width: 100%;
   box-shadow: 0 16px 48px rgba(28, 35, 48, 0.2);
+  /* Màn thấp (điện thoại xoay ngang) hoặc hộp thoại nhiều chữ: cắt theo chiều cao màn và cuộn
+     BÊN TRONG hộp — nếu không, nút xác nhận nằm ngoài màn và không cuộn tới được. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
 }
 .modal__body {
   margin: 12px 0 20px;
@@ -799,10 +803,37 @@ a.nav-item {
     box-shadow: 0 0 40px rgba(28, 35, 48, 0.25);
   }
   .topbar__burger {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Vùng bấm ≥ 48px — design.md mục 3. Đây là nút DUY NHẤT mở menu trái trên điện thoại. */
+    min-width: 48px;
+    min-height: 48px;
+    margin-left: -12px; /* bù phần đệm mới thêm, giữ nguyên lề trái của thanh trên */
   }
   .topbar__clock {
     display: none;
+  }
+  /* Mọi nút bấm trên điện thoại đều phải cao ≥ 48px; nút mũi tên phân trang thêm bề ngang. */
+  .btn {
+    min-height: 48px;
+  }
+  .btn--sm {
+    min-width: 48px;
+  }
+  /* Ô nhập và ô chọn cũng là vùng bấm; mặc định chỉ cao 46px. */
+  .field input,
+  .field select,
+  .field textarea,
+  .toolbar select,
+  .toolbar__search {
+    min-height: 48px;
+  }
+  /* Mục menu trong ngăn kéo: 42px là hụt so với mức 48px của design.md mục 3. */
+  .nav-item {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
   }
   .field-row {
     grid-template-columns: 1fr;

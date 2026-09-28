@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as authApi from '../api/auth';
+import { clearAssetCaches } from '../services/assetApi';
 
 const AuthContext = createContext(null);
 
@@ -84,6 +85,9 @@ export function AuthProvider({ children }) {
 
   const signIn = useCallback(async (email, password) => {
     epochRef.current += 1;
+    // signIn/signOut không tải lại trang — xóa cache cấp module để người sau không thấy
+    // dữ liệu của người trước.
+    clearAssetCaches();
     await authApi.login(email, password);
     const me = await authApi.fetchCurrentUser();
     lastCheckRef.current = Date.now();
@@ -96,6 +100,7 @@ export function AuthProvider({ children }) {
     try {
       await authApi.logout();
     } finally {
+      clearAssetCaches();
       setUser(null);
     }
   }, []);

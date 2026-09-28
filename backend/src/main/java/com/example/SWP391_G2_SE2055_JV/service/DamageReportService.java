@@ -4,12 +4,14 @@ import com.example.SWP391_G2_SE2055_JV.dto.asset.CreateDamageReportRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.asset.DamageReportResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.DamageReport;
 import com.example.SWP391_G2_SE2055_JV.entity.FixedAsset;
+import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.DamageReportStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.DamageReportRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.FixedAssetRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +21,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Báo hỏng tài sản — BR-ASSET-05, BR-ASSET-06, BR-ASSET-11, DM-12, DM-16.
@@ -37,6 +44,8 @@ public class DamageReportService {
 
     private final DamageReportRepository damageReportRepository;
     private final FixedAssetRepository   fixedAssetRepository;
+    /** Chỉ để gắn tên/email người báo vào response. */
+    private final UserRepository         userRepository;
 
     @Transactional
     public DamageReportResponse createDamageReport(CreateDamageReportRequest request) {
@@ -64,7 +73,7 @@ public class DamageReportService {
             .reportedAt(LocalDateTime.now())
             .build();
 
-        return DamageReportResponse.fromEntity(damageReportRepository.save(report));
+        return toResponse(damageReportRepository.save(report));
     }
 
     /**
@@ -100,12 +109,12 @@ public class DamageReportService {
             }
         }
 
-        return page.map(DamageReportResponse::fromEntity);
+        return withReporters(page);
     }
 
     @Transactional(readOnly = true)
     public DamageReportResponse getDamageReportById(UUID id) {
-        return DamageReportResponse.fromEntity(getOwnedReport(id));
+        return toResponse(getOwnedReport(id));
     }
 
     /**
@@ -128,7 +137,7 @@ public class DamageReportService {
             log.info("Báo hỏng {} đã được xử lý", id);
         }
 
-        return DamageReportResponse.fromEntity(report);
+        return toResponse(report);
     }
 
     /**
@@ -154,6 +163,24 @@ public class DamageReportService {
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────
+
+    private DamageReportResponse toResponse(DamageReport report) {
+        User reporter = userRepository.findById(report.getReporterId()).orElse(null);
+        return DamageReportResponse.fromEntity(report, reporter);
+    }
+
+    /** Nạp người báo theo lô 1 lần cho cả trang, tránh N+1. */
+    private Page<DamageReportResponse> withReporters(Page<DamageReport> page) {
+        Set<UUID> reporterIds = page.getContent().stream()
+            .map(DamageReport::getReporterId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        Map<UUID, User> usersById = new HashMap<>();
+        if (!reporterIds.isEmpty()) {
+            userRepository.findAllById(reporterIds).forEach(u -> usersById.put(u.getId(), u));
+        }
+        return page.map(r -> DamageReportResponse.fromEntity(r, usersById.get(r.getReporterId())));
+    }
 
     /** Ngoài phạm vi thì trả 404 chứ không 403, để không lộ việc bản ghi có tồn tại. */
     private DamageReport getOwnedReport(UUID id) {

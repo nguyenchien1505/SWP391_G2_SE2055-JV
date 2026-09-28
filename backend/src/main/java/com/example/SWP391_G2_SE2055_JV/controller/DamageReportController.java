@@ -46,19 +46,24 @@ public class DamageReportController {
     /**
      * DM-16: KHÔNG truyền {@code status} thì mặc định lọc {@code NEW} — "màn hình tự
      * truy vấn danh sách đang chờ xử lý". Truyền {@code status=} rỗng để bỏ lọc, xem
-     * cả báo cáo {@code RESOLVED}. Nhận {@code String} thay vì bind thẳng vào enum vì
-     * Spring không phân biệt được "không truyền" (nên mặc định NEW) với "truyền chuỗi
-     * rỗng" (nên bỏ lọc) một khi đã gắn {@code defaultValue} cho kiểu enum.
+     * cả báo cáo {@code RESOLVED}. KHÔNG dùng {@code defaultValue}: Spring áp giá trị
+     * mặc định cho cả tham số rỗng, nên {@code status=} cũng bị đổi thành NEW và không
+     * bao giờ bỏ lọc được. Tự phân biệt null (không truyền) với chuỗi rỗng ở
+     * {@link #parseStatus}.
      */
     @GetMapping
     @PreAuthorize("hasAnyRole('DIRECTOR','MANAGER','STAFF')")
     public ResponseEntity<Page<DamageReportResponse>> getDamageReports(
-            @RequestParam(required = false, defaultValue = "NEW") String status,
+            @RequestParam(required = false) String status,
             @PageableDefault(size = 20, sort = "reportedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(damageReportService.getDamageReports(parseStatus(status), pageable));
     }
 
+    /** null = không truyền → NEW (DM-16); rỗng = bỏ lọc → null. */
     private DamageReportStatus parseStatus(String status) {
+        if (status == null) {
+            return DamageReportStatus.NEW;
+        }
         if (StringUtils.isBlank(status)) {
             return null;
         }

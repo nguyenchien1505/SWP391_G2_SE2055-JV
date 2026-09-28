@@ -2,11 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { assetService } from '../../services/assetApi';
 import { fetchAllRooms } from '../../api/rooms';
 import { fetchAllAreas } from '../../api/locations';
+import { useAuth } from '../../context/AuthContext';
+import { PURPOSE_LABEL } from '../asset-categories/categoryLabels';
 
-export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onReportIssue }) => {
+const STATUS_LABEL = {
+  Good: 'Tốt (Good)',
+  Damaged: 'Bị hỏng (Damaged)',
+  Repairing: 'Đang sửa chữa (Repairing)',
+  Disposed: 'Đã thanh lý (Disposed)',
+};
+
+/** Giá trị <select> vị trí: `ROOM_<uuid>` hoặc `AREA_<uuid>`. */
+const locationValueOf = (asset) =>
+  asset?.roomId ? `ROOM_${asset.roomId}` : asset?.areaId ? `AREA_${asset.areaId}` : '';
+
+/**
+ * Chi tiết một tài sản cố định. `assetRef` là id (đường chuẩn từ danh sách) hoặc mã tài
+ * sản (link cũ). Chỉ Manager được sửa / chuyển vị trí / đổi trạng thái / xóa — BR-ASSET-02,
+ * BR-ASSET-09; Giám đốc và Staff chỉ xem.
+ */
+export const AssetDetailScreen = ({ assetRef, onNavigate }) => {
+  const { user } = useAuth();
+  const canManage = user?.role === 'MANAGER';
+
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [asset, setAsset] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Modals
   const [showLocationModal, setShowLocationModal] = useState(false);
@@ -18,39 +41,52 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
   const [newStatus, setNewStatus] = useState('Good');
   const [editData, setEditData] = useState({ name: '', categoryId: '', note: '' });
   const [categories, setCategories] = useState([]);
-  
+
   const [roomsData, setRoomsData] = useState([]);
   const [areasData, setAreasData] = useState([]);
+  const [toast, setToast] = useState(null); // { message, error }
 
+  // Chỉ Manager mới chuyển vị trí được, và chỉ trong khách sạn của tài sản (BR-ASSET-13).
   useEffect(() => {
-    fetchAllRooms().then(setRoomsData).catch(console.error);
-    fetchAllAreas().then(setAreasData).catch(console.error);
-  }, []);
-  const [toastMessage, setToastMessage] = useState('');
+    if (!canManage || !asset?.locationId) return;
+    fetchAllRooms({ locationId: asset.locationId })
+      .then((rooms) => setRoomsData(rooms.filter((r) => r.locationId === asset.locationId)))
+      .catch(console.error);
+    fetchAllAreas()
+      .then((areas) => setAreasData(areas.filter((a) => a.locationId === asset.locationId)))
+      .catch(console.error);
+  }, [canManage, asset?.locationId]);
 
   useEffect(() => {
     loadAssetDetail();
     loadCategories();
-  }, [assetCode]);
+  }, [assetRef]);
+
+  const showToast = (message, error = false) => {
+    setToast({ message, error });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   const loadCategories = async () => {
     try {
       const cats = await assetService.getAssetCategories();
-      setCategories(cats.filter(c => c.assetKind === 'FIXED'));
-    } catch(e) {}
+      setCategories(cats.filter((c) => c.assetKind === 'FIXED'));
+    } catch (e) {
+      console.error('Failed to load categories', e);
+    }
   };
 
   const loadAssetDetail = async () => {
     setLoading(true);
+    setLoadError('');
     try {
-      const data = await assetService.getAssetDetail(assetCode);
+      const data = await assetService.getAssetDetail(assetRef);
       setAsset(data);
-      if (data) {
-        setNewLocation(data.location);
-        setNewStatus(data.status);
-      }
+      setNewLocation(locationValueOf(data));
+      setNewStatus(data.status);
     } catch (e) {
       console.error('Failed to load asset', e);
+      setLoadError(e.message || 'Không tải được thông tin tài sản.');
     } finally {
       setLoading(false);
     }
@@ -64,75 +100,14 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
     }
   };
 
-  const handleSaveLocation = async () => {
-    if (!asset) return;
-    try {
-      const parts = newLocation.split('_');
-      if (parts.length === 2) {
-         const type = parts[0];
-         const id = parts[1];
-         
-         let locName = id;
-         if (type === 'ROOM') {
-            const r = roomsData.find(x => x.id === id);
-            if (r) locName = `Phòng ${r.roomNumber} (${r.floor || '?'})`;
-            else if (id === 'mock1') locName = 'Phòng 101 (Mock)';
-         } else {
-            const a = areasData.find(x => x.id === id);
-            if (a) locName = a.name;
-            else if (id === 'mock2') locName = 'Sảnh chính (Mock)';
-         }
-         
-         const updated = await assetService.updateAssetLocation(asset.code, id, type, locName);
-         setAsset(updated);
-         setToastMessage(`Đã chuyển vị trí thiết bị ${asset.code}!`);
-      } else {
-         // Fallback cho mock
-         const updated = await assetService.updateAssetLocation(asset.code, newLocation, 'ROOM', 'Phòng ' + newLocation);
-         setAsset(updated);
-         setToastMessage(`Đã chuyển vị trí thiết bị ${asset.code}!`);
-      }
-    } catch (e) {
-      console.error(e);
-      setToastMessage('Lỗi cập nhật vị trí');
-    }
-    setShowLocationModal(false);
-    setTimeout(() => setToastMessage(''), 3500);
+  const openLocationModal = () => {
+    setNewLocation(locationValueOf(asset));
+    setShowLocationModal(true);
   };
 
-  const handleSaveStatus = async () => {
-    if (!asset) return;
-    const updated = await assetService.updateAssetStatus(asset.code, newStatus);
-    setAsset(updated);
-    setShowStatusModal(false);
-    setToastMessage(`Đã cập nhật trạng thái thiết bị ${asset.code} thành "${newStatus}"!`);
-    setTimeout(() => setToastMessage(''), 3500);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!asset) return;
-    try {
-      const updated = await assetService.updateFixedAssetInfo(asset.code, editData);
-      setAsset(updated);
-      setShowEditModal(false);
-      setToastMessage(`Đã cập nhật thông tin thiết bị ${asset.code}!`);
-      setTimeout(() => setToastMessage(''), 3500);
-    } catch(e) {
-      console.error(e);
-      alert('Cập nhật thất bại');
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!asset) return;
-    try {
-      await assetService.deleteFixedAsset(asset.code);
-      setShowDeleteModal(false);
-      onNavigate('fixed-assets');
-    } catch(e) {
-      console.error(e);
-      alert('Không thể xóa tài sản này (có thể đã có lịch sử báo hỏng/thanh lý)');
-    }
+  const openStatusModal = () => {
+    setNewStatus(asset.status);
+    setShowStatusModal(true);
   };
 
   const openEditModal = () => {
@@ -140,12 +115,110 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
     setShowEditModal(true);
   };
 
+  /** Chạy một thao tác ghi: lỗi backend hiện nguyên văn, modal giữ nguyên để sửa lại. */
+  const runAction = async (action, successMessage, closeModal) => {
+    setSaving(true);
+    try {
+      const updated = await action();
+      if (updated) setAsset(updated);
+      closeModal();
+      showToast(successMessage);
+    } catch (e) {
+      console.error(e);
+      showToast(e.message || 'Thao tác thất bại, vui lòng thử lại.', true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveLocation = () => {
+    if (!asset) return;
+    if (newLocation === locationValueOf(asset)) {
+      setShowLocationModal(false);
+      return;
+    }
+    const [type, id] = newLocation.split('_');
+    return runAction(
+      () => assetService.updateAssetLocation(asset.id, id, type),
+      `Đã chuyển vị trí thiết bị ${asset.code}!`,
+      () => setShowLocationModal(false)
+    );
+  };
+
+  const handleSaveStatus = () => {
+    if (!asset) return;
+    if (newStatus === asset.status) {
+      setShowStatusModal(false);
+      return;
+    }
+    return runAction(
+      () => assetService.updateAssetStatus(asset.id, newStatus),
+      `Đã cập nhật trạng thái thiết bị ${asset.code} thành "${STATUS_LABEL[newStatus] || newStatus}"!`,
+      () => setShowStatusModal(false)
+    );
+  };
+
+  const handleSaveEdit = () => {
+    if (!asset) return;
+    if (!editData.name.trim()) {
+      showToast('Tên tài sản không được để trống.', true);
+      return;
+    }
+    return runAction(
+      () => assetService.updateFixedAssetInfo(asset.id, { ...editData, name: editData.name.trim() }),
+      `Đã cập nhật thông tin thiết bị ${asset.code}!`,
+      () => setShowEditModal(false)
+    );
+  };
+
+  const handleDelete = async () => {
+    if (!asset) return;
+    setSaving(true);
+    try {
+      await assetService.deleteFixedAsset(asset.id);
+      setShowDeleteModal(false);
+      onNavigate('fixed-assets');
+    } catch (e) {
+      console.error(e);
+      showToast(e.message || 'Không thể xóa tài sản này.', true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center min-h-[500px]">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span className="material-symbols-outlined text-[40px] text-[#D32F2F]">error</span>
+          <span className="text-sm font-medium text-[#1C2330]">{loadError}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadAssetDetail}
+              className="px-4 py-2 rounded-xl border border-[#DFE3E8] text-xs font-semibold text-[#1C2330] hover:bg-[#F7F8FA] cursor-pointer"
+              type="button"
+            >
+              Thử lại
+            </button>
+            <button
+              onClick={() => onNavigate('fixed-assets')}
+              className="px-4 py-2 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] text-xs font-semibold cursor-pointer"
+              type="button"
+            >
+              Về danh sách tài sản
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading || !asset) {
     return (
       <div className="flex items-center justify-center min-h-[500px]">
         <div className="flex flex-col items-center gap-3">
           <div className="w-9 h-9 border-3 border-[#00375e] border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-sm font-medium text-[#5B6472]">Đang tải hồ sơ tài sản {assetCode}...</span>
+          <span className="text-sm font-medium text-[#5B6472]">Đang tải hồ sơ tài sản...</span>
         </div>
       </div>
     );
@@ -171,10 +244,14 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Toast */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#00375e] text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-bottom-3 duration-200">
-          <span className="material-symbols-outlined text-[18px] text-[#2E7D32] bg-white rounded-full">check_circle</span>
-          <span>{toastMessage}</span>
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 z-[60] text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-bottom-3 duration-200 max-w-md ${
+            toast.error ? 'bg-[#D32F2F]' : 'bg-[#00375e]'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px] shrink-0">{toast.error ? 'error' : 'check_circle'}</span>
+          <span>{toast.message}</span>
         </div>
       )}
 
@@ -206,6 +283,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
 
         {/* Action CTAs */}
         <div className="flex flex-wrap items-center gap-2">
+          {canManage && (
+          <>
           <button
             onClick={openEditModal}
             disabled={asset.status === 'Disposed'}
@@ -217,7 +296,7 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
           </button>
 
           <button
-            onClick={() => setShowLocationModal(true)}
+            onClick={openLocationModal}
             disabled={asset.status === 'Disposed'}
             className={`px-3.5 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs ${asset.status === 'Disposed' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#F7F8FA] cursor-pointer'}`}
             type="button"
@@ -227,7 +306,7 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
           </button>
 
           <button
-            onClick={() => setShowStatusModal(true)}
+            onClick={openStatusModal}
             disabled={asset.status === 'Disposed'}
             className={`px-3.5 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs ${asset.status === 'Disposed' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#F7F8FA] cursor-pointer'}`}
             type="button"
@@ -235,6 +314,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
             <span className="material-symbols-outlined text-[18px] text-[#F9A825]">sync_alt</span>
             <span>Đổi trạng thái</span>
           </button>
+          </>
+          )}
 
           <button
             onClick={() => onNavigate('issue-reports')}
@@ -246,14 +327,16 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
             <span>Báo hỏng / Báo mất</span>
           </button>
 
-          <button
-            onClick={() => setShowDeleteModal(true)}
-            className="px-3.5 py-2 rounded-xl bg-white text-[#D32F2F] hover:bg-[#FFEBEE] border border-[#D32F2F]/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-            type="button"
-          >
-            <span className="material-symbols-outlined text-[18px]">delete_forever</span>
-            <span>Xóa tài sản</span>
-          </button>
+          {canManage && (
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="px-3.5 py-2 rounded-xl bg-white text-[#D32F2F] hover:bg-[#FFEBEE] border border-[#D32F2F]/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              type="button"
+            >
+              <span className="material-symbols-outlined text-[18px]">delete_forever</span>
+              <span>Xóa tài sản</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -274,13 +357,15 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
                 </div>
               </div>
 
-              <button
-                onClick={() => setShowLocationModal(true)}
-                className="text-xs text-[#0e61a1] hover:underline font-semibold cursor-pointer"
-                type="button"
-              >
-                Chuyển vị trí khác
-              </button>
+              {canManage && asset.status !== 'Disposed' && (
+                <button
+                  onClick={openLocationModal}
+                  className="text-xs text-[#0e61a1] hover:underline font-semibold cursor-pointer"
+                  type="button"
+                >
+                  Chuyển vị trí khác
+                </button>
+              )}
             </div>
 
             <div className="p-3.5 bg-[#eff4ff] rounded-xl border border-[#d1e4ff] flex items-center gap-3">
@@ -338,7 +423,7 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
               <div className="p-3 bg-[#F7F8FA] rounded-xl border border-[#DFE3E8]">
                 <span className="text-[#5B6472] block text-[11px] mb-1">Mục đích sử dụng:</span>
                 <span className="font-semibold text-[#00375e] bg-[#eff4ff] px-2 py-0.5 rounded-md">
-                  {asset.purpose}
+                  {PURPOSE_LABEL[asset.purpose] || '—'}
                 </span>
               </div>
 
@@ -399,18 +484,23 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
                 onChange={(e) => setNewLocation(e.target.value)}
                 className="w-full p-2.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#1C2330] focus:outline-none focus:border-[#0e61a1]"
               >
-                <optgroup label="Phòng (Rooms)">
-                  {roomsData.map(r => (
-                    <option key={r.id} value={`ROOM_${r.id}`}>Phòng {r.roomNumber} ({r.floor || '?'})</option>
-                  ))}
-                  {roomsData.length === 0 && <option value="ROOM_mock1">Phòng 101 (Mock)</option>}
-                </optgroup>
-                <optgroup label="Khu vực (Areas)">
-                  {areasData.map(a => (
-                    <option key={a.id} value={`AREA_${a.id}`}>{a.name}</option>
-                  ))}
-                  {areasData.length === 0 && <option value="AREA_mock2">Sảnh chính (Mock)</option>}
-                </optgroup>
+                {roomsData.length > 0 && (
+                  <optgroup label="Phòng (Rooms)">
+                    {roomsData.map(r => (
+                      <option key={r.id} value={`ROOM_${r.id}`}>Phòng {r.roomNumber} (Tầng {r.floor || '?'})</option>
+                    ))}
+                  </optgroup>
+                )}
+                {areasData.length > 0 && (
+                  <optgroup label="Khu vực (Areas)">
+                    {areasData.map(a => (
+                      <option key={a.id} value={`AREA_${a.id}`}>{a.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {roomsData.length === 0 && areasData.length === 0 && (
+                  <option value="" disabled>Đang tải danh sách vị trí...</option>
+                )}
               </select>
             </div>
 
@@ -424,7 +514,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
               </button>
               <button
                 onClick={handleSaveLocation}
-                className="px-4 py-2 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] text-xs font-semibold shadow-xs cursor-pointer"
+                disabled={saving}
+                className="px-4 py-2 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] text-xs font-semibold shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                 type="button"
               >
                 Xác nhận chuyển
@@ -505,7 +596,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
               </button>
               <button
                 onClick={handleSaveStatus}
-                className="px-4 py-2 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] text-xs font-semibold shadow-xs cursor-pointer"
+                disabled={saving}
+                className="px-4 py-2 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] text-xs font-semibold shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                 type="button"
               >
                 Cập nhật trạng thái
@@ -532,13 +624,13 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
 
             <div className="space-y-3 text-xs">
               <div className="space-y-1.5">
-                <label className="font-semibold text-[#1C2330]">Tên tài sản:</label>
+                <label className="font-semibold text-[#1C2330]">Tên tài sản (*):</label>
                 <input
                   type="text"
                   value={editData.name}
                   onChange={(e) => setEditData({...editData, name: e.target.value})}
                   className="w-full p-2.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl focus:outline-none focus:border-[#0e61a1]"
-                  placeholder="Nhập tên tài sản (tùy chọn)"
+                  placeholder="Nhập tên tài sản"
                 />
               </div>
 
@@ -550,10 +642,12 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
                     onChange={(e) => setEditData({...editData, categoryId: e.target.value})}
                     className="w-full p-2.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl focus:outline-none focus:border-[#0e61a1]"
                   >
-                    <option value="">-- Chọn danh mục (nếu muốn đổi) --</option>
-                    {categories.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
+                    {/* Danh mục đang ẩn không chọn mới được (BR-ORG-14), trừ danh mục hiện tại. */}
+                    {categories
+                      .filter(c => c.active || c.id === asset.categoryId)
+                      .map(c => (
+                        <option key={c.id} value={c.id}>{c.name}{c.active ? '' : ' (tạm ngưng)'}</option>
+                      ))}
                   </select>
                 </div>
               )}
@@ -580,7 +674,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
               </button>
               <button
                 onClick={handleSaveEdit}
-                className="px-4 py-2 rounded-xl bg-[#0e61a1] text-white hover:bg-[#0a4675] text-xs font-semibold shadow-xs cursor-pointer"
+                disabled={saving}
+                className="px-4 py-2 rounded-xl bg-[#0e61a1] text-white hover:bg-[#0a4675] text-xs font-semibold shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                 type="button"
               >
                 Lưu thay đổi
@@ -616,7 +711,8 @@ export const AssetDetailScreen = ({ assetCode = 'TS-310-AC-01', onNavigate, onRe
               </button>
               <button
                 onClick={handleDelete}
-                className="px-5 py-2.5 rounded-xl bg-[#D32F2F] text-white hover:bg-[#b71c1c] text-xs font-semibold shadow-xs cursor-pointer w-full flex justify-center items-center gap-1.5"
+                disabled={saving}
+                className="px-5 py-2.5 rounded-xl bg-[#D32F2F] text-white hover:bg-[#b71c1c] text-xs font-semibold shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-wait w-full flex justify-center items-center gap-1.5"
                 type="button"
               >
                 <span className="material-symbols-outlined text-[16px]">delete</span>

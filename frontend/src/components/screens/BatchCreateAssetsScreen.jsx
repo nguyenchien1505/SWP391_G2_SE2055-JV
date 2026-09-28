@@ -2,148 +2,187 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { assetService } from '../../services/assetApi';
 import { fetchAllRooms } from '../../api/rooms';
 import { fetchAllAreas } from '../../api/locations';
+import { useAuth } from '../../context/AuthContext';
 
-const CATEGORIES = [
-  { value: 'AC', name: 'Điều hòa nhiệt độ (AC)', prefix: 'TS-AC', purpose: 'GUEST_USE' },
-  { value: 'TV', name: 'Smart TV màn hình phẳng (TV)', prefix: 'TS-TV', purpose: 'GUEST_USE' },
-  { value: 'RF', name: 'Tủ lạnh mini quầy bar (RF)', prefix: 'TS-RF', purpose: 'GUEST_USE' },
-  { value: 'SF', name: 'Két sắt mini điện tử (SF)', prefix: 'TS-SF', purpose: 'GUEST_USE' },
-  { value: 'WH', name: 'Máy nước nóng gián tiếp (WH)', prefix: 'TS-WH', purpose: 'GUEST_USE' },
-  { value: 'HD', name: 'Máy sấy tóc ion cao cấp (HD)', prefix: 'TS-HD', purpose: 'GUEST_USE' },
-  { value: 'CS', name: 'Điều hòa âm trần Cassette', prefix: 'TS-CS', purpose: 'FACILITY_MAINTENANCE' },
-  { value: 'ST', name: 'Điều hòa tủ đứng công suất lớn', prefix: 'TS-ST', purpose: 'FACILITY_MAINTENANCE' },
-  { value: 'PC', name: 'Máy tính để bàn lễ tân', prefix: 'TS-PC', purpose: 'INTERNAL_OPS' }
+const MAX_QUANTITY = 50;
+
+const PURPOSE_GROUPS = [
+  { value: 'GUEST_USE', label: 'Phục vụ khách hàng' },
+  { value: 'FACILITY_MAINTENANCE', label: 'Duy trì & Vận hành cơ sở' },
 ];
 
-const getPurposeLabel = (purpose) => {
-  switch (purpose) {
-    case 'GUEST_USE': return 'Phục vụ khách hàng';
-    case 'FACILITY_MAINTENANCE': return 'Duy trì & Vận hành cơ sở';
-    case 'INTERNAL_OPS': return 'Nội bộ';
-    default: return purpose;
-  }
-};
+const getPurposeLabel = (purpose) =>
+  PURPOSE_GROUPS.find((g) => g.value === purpose)?.label || purpose || '—';
 
-const ROOM_OPTIONS = [
-  { code: '101', label: 'Phòng 101 (Standard King · Tầng 1)' },
-  { code: '104', label: 'Phòng 104 (Standard Đơn · Tầng 1)' },
-  { code: '205', label: 'Phòng 205 (Superior Đôi · Tầng 2)' },
-  { code: '310', label: 'Phòng 310 (Deluxe Hướng Biển · Tầng 3)' },
-  { code: '312', label: 'Phòng 312 (Deluxe Twin · Tầng 3)' },
-  { code: '405', label: 'Phòng 405 (Superior Đơn · Tầng 4)' },
-  { code: '502', label: 'Phòng 502 (Executive Suite · Tầng 5)' }
-];
+/** Bỏ dấu tiếng Việt để mã tài sản chỉ gồm ký tự ASCII. */
+const toAscii = (s) =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D');
 
-const AREA_OPTIONS = [
-  { code: 'LBY', label: 'Sảnh chính (Lobby - Tầng 1)' },
-  { code: 'RST', label: 'Nhà hàng Sao Mai (Tầng 2)' },
-  { code: 'GYM', label: 'Phòng Gym & Spa (Tầng M)' },
-  { code: 'BSM', label: 'Kho tổng tầng hầm (Kho lưu trữ)' }
-];
+/** Chữ cái đầu của các từ có chữ: "Tủ lạnh mini bar" → "TLM", "Hành Lang" → "HL". */
+const initials = (s, max) =>
+  toAscii(s)
+    .split(/[^A-Za-z0-9]+/)
+    .filter((w) => /[A-Za-z]/.test(w))
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, max);
 
-export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
+/**
+ * Khai báo hàng loạt tài sản cố định — mã `[Mã-DM]-[Vị-Trí]-[STT]`. STT nối tiếp số lớn
+ * nhất đang dùng cho cùng tiền tố (BR-ASSET-12: mã duy nhất trong khách sạn), nên chạy
+ * nhiều lần cho cùng phòng không đâm trùng mã. Chỉ dùng danh mục/vị trí thật từ backend.
+ */
+export const BatchCreateAssetsScreen = ({ onNavigate }) => {
+  const { user } = useAuth();
+
   const [categoriesData, setCategoriesData] = useState([]);
   const [roomsData, setRoomsData] = useState([]);
   const [areasData, setAreasData] = useState([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [positionType, setPositionType] = useState('ROOM'); // 'ROOM' | 'AREA'
+  const [selectedPositionId, setSelectedPositionId] = useState('');
+  const [quantity, setQuantity] = useState(5);
+  const [nextSeq, setNextSeq] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [successResult, setSuccessResult] = useState(null);
 
   useEffect(() => {
     async function load() {
+      setLoadingData(true);
+      setLoadError('');
       try {
-        const cats = await assetService.getAssetCategories();
-        const fixedCats = cats.filter(c => c.assetKind === 'FIXED').map(c => {
-          let p = 'TS-XX';
-          if (c.name) {
-             const words = c.name.split(' ').map(w => w[0]);
-             p = 'TS-' + (words.join('').substring(0,2).toUpperCase() || 'XX');
-          }
-          return {
-            value: c.id,
-            id: c.id,
-            name: c.name,
-            prefix: p,
-            purpose: c.purpose
-          };
-        });
-        if(fixedCats.length > 0) setCategoriesData(fixedCats);
-        else setCategoriesData(CATEGORIES);
+        const locationId = user?.locationId;
+        const [cats, rms, ars] = await Promise.all([
+          assetService.getAssetCategories(),
+          fetchAllRooms({ locationId }),
+          fetchAllAreas(),
+        ]);
 
-        const rms = await fetchAllRooms();
-        setRoomsData(rms.map(r => ({ id: r.id, code: r.roomNumber, label: `Phòng ${r.roomNumber} (${r.floor || 'Tầng ?'})` })));
-
-        const ars = await fetchAllAreas();
-        setAreasData(ars.map(a => ({ id: a.id, code: a.name.substring(0,3).toUpperCase(), label: a.name })));
+        // Danh mục tạm ngưng không được dùng cho tài sản mới (BR-ORG-14).
+        setCategoriesData(
+          cats
+            .filter((c) => c.assetKind === 'FIXED' && c.active)
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              prefix: 'TS-' + (initials(c.name, 3) || 'XX'),
+              purpose: c.purpose,
+            }))
+        );
+        setRoomsData(
+          rms
+            .filter((r) => !locationId || r.locationId === locationId)
+            .map((r) => ({
+              id: r.id,
+              code: toAscii(r.roomNumber).replace(/[^A-Za-z0-9]/g, '').toUpperCase() || 'P',
+              label: `Phòng ${r.roomNumber} (Tầng ${r.floor || '?'})`,
+            }))
+        );
+        setAreasData(
+          ars
+            .filter((a) => !locationId || a.locationId === locationId)
+            .map((a) => ({ id: a.id, code: initials(a.name, 3) || 'KV', label: a.name }))
+        );
       } catch (e) {
         console.error(e);
-        setCategoriesData(CATEGORIES);
-        setRoomsData(ROOM_OPTIONS);
-        setAreasData(AREA_OPTIONS);
+        setLoadError(e.message || 'Không tải được danh mục / vị trí. Vui lòng thử lại.');
+      } finally {
+        setLoadingData(false);
       }
     }
     load();
-  }, []);
+  }, [user?.locationId]);
 
-  const [selectedCategoryValue, setSelectedCategoryValue] = useState('TV');
-  const [positionType, setPositionType] = useState('ROOM'); // 'ROOM' | 'AREA'
-  const [selectedPositionCode, setSelectedPositionCode] = useState('310');
-  const [quantity, setQuantity] = useState(5);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successResult, setSuccessResult] = useState(null);
+  const currentPositionList = positionType === 'ROOM' ? roomsData : areasData;
 
-  const selectedCategory = useMemo(() => {
-    return categoriesData.find((c) => c.value === selectedCategoryValue) || categoriesData[0] || CATEGORIES[0];
-  }, [categoriesData, selectedCategoryValue]);
+  const selectedCategory = useMemo(
+    () => categoriesData.find((c) => c.id === selectedCategoryId) || categoriesData[0] || null,
+    [categoriesData, selectedCategoryId]
+  );
 
-  const currentPositionList = positionType === 'ROOM' ? (roomsData.length > 0 ? roomsData : ROOM_OPTIONS) : (areasData.length > 0 ? areasData : AREA_OPTIONS);
+  const selectedPosition = useMemo(
+    () => currentPositionList.find((p) => p.id === selectedPositionId) || currentPositionList[0] || null,
+    [currentPositionList, selectedPositionId]
+  );
 
-  const selectedPosition = useMemo(() => {
-    return currentPositionList.find((p) => p.code === selectedPositionCode) || currentPositionList[0] || { code: '000', label: 'Chưa rõ' };
-  }, [currentPositionList, selectedPositionCode]);
+  const codeBase = selectedCategory && selectedPosition ? `${selectedCategory.prefix}-${selectedPosition.code}-` : '';
+
+  // STT bắt đầu = số lớn nhất đang dùng + 1, tính lại khi đổi danh mục/vị trí hoặc sau mỗi lần tạo.
+  useEffect(() => {
+    if (!codeBase) {
+      setNextSeq(null);
+      return;
+    }
+    let cancelled = false;
+    setNextSeq(null);
+    assetService
+      .getNextBatchSequence(codeBase)
+      .then((seq) => !cancelled && setNextSeq(seq))
+      .catch((e) => {
+        console.error(e);
+        if (!cancelled) setNextSeq(1);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [codeBase, refreshKey]);
 
   // Generate live preview code list
   const previewCodes = useMemo(() => {
-    const list = [];
-    const count = Math.min(Math.max(1, quantity), 50);
-    for (let i = 1; i <= count; i++) {
-      const seq = String(i).padStart(3, '0');
-      const fullCode = `${selectedCategory.prefix}-${selectedPosition.code}-${seq}`;
-      list.push(fullCode);
-    }
-    return list;
-  }, [selectedCategory, selectedPosition, quantity]);
+    if (!codeBase || nextSeq === null) return [];
+    const count = Math.min(Math.max(1, quantity), MAX_QUANTITY);
+    return Array.from({ length: count }, (_, i) => `${codeBase}${String(nextSeq + i).padStart(3, '0')}`);
+  }, [codeBase, nextSeq, quantity]);
+
+  const canSubmit = !isSubmitting && !!selectedCategory && !!selectedPosition && previewCodes.length > 0;
 
   const handleQuantityChange = (newVal) => {
     const val = parseInt(newVal, 10);
     if (isNaN(val)) return;
-    setQuantity(Math.min(Math.max(1, val), 50));
+    setQuantity(Math.min(Math.max(1, val), MAX_QUANTITY));
   };
 
   const handlePositionTypeSwitch = (type) => {
     setPositionType(type);
-    if (type === 'ROOM') {
-      setSelectedPositionCode(roomsData[0]?.code || ROOM_OPTIONS[0].code);
-    } else {
-      setSelectedPositionCode(areasData[0]?.code || AREA_OPTIONS[0].code);
-    }
+    setSelectedPositionId('');
   };
 
   const handleSubmit = async () => {
+    if (!canSubmit) return;
     setIsSubmitting(true);
+    setSubmitError('');
+    setSuccessResult(null);
     try {
       const res = await assetService.createBatchAssets({
-        category: selectedCategory,
+        categoryId: selectedCategory.id,
+        name: selectedCategory.name,
+        codeBase,
         positionType,
-        position: selectedPosition,
+        positionId: selectedPosition.id,
         quantity: previewCodes.length,
-        status: 'Good'
       });
       setSuccessResult(res);
     } catch (e) {
       console.error('Batch creation failed', e);
-      alert(e.message || 'Lỗi khởi tạo tài sản hàng loạt. Vui lòng kiểm tra lại.');
+      setSubmitError(e.message || 'Lỗi khởi tạo tài sản hàng loạt. Vui lòng kiểm tra lại.');
     } finally {
       setIsSubmitting(false);
+      setRefreshKey((k) => k + 1);
     }
   };
+
+  const selectClass =
+    'w-full p-2.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#1C2330] font-medium focus:outline-none focus:border-[#0e61a1] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60';
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -153,7 +192,13 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
           <div className="flex items-center gap-2 text-xs text-[#5B6472] mb-1">
             <span className="font-semibold text-[#00375e]">TÀI SẢN VẬT TƯ</span>
             <span>/</span>
-            <span className="text-[#0e61a1]">TÀI SẢN CÁ THỂ</span>
+            <button
+              onClick={() => onNavigate('fixed-assets')}
+              className="text-[#0e61a1] hover:underline cursor-pointer"
+              type="button"
+            >
+              TÀI SẢN CÁ THỂ
+            </button>
             <span>/</span>
             <span className="text-[#1C2330]">Khai Báo Hàng Loạt</span>
           </div>
@@ -164,16 +209,22 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
             Tự động sinh mã định danh duy nhất theo cấu trúc chuẩn: <code className="font-mono text-[#00375e] font-bold">[Mã-DM]-[Vị-Trí]-[STT]</code>
           </p>
         </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-[#5B6472]">Chi nhánh phiên:</span>
-          <span className="px-3 py-1 bg-[#eff4ff] text-[#00375e] font-bold text-xs rounded-xl border border-[#d1e4ff]">
-            Sao Mai Nha Trang
-          </span>
-        </div>
       </div>
 
-      {/* Success Modal Notification */}
+      {loadError && (
+        <div className="p-3 rounded-xl bg-[#FFEBEE] text-[#D32F2F] text-xs border border-[#D32F2F]/30">
+          {loadError}
+        </div>
+      )}
+
+      {submitError && (
+        <div className="p-3 rounded-xl bg-[#FFEBEE] text-[#D32F2F] text-xs border border-[#D32F2F]/30 flex items-start gap-2">
+          <span className="material-symbols-outlined text-[18px] shrink-0">error</span>
+          <span>{submitError}</span>
+        </div>
+      )}
+
+      {/* Success Notification */}
       {successResult && (
         <div className="p-5 bg-[#E8F5E9] border border-[#2E7D32]/30 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in zoom-in-95 duration-200">
           <div className="flex items-center gap-3">
@@ -185,8 +236,8 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                 Khởi tạo thành công {successResult.count} tài sản cố định mới!
               </div>
               <div className="text-xs text-[#2E7D32]/80 mt-0.5">
-                Các mã từ <span className="font-mono font-bold">{previewCodes[0]}</span> đến{' '}
-                <span className="font-mono font-bold">{previewCodes[previewCodes.length - 1]}</span> đã sẵn sàng trong cơ sở dữ liệu.
+                Các mã từ <span className="font-mono font-bold">{successResult.codes[0]}</span> đến{' '}
+                <span className="font-mono font-bold">{successResult.codes[successResult.codes.length - 1]}</span> đã được lưu vào hệ thống.
               </div>
             </div>
           </div>
@@ -222,7 +273,6 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                 Thông Số Khởi Tạo - Thiết lập thông tin
               </h2>
             </div>
-            <span className="text-xs text-[#5B6472]">Quy tắc tự động hóa v2.4</span>
           </div>
 
           {/* Form Fields */}
@@ -231,40 +281,39 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-semibold text-[#1C2330]">Danh mục tài sản (*)</label>
-                <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                  selectedCategory.purpose === 'GUEST_USE'
-                    ? 'bg-[#eff4ff] text-[#00375e]'
-                    : 'bg-[#F7F8FA] text-[#5B6472] border border-[#DFE3E8]'
-                }`}>
-                  Mục đích: {getPurposeLabel(selectedCategory.purpose)}
-                </span>
+                {selectedCategory && (
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                    selectedCategory.purpose === 'GUEST_USE'
+                      ? 'bg-[#eff4ff] text-[#00375e]'
+                      : 'bg-[#F7F8FA] text-[#5B6472] border border-[#DFE3E8]'
+                  }`}>
+                    Mục đích: {getPurposeLabel(selectedCategory.purpose)}
+                  </span>
+                )}
               </div>
               <select
-                value={selectedCategoryValue}
-                onChange={(e) => setSelectedCategoryValue(e.target.value)}
-                className="w-full p-2.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#1C2330] font-medium focus:outline-none focus:border-[#0e61a1] cursor-pointer"
+                value={selectedCategory?.id || ''}
+                onChange={(e) => setSelectedCategoryId(e.target.value)}
+                disabled={categoriesData.length === 0}
+                className={selectClass}
               >
-                <optgroup label="Phục vụ khách hàng">
-                  {(categoriesData.length > 0 ? categoriesData : CATEGORIES).filter(c => c.purpose === 'GUEST_USE').map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.name} — Prefix: [{cat.prefix}]
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Duy trì & Vận hành cơ sở">
-                  {(categoriesData.length > 0 ? categoriesData : CATEGORIES).filter(c => c.purpose === 'FACILITY_MAINTENANCE').map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.name} — Prefix: [{cat.prefix}]
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Nội bộ">
-                  {(categoriesData.length > 0 ? categoriesData : CATEGORIES).filter(c => c.purpose === 'INTERNAL_OPS').map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.name} — Prefix: [{cat.prefix}]
-                    </option>
-                  ))}
-                </optgroup>
+                {categoriesData.length === 0 && (
+                  <option value="">
+                    {loadingData ? 'Đang tải danh mục...' : 'Chưa có danh mục tài sản cố định nào đang áp dụng'}
+                  </option>
+                )}
+                {PURPOSE_GROUPS.map((group) => {
+                  const items = categoriesData.filter((c) => c.purpose === group.value);
+                  return items.length === 0 ? null : (
+                    <optgroup key={group.value} label={group.label}>
+                      {items.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name} — Prefix: [{cat.prefix}]
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
             </div>
 
@@ -286,7 +335,7 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                   <span className="material-symbols-outlined text-[20px]">meeting_room</span>
                   <div className="text-left">
                     <div className="text-xs">Gắn vào Phòng (Room)</div>
-                    <div className="text-[10px] text-[#72777f]">Buồng khách Deluxe/Suite</div>
+                    <div className="text-[10px] text-[#72777f]">Buồng khách</div>
                   </div>
                 </button>
 
@@ -314,12 +363,22 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                 Vị trí cụ thể tiếp nhận thiết bị (*)
               </label>
               <select
-                value={selectedPositionCode}
-                onChange={(e) => setSelectedPositionCode(e.target.value)}
-                className="w-full p-2.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#1C2330] font-medium focus:outline-none focus:border-[#0e61a1] cursor-pointer"
+                value={selectedPosition?.id || ''}
+                onChange={(e) => setSelectedPositionId(e.target.value)}
+                disabled={currentPositionList.length === 0}
+                className={selectClass}
               >
+                {currentPositionList.length === 0 && (
+                  <option value="">
+                    {loadingData
+                      ? 'Đang tải vị trí...'
+                      : positionType === 'ROOM'
+                        ? 'Khách sạn chưa có phòng nào'
+                        : 'Khách sạn chưa có khu vực nào'}
+                  </option>
+                )}
                 {currentPositionList.map((pos) => (
-                  <option key={pos.code} value={pos.code}>
+                  <option key={pos.id} value={pos.id}>
                     {pos.label} — Mã vị trí: [{pos.code}]
                   </option>
                 ))}
@@ -330,7 +389,7 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-semibold text-[#1C2330]">Số lượng cần tạo (*)</label>
-                <span className="text-[11px] text-[#5B6472]">Tối đa 50 thiết bị / lần khởi tạo</span>
+                <span className="text-[11px] text-[#5B6472]">Tối đa {MAX_QUANTITY} thiết bị / lần khởi tạo</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center border border-[#DFE3E8] rounded-xl overflow-hidden bg-white shadow-xs">
@@ -345,7 +404,7 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                   <input
                     type="number"
                     min="1"
-                    max="50"
+                    max={MAX_QUANTITY}
                     value={quantity}
                     onChange={(e) => handleQuantityChange(e.target.value)}
                     className="w-16 text-center py-2 text-sm font-bold text-[#00375e] focus:outline-none"
@@ -353,7 +412,7 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                   <button
                     type="button"
                     onClick={() => handleQuantityChange(quantity + 1)}
-                    disabled={quantity >= 50}
+                    disabled={quantity >= MAX_QUANTITY}
                     className="px-3 py-2 bg-[#F7F8FA] hover:bg-[#eff4ff] text-[#00375e] font-bold text-sm transition-colors cursor-pointer disabled:opacity-40"
                   >
                     +
@@ -390,7 +449,6 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                   <span className="material-symbols-outlined text-[18px]">verified</span>
                   <span>Tốt (Good / Operational)</span>
                 </div>
-                <span className="text-[11px] text-[#2E7D32]/80">Quy tắc chuẩn hóa 100%</span>
               </div>
             </div>
 
@@ -398,9 +456,9 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
             <div className="p-3.5 bg-[#eff4ff] rounded-xl border border-[#d1e4ff] flex items-start gap-2.5 text-xs text-[#00375e]">
               <span className="material-symbols-outlined text-[20px] text-[#0e61a1] shrink-0">info</span>
               <div>
-                <span className="font-semibold">Cần phân bổ vào nhiều phòng cùng lúc? </span>
+                <span className="font-semibold">Số thứ tự tự nối tiếp. </span>
                 <span className="text-[#5B6472]">
-                  Tính năng khai báo này tự động tạo liên tiếp từ STT 001 đến {String(quantity).padStart(3, '0')}. Hệ thống sẽ gán tự động mã QR tương ứng để in tem nhãn dán thiết bị.
+                  STT bắt đầu từ số lớn nhất đang dùng cho cùng danh mục và vị trí, nên có thể khai báo thêm nhiều lần mà không trùng mã.
                 </span>
               </div>
             </div>
@@ -425,7 +483,12 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
 
             {/* Scrollable list of generated codes */}
             <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-              {previewCodes.map((code, idx) => (
+              {previewCodes.length === 0 && (
+                <div className="p-4 text-center text-xs text-[#5B6472]">
+                  {codeBase ? 'Đang tính số thứ tự...' : 'Chọn danh mục và vị trí để xem trước mã.'}
+                </div>
+              )}
+              {previewCodes.map((code) => (
                 <div
                   key={code}
                   className="p-3 bg-[#F7F8FA] hover:bg-[#eff4ff] border border-[#DFE3E8] rounded-xl flex items-center justify-between transition-colors"
@@ -437,7 +500,7 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                     <div>
                       <div className="font-mono font-bold text-xs text-[#00375e]">{code}</div>
                       <div className="text-[10px] text-[#5B6472]">
-                        {selectedCategory.name} · {selectedPosition.label.split(' (')[0]}
+                        {selectedCategory?.name} · {selectedPosition?.label.split(' (')[0]}
                       </div>
                     </div>
                   </div>
@@ -455,7 +518,7 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
                 <span className="text-sm font-bold">{previewCodes.length} thiết bị</span>
               </div>
               <div className="text-[11px] text-[#5B6472]">
-                Vị trí đích: <span className="font-medium text-[#1C2330]">{selectedPosition.label}</span>
+                Vị trí đích: <span className="font-medium text-[#1C2330]">{selectedPosition?.label || '—'}</span>
               </div>
             </div>
           </div>
@@ -472,8 +535,8 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
 
             <button
               onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="px-6 py-2.5 rounded-xl bg-[#00375e] hover:bg-[#1f4e78] text-white text-xs font-bold shadow-sm flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+              disabled={!canSubmit}
+              className="px-6 py-2.5 rounded-xl bg-[#00375e] hover:bg-[#1f4e78] text-white text-xs font-bold shadow-sm flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               type="button"
             >
               {isSubmitting ? (
@@ -493,4 +556,4 @@ export const BatchCreateAssetsScreen = ({ onNavigate, onSelectAsset }) => {
       </div>
     </div>
   );
-}
+};
