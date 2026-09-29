@@ -1,12 +1,16 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.dto.CatalogUsageResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.DepartmentRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.DepartmentResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.Department;
+import com.example.SWP391_G2_SE2055_JV.entity.Position;
+import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.DepartmentRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +19,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -30,6 +37,7 @@ public class DepartmentService {
 
     private final DepartmentRepository departmentRepository;
     private final PositionRepository   positionRepository;
+    private final UserRepository       userRepository;
 
     /**
      * @param includeInactive true để Giám đốc thấy cả mục đã ẩn khi quản trị danh mục;
@@ -111,6 +119,33 @@ public class DepartmentService {
 
         departmentRepository.delete(department);
         log.info("Xóa Phòng ban {}", department.getId());
+    }
+
+    /**
+     * Các vị trí thuộc phòng ban này — đúng tập mà {@link #deleteDepartment} dựa vào để chặn xóa —
+     * kèm số nhân viên đang làm / đã nghỉ việc của từng vị trí (đếm gộp một câu).
+     */
+    @Transactional(readOnly = true)
+    public CatalogUsageResponse getUsage(UUID id) {
+        Department department = getOwnedDepartment(id);
+        List<Position> positions = positionRepository.findByDepartmentId(department.getId());
+
+        Map<UUID, long[]> counts = new HashMap<>(); // [đang làm, đã nghỉ việc]
+        if (!positions.isEmpty()) {
+            userRepository.countStaffByPositionAndStatus(positions.stream().map(Position::getId).toList())
+                .forEach(row -> counts.computeIfAbsent(row.getPositionId(), key -> new long[2])
+                    [row.getStatus() == UserStatus.TERMINATED ? 1 : 0] += row.getTotal());
+        }
+
+        List<CatalogUsageResponse.PositionRef> refs = positions.stream()
+            .map(position -> {
+                long[] count = counts.getOrDefault(position.getId(), new long[2]);
+                return new CatalogUsageResponse.PositionRef(position.getId(), position.getName(),
+                    position.getPositionType(), position.isActive(), count[0], count[1]);
+            })
+            .sorted((a, b) -> a.name().compareToIgnoreCase(b.name()))
+            .toList();
+        return CatalogUsageResponse.builder().positions(refs).build();
     }
 
     private Department getOwnedDepartment(UUID id) {

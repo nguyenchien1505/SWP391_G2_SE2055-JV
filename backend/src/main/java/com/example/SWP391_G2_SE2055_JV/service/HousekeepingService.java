@@ -263,6 +263,16 @@ public class HousekeepingService {
     }
 
     /**
+     * Số việc dọn nhân viên đang làm dở (đã được gán, chưa bấm hoàn thành) — ở mọi ngày. Chỉ
+     * đếm «Đang thực hiện»: việc «Chờ kiểm tra» người dọn đã làm xong phần mình, còn lại là
+     * việc của Manager.
+     */
+    @Transactional(readOnly = true)
+    public long countInProgressTasksOf(UUID staffId) {
+        return taskRepository.countByAssignedStaffIdAndStatus(staffId, HousekeepingTaskStatus.IN_PROGRESS);
+    }
+
+    /**
      * S-10 — ai gán được việc dọn trong ngày {@code date} (BR-HK-02, BR-HK-03, BR-PERM-05).
      *
      * <p>Chỉ Manager gọi: phạm vi là Location của chính họ, không nhận tham số locationId để

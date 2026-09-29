@@ -1,13 +1,17 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.dto.CatalogUsageResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.CreatePositionRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.PositionResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdatePositionRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.Department;
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
+import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.DepartmentRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
@@ -18,7 +22,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -37,29 +44,31 @@ public class PositionService {
     private final PositionRepository   positionRepository;
     private final DepartmentRepository departmentRepository;
     private final UserRepository       userRepository;
+    private final LocationRepository   locationRepository;
 
     @Transactional(readOnly = true)
     public Page<PositionResponse> getPositions(boolean includeInactive, Pageable pageable) {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
 
+        // Danh sách chọn (mặc định) bỏ cả chức danh thuộc phòng ban đã ẩn — BR-ORG-14.
         Page<Position> page = includeInactive
             ? positionRepository.findByTenantId(tenantId, pageable)
-            : positionRepository.findByTenantIdAndActiveTrue(tenantId, pageable);
+            : positionRepository.findSelectableByTenantId(tenantId, pageable);
 
         // BR-ORG-07: màn hình luôn hiện Department suy ra từ Position — nạp gộp một lần.
         // Department là danh mục cấp Tenant nên tập này nhỏ, lấy trọn rẻ hơn lọc theo trang.
-        Map<UUID, String> departmentNames = departmentRepository
+        Map<UUID, Department> departments = departmentRepository
             .findByTenantIdOrderByNameAsc(tenantId).stream()
-            .collect(Collectors.toMap(Department::getId, Department::getName));
+            .collect(Collectors.toMap(Department::getId, department -> department));
 
         return page.map(position -> PositionResponse.fromEntity(
-            position, departmentNames.get(position.getDepartmentId())));
+            position, departments.get(position.getDepartmentId())));
     }
 
     @Transactional(readOnly = true)
     public PositionResponse getPositionById(UUID id) {
         Position position = getOwnedPosition(id);
-        return PositionResponse.fromEntity(position, departmentNameOf(position));
+        return PositionResponse.fromEntity(position, departmentOf(position));
     }
 
     @Transactional
@@ -77,6 +86,11 @@ public class PositionService {
             .findByIdAndTenantId(request.getDepartmentId(), tenantId)
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Department", "id", request.getDepartmentId()));
+        // BR-ORG-14: phòng ban đã ẩn không nhận thêm chức danh mới.
+        if (!department.isActive()) {
+            throw new BusinessException("Phòng ban \"" + department.getName()
+                + "\" đang ẩn. Hiện lại phòng ban trước khi thêm chức danh vào đó.");
+        }
 
         Position position = positionRepository.save(Position.builder()
             .tenantId(tenantId)
@@ -87,7 +101,7 @@ public class PositionService {
 
         log.info("Tạo Chức danh {} loại {} thuộc Phòng ban {}",
             name, position.getPositionType(), department.getName());
-        return PositionResponse.fromEntity(position, department.getName());
+        return PositionResponse.fromEntity(position, department);
     }
 
     /**
@@ -115,7 +129,7 @@ public class PositionService {
             position.setPositionType(request.getPositionType());
         }
 
-        return PositionResponse.fromEntity(positionRepository.save(position), departmentNameOf(position));
+        return PositionResponse.fromEntity(positionRepository.save(position), departmentOf(position));
     }
 
     /** BR-ORG-14: ẩn khỏi danh sách chọn thay cho việc xóa. */
@@ -125,7 +139,7 @@ public class PositionService {
         position.setActive(active);
 
         log.info("{} Chức danh {}", active ? "Hiện" : "Ẩn", position.getId());
-        return PositionResponse.fromEntity(positionRepository.save(position), departmentNameOf(position));
+        return PositionResponse.fromEntity(positionRepository.save(position), departmentOf(position));
     }
 
     /**
@@ -147,15 +161,35 @@ public class PositionService {
         log.info("Xóa Chức danh {}", position.getId());
     }
 
+    /**
+     * Các nhân viên giữ vị trí này — TÍNH CẢ người đã nghỉ việc, đúng tập mà
+     * {@link #deletePosition} dựa vào để chặn xóa. Người đang làm đứng trước.
+     */
+    @Transactional(readOnly = true)
+    public CatalogUsageResponse getUsage(UUID id) {
+        Position position = getOwnedPosition(id);
+        List<User> holders = userRepository.findByPositionId(position.getId());
+        Map<UUID, String> locationNames = locationRepository.findNamesByIds(
+            holders.stream().map(User::getLocationId).filter(Objects::nonNull).collect(Collectors.toSet()));
+
+        List<CatalogUsageResponse.StaffRef> refs = holders.stream()
+            .sorted(Comparator.comparing((User user) -> user.getStatus() == UserStatus.TERMINATED)
+                .thenComparing(User::getFullName, String.CASE_INSENSITIVE_ORDER))
+            .map(user -> new CatalogUsageResponse.StaffRef(user.getId(), user.getFullName(), user.getEmail(),
+                user.getLocationId(), locationNames.get(user.getLocationId()), user.getStatus(),
+                user.getStartWorkDate()))
+            .toList();
+        return CatalogUsageResponse.builder().staff(refs).build();
+    }
+
     private Position getOwnedPosition(UUID id) {
         return positionRepository.findByIdAndTenantId(id, SecurityUtils.getCurrentTenantId())
             .orElseThrow(() -> new ResourceNotFoundException("Position", "id", id));
     }
 
-    private String departmentNameOf(Position position) {
+    private Department departmentOf(Position position) {
         return departmentRepository
             .findByIdAndTenantId(position.getDepartmentId(), position.getTenantId())
-            .map(Department::getName)
             .orElse(null);
     }
 }
