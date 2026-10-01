@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
-import { createRoom, fetchRoomStatusSummary, fetchRooms } from '../../api/rooms';
+import { createRoom, deleteRoom, fetchRoomStatusSummary, fetchRooms, updateRoom } from '../../api/rooms';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import LockRoomModal from '../../components/rooms/LockRoomModal';
 import RoomCard from '../../components/rooms/RoomCard';
 import RoomForm from '../../components/rooms/RoomForm';
+import RoomNoteModal from '../../components/rooms/RoomNoteModal';
+import RoomRowActions from '../../components/rooms/RoomRowActions';
 import RoomStatusBadge from '../../components/rooms/RoomStatusBadge';
 import RoomStatusFilter from '../../components/rooms/RoomStatusFilter';
+import { DELETE_ROOM_WARNING, statusChangedMessage } from './roomActions';
 import { ROOM_STATUS_ORDER, roomStatusMeta } from './roomLabels';
 import { useRoomTypes, useTenantLocations } from './useRoomLookups';
 import './rooms.css';
@@ -24,12 +29,18 @@ const NO_FILTER = { locationId: '', status: '', floor: '', roomTypeId: '' };
  *
  * F3 thêm cho Giám đốc: nút "Thêm phòng" mở form S-03 ở cột phải (bố cục `split`). Manager không
  * thấy nút này — nhưng đó chỉ là cho dễ dùng, backend mới là nơi chặn thật (BR-ROOM-04).
+ *
+ * Mỗi dòng phòng có sẵn nút thao tác (`RoomRowActions`), không phải vào S-04 mới sửa / xóa được:
+ * Giám đốc "Sửa" mở form S-03 ở cùng cột phải, "Xóa" hỏi lại bằng hộp thoại; Quản lý chi nhánh
+ * "Sửa ghi chú" mở S-07, "Khóa phòng" / "Mở khóa" mở S-08. Bấm vào chỗ khác trên dòng vẫn vào
+ * trang chi tiết như trước.
  */
 export default function RoomsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { state: navigationState, pathname } = useLocation();
   const isDirector = user?.role === 'DIRECTOR';
+  const isManager = user?.role === 'MANAGER';
 
   const locations = useTenantLocations(isDirector);
   const roomTypes = useRoomTypes(true);
@@ -43,10 +54,15 @@ export default function RoomsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  const [showForm, setShowForm] = useState(false);
+  // Form ở cột phải: null = đóng; { mode: 'create' } = thêm phòng; { mode: 'edit', room } = sửa.
+  const [form, setForm] = useState(null);
+  const formRef = useRef(null);
+  const [noteRoom, setNoteRoom] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [locking, setLocking] = useState(null);
   // Xóa phòng xong, S-04 chuyển về đây kèm câu báo (react-router state).
   const [banner, setBanner] = useState(navigationState?.banner ?? null);
-  // Tăng lên sau mỗi lần tạo phòng → tải lại cả danh sách lẫn dải thẻ số liệu.
+  // Tăng lên sau mỗi lần tạo / sửa / xóa phòng → tải lại cả danh sách lẫn dải thẻ số liệu.
   const [version, setVersion] = useState(0);
 
   // Đọc câu báo một lần rồi bỏ khỏi lịch sử duyệt, để F5 không hiện lại thông báo cũ.
@@ -113,6 +129,26 @@ export default function RoomsPage() {
 
   const openRoom = (room) => navigate(`/phong/${room.id}`);
 
+  // Dưới 1080px bố cục `split` xếp form XUỐNG DƯỚI danh sách: bấm "Sửa" ở một dòng mà form không
+  // hiện ra trước mắt thì người dùng tưởng nút không chạy — cuộn tới form.
+  useEffect(() => {
+    if (form && window.matchMedia('(max-width: 1080px)').matches) {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [form]);
+
+  function openForm(next) {
+    setForm(next);
+    setBanner(null);
+  }
+
+  function replaceRoom(updated) {
+    setPageData((prev) => prev && {
+      ...prev,
+      content: prev.content.map((room) => (room.id === updated.id ? updated : room)),
+    });
+  }
+
   /**
    * RM-02 — tạo phòng. Trả về câu lỗi cho form tự hiện, hoặc `null` khi thành công; câu lỗi của
    * backend đã nêu rõ vi phạm gì (trùng số phòng, hết hạn mức…) nên hiện nguyên văn.
@@ -132,6 +168,67 @@ export default function RoomsPage() {
     }
   }
 
+  /** RM-03 — Giám đốc sửa thông tin cấu trúc. Trả câu lỗi cho form, hoặc `null` khi thành công. */
+  async function handleUpdate(payload) {
+    try {
+      const updated = await updateRoom(form.room.id, payload);
+      setForm(null);
+      setBanner({ type: 'success', text: `Đã cập nhật phòng ${updated.roomNumber}.` });
+      // Tải lại chứ không chỉ thay dòng: đổi tầng / loại phòng có thể làm phòng ra khỏi bộ lọc.
+      setVersion((v) => v + 1);
+      return null;
+    } catch (err) {
+      return readErrorMessage(err, 'Không lưu được thông tin phòng.');
+    }
+  }
+
+  /**
+   * RM-05 — xóa phòng ngay trên danh sách. Bị backend chặn (còn việc dọn đang mở, còn tài sản gắn
+   * vào…) thì hiện nguyên văn câu lỗi, vì câu đó đã nói rõ điều kiện nào chưa đạt.
+   */
+  async function confirmDelete() {
+    const room = deleting;
+    setDeleting(null);
+    try {
+      await deleteRoom(room.id);
+      setBanner({ type: 'success', text: `Đã xóa phòng ${room.roomNumber}.` });
+      if (form?.room?.id === room.id) setForm(null);
+      // Xóa dòng cuối cùng của một trang sau trang đầu thì lùi một trang, khỏi để trang trống.
+      if (rooms.length === 1 && page > 0) setPage((p) => p - 1);
+      setVersion((v) => v + 1);
+    } catch (err) {
+      setBanner({ type: 'error', text: readErrorMessage(err, 'Không xóa được phòng.') });
+    }
+  }
+
+  /**
+   * RM-11 / RM-12 — Quản lý khóa / mở khóa xong. Tải lại cả danh sách lẫn thẻ số liệu: trạng thái
+   * đổi thì số đếm đổi, và phòng có thể ra khỏi bộ lọc trạng thái đang chọn.
+   */
+  function finishLock(updated) {
+    const before = locking;
+    setLocking(null);
+    setBanner({ type: 'success', text: statusChangedMessage(before, updated) });
+    setVersion((v) => v + 1);
+  }
+
+  /** RM-04 — Quản lý chi nhánh vừa lưu ghi chú; phòng mới lấy thẳng từ response. */
+  function saveNote(updated) {
+    setNoteRoom(null);
+    replaceRoom(updated);
+    setBanner({ type: 'success', text: `Đã lưu ghi chú vận hành của phòng ${updated.roomNumber}.` });
+  }
+
+  const editingId = form?.mode === 'edit' ? form.room.id : null;
+  const rowActions = {
+    isDirector,
+    isManager,
+    onEdit: (room) => openForm({ mode: 'edit', room }),
+    onDelete: setDeleting,
+    onEditNote: setNoteRoom,
+    onLock: setLocking,
+  };
+
   return (
     <div className="page">
       <div className="page__head">
@@ -143,10 +240,7 @@ export default function RoomsPage() {
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => {
-              setShowForm(true);
-              setBanner(null);
-            }}
+            onClick={() => openForm({ mode: 'create' })}
           >
             + Thêm phòng
           </button>
@@ -169,7 +263,7 @@ export default function RoomsPage() {
         </div>
       )}
 
-      <div className={isDirector && showForm ? 'split' : ''}>
+      <div className={form ? 'split' : ''}>
         <section className="panel">
           <div className="toolbar rooms-toolbar">
             {isDirector && (
@@ -256,14 +350,19 @@ export default function RoomsPage() {
                       <th>Số phòng</th>
                       <th>Tầng</th>
                       <th>Loại phòng</th>
-                      <th>Sức chứa</th>
+                      <th className="col-optional">Sức chứa</th>
                       <th>Trạng thái</th>
-                      {isDirector && <th>Khách sạn</th>}
+                      {isDirector && <th className="col-optional">Khách sạn</th>}
+                      <th className="col-actions">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rooms.map((room) => (
-                      <tr key={room.id} className="is-clickable" onClick={() => openRoom(room)}>
+                      <tr
+                        key={room.id}
+                        className={`is-clickable ${room.id === editingId ? 'is-editing' : ''}`}
+                        onClick={() => openRoom(room)}
+                      >
                         <td>
                           {/* Link để dùng được bằng bàn phím / mở tab mới; cả dòng vẫn bấm được. */}
                           <Link
@@ -276,11 +375,14 @@ export default function RoomsPage() {
                         </td>
                         <td>{room.floor}</td>
                         <td>{room.roomTypeName ?? '—'}</td>
-                        <td>{room.capacity} người</td>
+                        <td className="col-optional">{room.capacity} người</td>
                         <td>
                           <RoomStatusBadge status={room.status} />
                         </td>
-                        {isDirector && <td>{locationNames[room.locationId] ?? '—'}</td>}
+                        {isDirector && <td className="col-optional">{locationNames[room.locationId] ?? '—'}</td>}
+                        <td className="col-actions">
+                          <RoomRowActions room={room} {...rowActions} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -289,7 +391,10 @@ export default function RoomsPage() {
 
               <div className="room-grid rooms-cards">
                 {rooms.map((room) => (
-                  <RoomCard key={room.id} room={room} onSelect={openRoom} showFloor />
+                  <div key={room.id} className="room-card-item">
+                    <RoomCard room={room} onSelect={openRoom} showFloor selected={room.id === editingId} />
+                    <RoomRowActions room={room} {...rowActions} />
+                  </div>
                 ))}
               </div>
             </>
@@ -323,18 +428,32 @@ export default function RoomsPage() {
           </div>
         </section>
 
-        {isDirector && showForm && (
-          <aside className="panel panel--form">
+        {form && (
+          <aside className="panel panel--form" ref={formRef}>
+            {/* key: đổi phòng đang sửa (hoặc chuyển sang thêm mới) thì form nạp lại từ đầu. */}
             <RoomForm
-              editing={null}
+              key={editingId ?? 'create'}
+              editing={form.mode === 'edit' ? form.room : null}
               locations={locations}
               roomTypes={roomTypes}
-              onSubmit={handleCreate}
-              onCancel={() => setShowForm(false)}
+              onSubmit={form.mode === 'edit' ? handleUpdate : handleCreate}
+              onCancel={() => setForm(null)}
             />
           </aside>
         )}
       </div>
+
+      {deleting && (
+        <ConfirmDialog
+          title={`Xóa phòng ${deleting.roomNumber}?`}
+          message={DELETE_ROOM_WARNING}
+          confirmLabel="Xóa phòng"
+          onCancel={() => setDeleting(null)}
+          onConfirm={confirmDelete}
+        />
+      )}
+      {noteRoom && <RoomNoteModal room={noteRoom} onClose={() => setNoteRoom(null)} onSaved={saveNote} />}
+      {locking && <LockRoomModal room={locking} onClose={() => setLocking(null)} onChanged={finishLock} />}
 
       <div className="note">
         <span aria-hidden="true">ⓘ</span>

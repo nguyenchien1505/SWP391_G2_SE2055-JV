@@ -1479,3 +1479,89 @@ a.view-switch__item:hover {
     display: none;
   }
 }
+
+/* ══ S-02 Danh sách phòng — nút thao tác ngay trên dòng phòng (01/10/2026) ═══════════════
+ * Giám đốc sửa / xóa, Quản lý chi nhánh sửa ghi chú mà không phải mở trang chi tiết (S-04).
+ */
+.room-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.room-row-actions .btn {
+  gap: 4px;
+  white-space: nowrap;
+}
+.room-row-actions .material-symbols-outlined {
+  font-size: 18px;
+}
+/* "Xóa" giữ nền trắng như các nút khác trên dòng, chỉ chữ đỏ: cả bảng toàn nút đỏ đậm thì rối mắt,
+   còn hộp thoại xác nhận phía sau mới dùng nút đỏ đậm. */
+.btn--ghost.is-danger {
+  color: var(--danger);
+}
+.btn--ghost.is-danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: #fdecec;
+}
+/* Cột Thao tác co vừa đủ nút, các nút luôn nằm trên MỘT hàng và căn TRÁI: phòng không xóa được
+   chỉ có nút "Sửa", căn trái thì nút "Sửa" của mọi dòng vẫn thẳng một cột. */
+.table .col-actions {
+  width: 1%;
+  white-space: nowrap;
+  /* Bảng rộng hơn khung (máy 1024px, Giám đốc có thêm cột Khách sạn) thì cột Thao tác DÍNH mép
+     phải: nút luôn bấm được, các cột khác cuộn ngang bên dưới. Nền đặc để che chữ cuộn qua. */
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--card-bg);
+  box-shadow: inset 1px 0 0 var(--border);
+}
+.table .room-row-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+.table tr.is-clickable:hover .col-actions {
+  background: #f3f8fd;
+}
+/* Dòng đang mở ở form "Sửa" bên phải — tô cả ô dính mép (ô đó có nền riêng). */
+.table tr.is-editing,
+.table tr.is-editing:hover,
+.table tr.is-editing .col-actions {
+  background: #eaf2fb;
+}
+/* Form mở ở cột phải thì bảng hẹp lại còn ~530px: ẩn hai cột ít cần nhất để cột Thao tác không bị
+   đẩy ra ngoài (phải cuộn ngang mới thấy). Dưới 1080px form xuống dưới, bảng đủ rộng nên giữ nguyên. */
+@media (min-width: 1081px) {
+  .split .col-optional {
+    display: none;
+  }
+  /* Vẫn còn thiếu chỗ thì nút trên dòng chỉ còn biểu tượng; chữ vẫn có ở tooltip (`title`) và
+     trình đọc màn hình (`aria-label`). */
+  .split .table .room-row-actions__text {
+    display: none;
+  }
+}
+/* Điện thoại: thẻ phòng + hàng nút ngay dưới thẻ. Thẻ giãn cho các ô cùng hàng cao bằng nhau. */
+.room-card-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.room-card-item .room-card {
+  flex: 1;
+}
+.room-card-item .room-row-actions .btn {
+  flex: 1 1 auto;
+  font-size: 14px;
+}
+/* Thẻ hẹp (~136px ở 360px): "✎ Sửa" + "🗑 Xóa" không vừa một hàng nên bị xếp chồng, thẻ cao gấp
+   đôi. Bỏ biểu tượng, giữ CHỮ (dễ hiểu hơn biểu tượng trơn) — hai nút lại nằm chung một hàng. */
+@media (max-width: 480px) {
+  .room-card-item .room-row-actions .material-symbols-outlined {
+    display: none;
+  }
+}

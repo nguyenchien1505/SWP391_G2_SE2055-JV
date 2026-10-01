@@ -11,7 +11,7 @@ import RoomNoteModal from '../../components/rooms/RoomNoteModal';
 import RoomHistoryList from '../../components/rooms/RoomHistoryList';
 import RoomStatusBadge from '../../components/rooms/RoomStatusBadge';
 import { formatDateTime } from './format';
-import { LOCK, roomActionsFor, statusChangedMessage } from './roomActions';
+import { DELETE_ROOM_WARNING, LOCK, canDeleteRoom, roomActionsFor, statusChangedMessage } from './roomActions';
 import { useRoomAction } from './useRoomAction';
 import { useRoomTypes, useTenantLocations } from './useRoomLookups';
 import './rooms.css';
@@ -20,12 +20,6 @@ const TABS = [
   { key: 'info', label: 'Thông tin phòng' },
   { key: 'history', label: 'Lịch sử trạng thái' },
 ];
-
-/**
- * Trạng thái mà phòng còn xóa được — chỉ dùng để ẨN nút cho đỡ vướng. Backend vẫn kiểm tra đủ
- * ba điều kiện (trạng thái, việc dọn đang mở, tài sản gắn vào) và trả lỗi nếu gọi thẳng API.
- */
-const DELETABLE_STATUSES = ['AVAILABLE', 'UNAVAILABLE'];
 
 /**
  * S-04 Chi tiết phòng — mọi vai trò trong Tenant xem được, trong phạm vi Location của mình
@@ -138,7 +132,7 @@ export default function RoomDetailPage() {
     onChanged: handleStatusChanged,
     onError: (text) => setBanner({ type: 'error', text }),
   });
-  const canDelete = isDirector && DELETABLE_STATUSES.includes(room?.status);
+  const canDelete = isDirector && canDeleteRoom(room);
 
   return (
     <div className="page">
@@ -280,13 +274,7 @@ export default function RoomDetailPage() {
           {pendingDelete && (
             <ConfirmDialog
               title={`Xóa phòng ${room.roomNumber}?`}
-              message={
-                <>
-                  Thao tác này không hoàn tác được. Hệ thống sẽ từ chối nếu phòng đang có khách
-                  hoặc đang trong quy trình dọn, còn việc dọn phòng chưa kết thúc, hoặc còn tài sản
-                  cố định gắn vào. Phòng đã xóa vẫn tính vào hạn mức của gói dịch vụ.
-                </>
-              }
+              message={DELETE_ROOM_WARNING}
               confirmLabel="Xóa phòng"
               onCancel={() => setPendingDelete(false)}
               onConfirm={handleConfirmDelete}
