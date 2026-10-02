@@ -18,7 +18,9 @@ import HousekeepingPage from './pages/rooms/HousekeepingPage';
 import MyTasksPage from './pages/rooms/MyTasksPage';
 import ReserveManagerPage from './pages/ReserveManagerPage';
 import AssetCategoriesPage from './pages/AssetCategoriesPage';
+import MyDamageReportsPage from './pages/MyDamageReportsPage';
 import { homePathFor } from './homePath';
+import { canReportDamage } from './permissions';
 
 /**
  * Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). Quản lý dự bị
@@ -85,6 +87,15 @@ function RequireBranchManager({ children }) {
   return allowed ? children : <Navigate to={homePathFor(user)} replace />;
 }
 
+/**
+ * Báo hỏng của tôi — chỉ nhân viên có quyền Lễ tân / Dọn dẹp (BR-ASSET-05). Vai trò khác về trang
+ * chủ của mình. Chỉ là lớp giao diện; quyền thật do backend quyết định.
+ */
+function RequireDamageReporter({ children }) {
+  const { user } = useAuth();
+  return canReportDamage(user) ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
 /** Trang nghiệp vụ trong khung AppLayout, bắt buộc đã đăng nhập (và đã đổi mật khẩu tạm). */
 function inShell(page) {
   return (
@@ -100,6 +111,7 @@ import { AssetDetailScreen } from './components/screens/AssetDetailScreen';
 import { BatchCreateAssetsScreen } from './components/screens/BatchCreateAssetsScreen';
 import { ConsumableInventoryScreen } from './components/screens/ConsumableInventoryScreen';
 import { DamageReportScreen } from './components/screens/DamageReportScreen';
+import { DamageReportListScreen } from './components/screens/DamageReportListScreen';
 import { useNavigate, useParams } from 'react-router-dom';
 
 function useAssetNavigate() {
@@ -139,9 +151,13 @@ function DetailWrapper() {
   const { ref } = useParams();
   return <AssetDetailScreen key={ref} assetRef={ref} onNavigate={useAssetNavigate()} />;
 }
+function IncidentListWrapper() {
+  return <DamageReportListScreen onNavigate={useAssetNavigate()} />;
+}
+/** `key` theo id: chuyển sang phiếu khác (mục "báo hỏng khác") thì form xử lý làm lại từ đầu. */
 function IncidentWrapper() {
   const { id } = useParams();
-  return <DamageReportScreen incidentId={id} onNavigate={useAssetNavigate()} />;
+  return <DamageReportScreen key={id} incidentId={id} onNavigate={useAssetNavigate()} />;
 }
 
 export default function App() {
@@ -193,6 +209,9 @@ export default function App() {
           chặn vai trò vì backend tự ép nhân viên về việc của chính mình (BR-PERM-05). */}
       <Route path="/don-phong" element={inShell(<RequireBranchManager><HousekeepingPage /></RequireBranchManager>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
+      {/* Báo hỏng của nhân viên — BR-ASSET-05. Đường tĩnh nên được ưu tiên hơn /bao-hong/:id
+          (màn xử lý của Manager) dù khai báo ở đâu. */}
+      <Route path="/bao-hong/cua-toi" element={inShell(<RequireDamageReporter><MyDamageReportsPage /></RequireDamageReporter>)} />
       {/* Danh mục tài sản cấp Tenant — BR-ASSET-09: Giám đốc CRUD, Manager chỉ xem. */}
       <Route path="/danh-muc-tai-san" element={inShell(<RequireManagementRole><AssetCategoriesPage /></RequireManagementRole>)} />
 
@@ -213,7 +232,7 @@ export default function App() {
         {/* :ref là id tài sản; mã tài sản (link cũ) vẫn được nhận. */}
         <Route path="/tai-san/:ref" element={<DetailWrapper />} />
         <Route path="/vat-tu" element={<ConsumableWrapper />} />
-        <Route path="/bao-hong" element={<IncidentWrapper />} />
+        <Route path="/bao-hong" element={<IncidentListWrapper />} />
         <Route path="/bao-hong/:id" element={<IncidentWrapper />} />
       </Route>
 

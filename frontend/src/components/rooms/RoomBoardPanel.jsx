@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import { fetchRoomHistory } from '../../api/rooms';
+import { useAuth } from '../../context/AuthContext';
+import { canReportDamage } from '../../permissions';
 import { formatDate, formatDateTime, formatShortDateTime } from '../../pages/rooms/format';
 import { roomActionsFor } from '../../pages/rooms/roomActions';
 import { isOverdue, whyNoRoomActions } from '../../pages/rooms/roomBoard';
@@ -53,6 +55,7 @@ export default function RoomBoardPanel({
   onEditNote,
   onShowPreviousInspection,
 }) {
+  const { user } = useAuth();
   const meta = roomStatusMeta(room.status);
   const actions = roomActionsFor(room);
   const hasStayover = tasks.some((task) => task.taskType === 'STAYOVER');
@@ -179,6 +182,14 @@ export default function RoomBoardPanel({
           <RecentHistory key={`${room.id}-${historyKey}`} roomId={room.id} />
           <Link className="board-panel__more" to={`/phong/${room.id}`} state={{ tab: 'history' }}>
             Xem chi tiết và toàn bộ lịch sử ›
+          </Link>
+        </section>
+
+        <section className="board-panel__section">
+          <h3 className="board-panel__heading">Tài sản trong phòng</h3>
+          {/* BR-ASSET-05: Lễ tân / Dọn dẹp báo hỏng ở tab tài sản của chi tiết phòng. */}
+          <Link className="board-panel__more" to={`/phong/${room.id}`} state={{ tab: 'assets' }}>
+            {canReportDamage(user) ? 'Xem tài sản và báo hỏng ›' : 'Xem tài sản trong phòng ›'}
           </Link>
         </section>
       </div>

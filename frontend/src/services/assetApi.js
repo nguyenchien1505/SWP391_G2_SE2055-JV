@@ -92,7 +92,6 @@ const fetchAllDamageReportsRaw = () =>
 
 const fetchAllConsumablesRaw = () => fetchAllPages('/assets/consumables', 'sort=categoryId,asc');
 
-const indexById = (items) => new Map(items.map((i) => [i.id, i]));
 
 /** Thông điệp tiếng Việt cho lỗi tải — backend chỉ trả "Forbidden"/rỗng với 401/403. */
 const friendlyError = (err) => {
@@ -102,24 +101,45 @@ const friendlyError = (err) => {
   return err?.message || 'Không tải được dữ liệu.';
 };
 
-/** Phiếu báo hỏng cho UI. `assetsById` tra mã/tên/vị trí tài sản. */
-const mapDamageReport = (inc, assetsById) => {
-  const asset = assetsById.get(inc.fixedAssetId);
-  return {
-    id: inc.id,
-    shortId: String(inc.id).slice(0, 8).toUpperCase(),
-    assetId: inc.fixedAssetId,
-    assetCode: asset?.assetCode || 'Không rõ',
-    assetName: asset?.name || 'Không rõ',
-    room: asset ? asset.roomName || asset.areaName || 'Chưa xếp vị trí' : 'Chưa rõ',
-    description: inc.description,
-    reportedBy: inc.reporterName || inc.reporterEmail || 'Không rõ',
-    reporterEmail: inc.reporterEmail,
-    reportedTime: inc.reportedAt ? new Date(inc.reportedAt).toLocaleString('vi-VN') : 'N/A',
-    ticketStatus: inc.status === 'NEW' ? 'New' : 'Processed',
-    ticketStatusLabel: inc.status === 'NEW' ? 'Mới' : 'Đã xử lý',
-  };
-};
+const formatDateTime = (value) => (value ? new Date(value).toLocaleString('vi-VN') : '');
+
+/** Phiếu báo hỏng cho UI. Backend đã gắn sẵn mã/tên/vị trí tài sản và tên người liên quan. */
+const mapDamageReport = (inc) => ({
+  id: inc.id,
+  shortId: String(inc.id).slice(0, 8).toUpperCase(),
+  assetId: inc.fixedAssetId,
+  assetCode: inc.assetCode || 'Không rõ',
+  assetName: inc.assetName || 'Không rõ',
+  /** Trạng thái tài sản HIỆN TẠI, nhãn UI (Good/Damaged/Repairing/Disposed). */
+  assetStatus: inc.assetStatus ? mapAssetStatus(inc.assetStatus) : null,
+  roomId: inc.roomId,
+  areaId: inc.areaId,
+  room: inc.roomName || inc.areaName || 'Chưa rõ vị trí',
+  description: inc.description,
+  reportedBy: inc.reporterName || inc.reporterEmail || 'Không rõ',
+  reporterEmail: inc.reporterEmail,
+  reportedTime: formatDateTime(inc.reportedAt) || 'N/A',
+  ticketStatus: inc.status === 'NEW' ? 'New' : 'Processed',
+  ticketStatusLabel: inc.status === 'NEW' ? 'Mới' : 'Đã xử lý',
+  resolvedBy: inc.resolverName || null,
+  resolvedTime: formatDateTime(inc.resolvedAt),
+  resolutionNote: inc.resolutionNote || '',
+});
+
+/**
+ * Tài sản ở dạng gọn cho nhân viên chọn để báo hỏng. Không tra tên danh mục: Staff không được
+ * đọc danh mục (403), và form báo hỏng cũng không cần.
+ */
+const mapReportableAsset = (a) => ({
+  id: a.id,
+  code: a.assetCode,
+  name: a.name,
+  status: mapAssetStatus(a.status),
+  roomId: a.roomId,
+  areaId: a.areaId,
+  areaName: a.areaName,
+  location: a.roomName || a.areaName || 'Chưa xếp vị trí',
+});
 
 /**
  * Bản ghi backend mới nhất của một tài sản. Nhận id (đường chuẩn) hoặc mã tài sản (đường
@@ -385,55 +405,85 @@ export const assetService = {
   // ---------------------------------
   // DAMAGE REPORTS
   // ---------------------------------
+  /**
+   * Một trang báo hỏng trong phạm vi người dùng (Giám đốc: toàn Tenant, Manager: khách sạn,
+   * Staff: phiếu do chính mình gửi — backend tự ép).
+   *
+   * @param status 'NEW' | 'RESOLVED' | '' (rỗng = tất cả). Không truyền → backend chỉ trả NEW
+   *               (DM-16); bỏ mất tham số rỗng thì phiếu vừa đóng "biến mất".
+   * @param fixedAssetId lịch sử báo hỏng của một tài sản
+   */
   getDamageReports: async (options = {}) => {
-    const { status, page = 1, limit = 10 } = options;
+    const { status, fixedAssetId, page = 1, limit = 10 } = options;
     const params = new URLSearchParams();
-    // Không truyền `status` → backend mặc định chỉ trả NEW; `status=''` (gửi rỗng) mới là
-    // bỏ lọc, lấy cả RESOLVED (DM-16). Bỏ mất tham số rỗng thì phiếu vừa đóng "biến mất".
     if (status !== undefined && status !== null) params.append('status', status.toUpperCase());
+    if (fixedAssetId) params.append('fixedAssetId', fixedAssetId);
     params.append('page', (page - 1).toString());
     params.append('size', limit.toString());
+    params.append('sort', 'reportedAt,desc');
 
-    const [response, assets] = await Promise.all([
-      apiClient.get(`/assets/damage-reports?${params.toString()}`),
-      fetchAllFixedAssetsRaw(),
-    ]);
-    const assetsById = indexById(assets);
-
+    const response = await apiClient.get(`/assets/damage-reports?${params.toString()}`);
     return {
-      items: (response.content || []).map((inc) => mapDamageReport(inc, assetsById)),
+      items: (response.content || []).map(mapDamageReport),
       total: response.totalElements || 0,
-      totalPages: response.totalPages || 0
+      totalPages: response.totalPages || 0,
     };
   },
 
-  getIncident: async (id) => {
-     const res = await assetService.getDamageReports({ limit: 1000, status: '' });
-     return res.items.find(i => i.id === id);
-  },
-
   getDamageReportById: async (id) => {
-     return assetService.getIncident(id);
+    return mapDamageReport(await apiClient.get(`/assets/damage-reports/${id}`));
   },
 
-  resolveDamageReport: async (id) => {
-    return apiClient.patch(`/assets/damage-reports/${id}/resolve`);
+  /** Lễ tân / Dọn dẹp gửi báo hỏng — BR-ASSET-05. Khách sạn và người báo lấy từ phiên. */
+  createDamageReport: async ({ fixedAssetId, description }) => {
+    return mapDamageReport(
+      await apiClient.post('/assets/damage-reports', { fixedAssetId, description })
+    );
   },
 
   /**
-   * Cập nhật trạng thái tài sản TRƯỚC rồi mới đóng phiếu: nếu bước đầu lỗi thì phiếu vẫn
-   * mở, người dùng thấy lỗi và làm lại — thay vì phiếu đã đóng mà tài sản sai trạng thái.
+   * Manager đóng phiếu — BR-ASSET-06. Trạng thái tài sản mới và ghi chú đều không bắt buộc;
+   * backend đóng phiếu và đổi trạng thái tài sản trong CÙNG một transaction.
+   *
+   * @param newAssetStatus nhãn UI (Good/Damaged/Repairing/Disposed) hoặc enum backend; bỏ
+   *                       trống = giữ nguyên trạng thái tài sản
    */
-  resolveIncident: async (id, data) => {
-    const inc = await assetService.getIncident(id);
-    if (!inc) throw new Error('Không tìm thấy phiếu báo hỏng.');
-    if (data?.newAssetStatus) {
-      await assetService.updateAssetStatus(inc.assetId || inc.assetCode, data.newAssetStatus);
+  resolveDamageReport: async (id, { newAssetStatus, resolutionNote } = {}) => {
+    const body = {
+      newAssetStatus: newAssetStatus ? toBackendStatus(newAssetStatus) : null,
+      resolutionNote: resolutionNote?.trim() || null,
+    };
+    return mapDamageReport(await apiClient.patch(`/assets/damage-reports/${id}/resolve`, body));
+  },
+
+  /**
+   * Tài sản đang vận hành (không gồm đã thanh lý) để nhân viên chọn báo hỏng — lọc theo
+   * phòng HOẶC khu vực, hoặc bỏ trống cả hai để lấy toàn bộ khách sạn.
+   */
+  getReportableAssets: async ({ roomId, areaId } = {}) => {
+    const params = new URLSearchParams({ sort: 'assetCode,asc' });
+    if (roomId) params.append('roomId', roomId);
+    if (areaId) params.append('areaId', areaId);
+    const raw = await fetchAllPages('/assets/fixed-assets', params.toString());
+    return raw.map(mapReportableAsset);
+  },
+
+  /**
+   * Khu vực có tài sản trong khách sạn của người dùng, kèm danh sách tài sản. Suy ra từ chính
+   * danh sách tài sản — Staff không được đọc danh mục khu vực, và khu vực không có tài sản thì
+   * cũng không có gì để báo hỏng.
+   */
+  getReportableAreas: async () => {
+    const assets = await assetService.getReportableAssets();
+    const byArea = new Map();
+    for (const asset of assets) {
+      if (!asset.areaId) continue;
+      if (!byArea.has(asset.areaId)) {
+        byArea.set(asset.areaId, { id: asset.areaId, name: asset.areaName || 'Khu vực', assets: [] });
+      }
+      byArea.get(asset.areaId).assets.push(asset);
     }
-    await assetService.resolveDamageReport(id);
-    const updated = await assetService.getIncident(id);
-    updated.managerNote = data?.processingNote || '';
-    return updated;
+    return [...byArea.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
   },
 
   // ---------------------------------
@@ -506,9 +556,7 @@ export const assetService = {
 
     let incidents = null;
     if (!failed(reportsRes, 'incidents')) {
-      // Tài sản chỉ để tra tên/vị trí — thiếu thì phiếu vẫn hiện, ghi "Không rõ".
-      const assetsById = indexById(assetsRes.status === 'fulfilled' ? assetsRes.value : []);
-      const reports = reportsRes.value.map((r) => mapDamageReport(r, assetsById));
+      const reports = reportsRes.value.map(mapDamageReport);
       const pendingList = reports.filter((i) => i.ticketStatus === 'New');
       incidents = {
         pending: pendingList.length,

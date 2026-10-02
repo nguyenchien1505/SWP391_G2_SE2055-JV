@@ -378,6 +378,9 @@ export const AssetDetailScreen = ({ assetRef, onNavigate }) => {
               </div>
             </div>
           </div>
+
+          {/* Thanh lý tự đóng các phiếu đang chờ → nạp lại khi trạng thái đổi. */}
+          <AssetDamageHistory key={asset.status} assetId={asset.id} onNavigate={onNavigate} />
         </div>
 
         {/* Right Column: Identification Profile (7 cols) */}
@@ -721,6 +724,81 @@ export const AssetDetailScreen = ({ assetRef, onNavigate }) => {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+const HISTORY_LIMIT = 5;
+
+/**
+ * Báo hỏng gần đây của tài sản — để thấy tài sản hỏng lặp lại. Giám đốc/Manager thấy mọi phiếu
+ * trong phạm vi; bấm vào phiếu để mở màn xử lý.
+ */
+function AssetDamageHistory({ assetId, onNavigate }) {
+  const [reports, setReports] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    assetService
+      .getDamageReports({ fixedAssetId: assetId, status: '', limit: HISTORY_LIMIT })
+      .then((res) => {
+        if (cancelled) return;
+        setReports(res.items);
+        setTotal(res.total);
+      })
+      .catch((e) => !cancelled && setError(e.message || 'Không tải được lịch sử báo hỏng.'));
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId]);
+
+  const pending = (reports ?? []).filter((r) => r.ticketStatus === 'New').length;
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#DFE3E8] p-5 shadow-xs space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-bold text-xs text-[#00375e] flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[16px] text-[#D32F2F]">report</span>
+          Lịch sử báo hỏng
+        </h3>
+        {reports && (
+          <span className="text-[11px] text-[#5B6472]">
+            {total} phiếu{pending > 0 ? ` · ${pending} đang chờ` : ''}
+          </span>
+        )}
+      </div>
+
+      {error && <p className="text-xs text-[#D32F2F]">{error}</p>}
+      {!reports && !error && <p className="text-xs text-[#5B6472]">Đang tải…</p>}
+      {reports && reports.length === 0 && <p className="text-xs text-[#5B6472]">Chưa có báo hỏng nào.</p>}
+
+      {reports && reports.length > 0 && (
+        <ul className="space-y-2">
+          {reports.map((r) => (
+            <li key={r.id}>
+              <button
+                type="button"
+                onClick={() => onNavigate('incident-detail', r.id)}
+                className="w-full text-left p-2.5 rounded-xl border border-[#DFE3E8] hover:bg-[#F7F8FA] cursor-pointer text-xs space-y-0.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-[#1C2330]">{r.reportedTime}</span>
+                  <span className={`font-bold ${r.ticketStatus === 'New' ? 'text-[#EF6C00]' : 'text-[#2E7D32]'}`}>
+                    {r.ticketStatusLabel}
+                  </span>
+                </div>
+                <div className="text-[#5B6472] line-clamp-2 break-words">{r.description}</div>
+                <div className="text-[11px] text-[#5B6472]">Báo bởi {r.reportedBy}</div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {total > HISTORY_LIMIT && (
+        <p className="text-[11px] text-[#5B6472]">Hiện {HISTORY_LIMIT} phiếu gần nhất.</p>
       )}
     </div>
   );

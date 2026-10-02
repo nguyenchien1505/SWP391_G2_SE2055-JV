@@ -1,78 +1,118 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { assetService } from '../../services/assetApi';
 
-export const DamageReportScreen = ({ incidentId = 'RP-2024-089', onNavigate, onSelectAsset }) => {
-  const [loading, setLoading] = useState(true);
+/** Khớp @Size(max = 500) của ResolveDamageReportRequest. */
+const NOTE_MAX = 500;
+
+const ASSET_STATUS = {
+  Good: { label: 'Tốt', className: 'bg-[#E8F5E9] text-[#2E7D32] border-[#2E7D32]/30' },
+  Damaged: { label: 'Hỏng', className: 'bg-[#FFEBEE] text-[#D32F2F] border-[#D32F2F]/30' },
+  Repairing: { label: 'Đang sửa', className: 'bg-[#FFF8E1] text-[#F57F17] border-[#F9A825]/40' },
+  Disposed: { label: 'Đã thanh lý', className: 'bg-[#F5F5F5] text-[#616161] border-[#616161]/30' },
+};
+
+const assetStatusOf = (status) =>
+  ASSET_STATUS[status] ?? { label: status || 'Không rõ', className: 'bg-[#F5F5F5] text-[#616161] border-[#DFE3E8]' };
+
+/** Lựa chọn trạng thái tài sản khi đóng phiếu. '' = giữ nguyên (BR-ASSET-06: Manager tự quyết). */
+const STATUS_CHOICES = [
+  { value: '', label: 'Giữ nguyên', hint: 'Báo nhầm, hoặc sẽ đổi sau ở màn tài sản' },
+  { value: 'Damaged', label: 'Hỏng', hint: 'Đã xác nhận hỏng, chưa sửa' },
+  { value: 'Repairing', label: 'Đang sửa', hint: 'Đã gọi thợ / đang sửa chữa' },
+  { value: 'Good', label: 'Tốt', hint: 'Đã sửa xong hoặc không hỏng' },
+  { value: 'Disposed', label: 'Thanh lý', hint: 'Không sửa được — không quay lại được' },
+];
+
+/**
+ * Chi tiết một báo hỏng — BR-ASSET-06, BR-ASSET-11.
+ *
+ * Manager đóng phiếu, tùy chọn kèm trạng thái mới cho tài sản và ghi chú; backend làm cả hai
+ * trong CÙNG một transaction. Giám đốc chỉ xem. Báo hỏng không bao giờ tự đổi trạng thái phòng.
+ */
+export const DamageReportScreen = ({ incidentId, onNavigate }) => {
+  const { user } = useAuth();
+  const isManager = user?.role === 'MANAGER';
+
   const [incident, setIncident] = useState(null);
+  const [related, setRelated] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  // Manager processing form
-  const [newAssetStatus, setNewAssetStatus] = useState('Repairing');
-  const [processingNote, setProcessingNote] = useState('Đã liên hệ kỹ thuật Daikin Nha Trang kiểm tra máng thoát nước và nạp gas bổ sung.');
-  const [confirmCheckbox, setConfirmCheckbox] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [toastMessage, setToastMessage] = useState('');
-  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [newAssetStatus, setNewAssetStatus] = useState('');
+  const [note, setNote] = useState('');
+  const [confirmDispose, setConfirmDispose] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [toast, setToast] = useState('');
 
-  useEffect(() => {
-    loadIncident();
+  /** Các báo hỏng khác của cùng tài sản — để Manager thấy tài sản này hỏng lặp lại hay không. */
+  const loadRelated = useCallback(async (assetId) => {
+    try {
+      const res = await assetService.getDamageReports({ fixedAssetId: assetId, status: '', limit: 10 });
+      setRelated(res.items.filter((r) => r.id !== incidentId));
+    } catch {
+      setRelated([]); // Chỉ là thông tin phụ — không làm hỏng cả màn hình.
+    }
   }, [incidentId]);
 
-  const loadIncident = async () => {
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    try {
-      let data = await assetService.getIncident(incidentId);
-      if (!data) {
-        const recent = await assetService.getDamageReports({ limit: 1 });
-        if (recent.items && recent.items.length > 0) {
-          data = recent.items[0];
-        }
-      }
-      setIncident(data || null);
-      if (data?.managerNote) {
-        setProcessingNote(data.managerNote);
-      }
-    } catch (e) {
-      console.error('Failed to load incident', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setLoadError('');
+    assetService
+      .getDamageReportById(incidentId)
+      .then((data) => {
+        if (cancelled) return;
+        setIncident(data);
+        loadRelated(data.assetId);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setIncident(null);
+        setLoadError(
+          err?.status === 404
+            ? 'Không tìm thấy báo hỏng, hoặc báo hỏng không thuộc khách sạn bạn phụ trách.'
+            : err?.message || 'Không tải được báo hỏng.'
+        );
+      })
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [incidentId, loadRelated]);
 
   const handleResolve = async (e) => {
     e.preventDefault();
-    if (!confirmCheckbox) {
-      setErrorMsg('Vui lòng tích chọn xác nhận chuyển trạng thái phiếu sang Đã xử lý.');
+    if (newAssetStatus === 'Disposed' && !confirmDispose) {
+      setFormError('Thanh lý là trạng thái cuối. Vui lòng tích xác nhận trước khi đóng phiếu.');
       return;
     }
-    if (processingNote.trim().length < 10) {
-      setErrorMsg('Ghi chú xử lý phải có ít nhất 10 ký tự để lưu hồ sơ.');
-      return;
-    }
-
-    setErrorMsg('');
-    setIsSubmitting(true);
+    setFormError('');
+    setSubmitting(true);
     try {
-      const updated = await assetService.resolveIncident(incident.id, {
-        newAssetStatus,
-        processingNote
+      const updated = await assetService.resolveDamageReport(incident.id, {
+        newAssetStatus: newAssetStatus || null,
+        resolutionNote: note,
       });
       setIncident(updated);
-      setToastMessage('Đã chuyển phiếu sang "Đã xử lý" và cập nhật trạng thái tài sản thành công!');
-      setTimeout(() => setToastMessage(''), 4000);
+      loadRelated(updated.assetId);
+      setToast('Đã đóng báo hỏng.');
+      setTimeout(() => setToast(''), 4000);
     } catch (err) {
-      setErrorMsg(err.message || 'Xử lý thất bại. Vui lòng thử lại.');
+      setFormError(err?.message || 'Không đóng được báo hỏng. Vui lòng thử lại.');
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[500px]">
+      <div className="flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-3">
           <div className="w-9 h-9 border-3 border-[#00375e] border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-sm font-medium text-[#5B6472]">Đang tải hồ sơ sự cố {incidentId}...</span>
+          <span className="text-sm font-medium text-[#5B6472]">Đang tải báo hỏng…</span>
         </div>
       </div>
     );
@@ -80,201 +120,145 @@ export const DamageReportScreen = ({ incidentId = 'RP-2024-089', onNavigate, onS
 
   if (!incident) {
     return (
-      <div className="flex items-center justify-center min-h-[500px]">
+      <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center space-y-3">
           <span className="material-symbols-outlined text-[48px] text-[#D32F2F]">error</span>
-          <p className="text-sm font-medium text-[#1C2330]">Không tìm thấy hồ sơ sự cố báo hỏng.</p>
-          <button onClick={() => onNavigate('overview')} className="text-xs text-[#0e61a1] hover:underline font-semibold">Quay lại Dashboard</button>
+          <p className="text-sm font-medium text-[#1C2330]">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => onNavigate('issue-reports')}
+            className="text-xs text-[#0e61a1] hover:underline font-semibold cursor-pointer"
+          >
+            Quay lại danh sách báo hỏng
+          </button>
         </div>
       </div>
     );
   }
 
   const isProcessed = incident.ticketStatus === 'Processed';
+  const assetStatus = assetStatusOf(incident.assetStatus);
+  const choices = STATUS_CHOICES.filter((c) => c.value === '' || c.value !== incident.assetStatus);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Toast */}
-      {toastMessage && (
+      {toast && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#00375e] text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-bottom-3 duration-200">
-          <span className="material-symbols-outlined text-[18px] text-[#2E7D32] bg-white rounded-full">check_circle</span>
-          <span>{toastMessage}</span>
+          <span className="material-symbols-outlined text-[18px]">check_circle</span>
+          <span>{toast}</span>
         </div>
       )}
 
-      {/* Top Banner & Breadcrumbs */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-5 rounded-2xl border border-[#DFE3E8] shadow-[0_1px_8px_rgba(0,0,0,0.02)]">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-[#5B6472] mb-1">
-            <button
-              onClick={() => onNavigate('fixed-assets')}
-              className="text-[#0e61a1] hover:underline cursor-pointer"
-              type="button"
-            >
-              Tổng quan tài sản
-            </button>
-            <span>/</span>
-            <span className="text-[#5B6472]">Sổ sự cố</span>
-            <span>/</span>
-            <span className="font-mono font-bold text-[#00375e]">{incident.id}</span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-xl font-bold text-[#00375e] tracking-tight">
-              Xử Lý Sự Cố Báo Hỏng: {incident.assetName} ({incident.room})
-            </h1>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-              isProcessed ? 'bg-[#E8F5E9] text-[#2E7D32] border border-[#2E7D32]/30' : 'bg-[#FFEBEE] text-[#D32F2F] border border-[#D32F2F]/30'
-            }`}>
-              {isProcessed ? 'Đã xử lý (Processed)' : 'Mới tiếp nhận (New)'}
-            </span>
-          </div>
-          <p className="text-xs text-[#5B6472] mt-0.5">
-            Phiếu sự cố buồng phòng phân quyền Quản lý Khách sạn chi nhánh Sao Mai Nha Trang.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
+      {/* Header */}
+      <div className="bg-white p-5 rounded-2xl border border-[#DFE3E8] shadow-[0_1px_8px_rgba(0,0,0,0.02)]">
+        <div className="flex items-center gap-2 text-xs text-[#5B6472] mb-1">
           <button
-            onClick={() => {
-              window.print();
-            }}
-            className="px-3.5 py-2 rounded-xl border border-[#DFE3E8] bg-white text-[#1C2330] hover:bg-[#F7F8FA] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
             type="button"
+            onClick={() => onNavigate('issue-reports')}
+            className="text-[#0e61a1] hover:underline cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[18px]">print</span>
-            <span>In phiếu</span>
+            Báo hỏng
           </button>
+          <span>/</span>
+          <span className="font-mono font-bold text-[#00375e]">{incident.shortId}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-xl font-bold text-[#00375e] tracking-tight break-words">
+            {incident.assetName} · {incident.room}
+          </h1>
+          <span
+            className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+              isProcessed
+                ? 'bg-[#E8F5E9] text-[#2E7D32] border-[#2E7D32]/30'
+                : 'bg-[#FFF3E0] text-[#EF6C00] border-[#EF6C00]/30'
+            }`}
+          >
+            {incident.ticketStatusLabel}
+          </span>
         </div>
       </div>
 
-      {/* 2-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column (7 cols): Field Report Info & Manager Decision Box */}
+        {/* Cột trái: nội dung báo hỏng + xử lý */}
         <div className="lg:col-span-7 space-y-5">
-          {/* Card 1: Field Incident Details */}
           <div className="bg-white rounded-2xl border border-[#DFE3E8] p-6 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-[#DFE3E8] pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#D32F2F] text-[20px]">report</span>
-                <h2 className="font-bold text-sm text-[#00375e]">Thông Tin Sự Cố Từ Hiện Trường</h2>
-              </div>
-              <span className="font-mono text-xs font-bold text-[#0e61a1] bg-[#eff4ff] px-2 py-0.5 rounded-md">
-                {incident.id}
-              </span>
+            <div className="flex items-center gap-2 border-b border-[#DFE3E8] pb-3">
+              <span className="material-symbols-outlined text-[#D32F2F] text-[20px]">report</span>
+              <h2 className="font-bold text-sm text-[#00375e]">Nội Dung Báo Hỏng</h2>
             </div>
 
-            {/* Info Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3 bg-[#F7F8FA] rounded-xl border border-[#DFE3E8]">
-                <span className="text-[#5B6472] text-[11px] block">Mã định danh thiết bị:</span>
-                <div className="flex items-center justify-between font-mono font-bold text-sm text-[#00375e] mt-0.5">
-                  <span>{incident.assetCode}</span>
-                  <button
-                    onClick={() => {
-                      onNavigate('asset-detail', incident.assetId || incident.assetCode);
-                    }}
-                    className="text-[#0e61a1] text-xs hover:underline cursor-pointer"
-                    type="button"
-                  >
-                    Xem hồ sơ
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-3 bg-[#F7F8FA] rounded-xl border border-[#DFE3E8]">
-                <span className="text-[#5B6472] text-[11px] block">Vị trí phòng xảy ra sự cố:</span>
-                <span className="font-bold text-xs text-[#0e61a1] mt-0.5 block">
-                  {incident.room}
+                <span className="text-[#5B6472] text-[11px] block">Người báo</span>
+                <span className="font-semibold text-[#1C2330] mt-0.5 block break-words">
+                  {incident.reportedBy}
+                  {incident.reporterEmail && incident.reporterEmail !== incident.reportedBy
+                    ? ` (${incident.reporterEmail})`
+                    : ''}
                 </span>
               </div>
-
               <div className="p-3 bg-[#F7F8FA] rounded-xl border border-[#DFE3E8]">
-                <span className="text-[#5B6472] text-[11px] block">Người lập báo cáo:</span>
-                <span className="font-semibold text-[#1C2330] mt-0.5 block">
-                  {incident.reportedBy}{incident.reporterEmail && incident.reporterEmail !== incident.reportedBy ? ` (${incident.reporterEmail})` : ''}
-                </span>
-              </div>
-
-              <div className="p-3 bg-[#F7F8FA] rounded-xl border border-[#DFE3E8]">
-                <span className="text-[#5B6472] text-[11px] block">Thời gian phát hiện:</span>
-                <span className="font-semibold text-[#1C2330] mt-0.5 block">
-                  {incident.reportedTime}
-                </span>
+                <span className="text-[#5B6472] text-[11px] block">Thời gian báo</span>
+                <span className="font-semibold text-[#1C2330] mt-0.5 block">{incident.reportedTime}</span>
               </div>
             </div>
 
-            {/* Actual Description */}
             <div className="p-4 bg-[#eff4ff] rounded-xl border border-[#d1e4ff] space-y-1 text-xs">
-              <span className="font-bold text-[#00375e]">Mô tả hiện trạng thực tế từ nhân viên buồng:</span>
-              <p className="text-[#1C2330] leading-relaxed">
-                "{incident.description}"
-              </p>
+              <span className="font-bold text-[#00375e]">Mô tả tình trạng</span>
+              <p className="text-[#1C2330] leading-relaxed whitespace-pre-line break-words">{incident.description}</p>
             </div>
           </div>
 
-          {/* Card 2: Manager Decision & Resolution Area (MANDATORY SPEC COMPLIANCE) */}
           <div className="bg-white rounded-2xl border border-[#DFE3E8] p-6 shadow-xs space-y-5">
-            <div className="flex items-center justify-between border-b border-[#DFE3E8] pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#00375e] text-[20px]">gavel</span>
-                <h2 className="font-bold text-sm text-[#00375e]">
-                  Khu Vực Xử Lý Nghiệp Vụ Của Quản Lý
-                </h2>
-              </div>
-              <span className="text-xs text-[#2E7D32] font-semibold bg-[#E8F5E9] px-2 py-0.5 rounded-full">
-                Quyền hạn Quản lý khách sạn
-              </span>
-            </div>
-
-            {/* Spec Rule Banner */}
-            <div className="p-3.5 bg-[#FFF3E0] border border-[#EF6C00]/40 rounded-xl text-xs text-[#EF6C00] flex items-start gap-2.5">
-              <span className="material-symbols-outlined text-[20px] shrink-0 text-[#EF6C00]">warning</span>
-              <div>
-                <span className="font-bold">Quy tắc nghiệp vụ hệ thống bắt buộc: </span>
-                <span className="text-[#1C2330]">
-                  Phiếu báo hỏng <span className="font-semibold text-[#D32F2F]">không tự động đổi</span> trạng thái tài sản khi tạo. Quản lý bắt buộc phải chỉ định trạng thái mới cho thiết bị cố định trước khi chuyển trạng thái phiếu sang <span className="font-semibold text-[#2E7D32]">Đã xử lý (Processed)</span>.
-                </span>
-              </div>
+            <div className="flex items-center gap-2 border-b border-[#DFE3E8] pb-3">
+              <span className="material-symbols-outlined text-[#00375e] text-[20px]">gavel</span>
+              <h2 className="font-bold text-sm text-[#00375e]">Xử Lý</h2>
             </div>
 
             {isProcessed ? (
               <div className="p-4 bg-[#E8F5E9] border border-[#2E7D32]/30 rounded-xl space-y-2 text-xs">
                 <div className="flex items-center gap-2 font-bold text-[#2E7D32] text-sm">
                   <span className="material-symbols-outlined text-[20px]">check_circle</span>
-                  <span>Phiếu sự cố này đã được xử lý hoàn tất!</span>
+                  <span>Đã xử lý</span>
                 </div>
                 <div className="text-[#1C2330]">
-                  Xử lý bởi: <span className="font-semibold">{incident.resolvedBy || 'Lê Hoàng Phúc (Quản lý)'}</span> vào lúc {incident.resolvedAt || 'Hôm nay'}.
+                  Bởi <span className="font-semibold">{incident.resolvedBy || 'Quản lý'}</span> lúc {incident.resolvedTime}.
                 </div>
-                <div className="p-2.5 bg-white rounded-lg border border-[#2E7D32]/20 font-medium text-[#1C2330]">
-                  Ghi chú xử lý: "{incident.managerNote || processingNote}"
-                </div>
+                {incident.resolutionNote ? (
+                  <div className="p-2.5 bg-white rounded-lg border border-[#2E7D32]/20 text-[#1C2330] whitespace-pre-line break-words">
+                    {incident.resolutionNote}
+                  </div>
+                ) : (
+                  <div className="text-[#5B6472] italic">Không có ghi chú xử lý.</div>
+                )}
+              </div>
+            ) : !isManager ? (
+              <div className="p-3.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#5B6472]">
+                Báo hỏng đang chờ quản lý khách sạn xử lý. Giám đốc chỉ xem.
               </div>
             ) : (
               <form onSubmit={handleResolve} className="space-y-4 text-xs">
-                {/* Current Asset Status display */}
-                <div className="flex items-center justify-between p-3 bg-[#F7F8FA] rounded-xl border border-[#DFE3E8]">
-                  <span className="text-[#5B6472]">Trạng thái thiết bị hiện tại:</span>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FFEBEE] text-[#D32F2F] border border-[#D32F2F]/20">
-                    Bị hỏng (Damaged)
+                <div className="p-3.5 bg-[#FFF3E0] border border-[#EF6C00]/40 rounded-xl text-[#1C2330] flex items-start gap-2.5">
+                  <span className="material-symbols-outlined text-[20px] shrink-0 text-[#EF6C00]">info</span>
+                  <span>
+                    Báo hỏng <span className="font-semibold">không tự đổi</span> trạng thái tài sản hay phòng. Bạn có
+                    thể đổi trạng thái tài sản ngay khi đóng phiếu, hoặc giữ nguyên. Cần khóa phòng thì chuyển phòng sang
+                    “Không khả dụng” ở màn phòng.
                   </span>
                 </div>
 
-                {/* Radio selection for new asset status */}
-                <div>
-                  <label className="block font-semibold text-[#1C2330] mb-2">
-                    Chỉ định trạng thái mới cho thiết bị {incident.assetCode} (*):
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {[
-                      { value: 'Repairing', label: 'Đang sửa chữa (Repairing)', color: 'text-[#F9A825]' },
-                      { value: 'Good', label: 'Tốt (Đã sửa xong)', color: 'text-[#2E7D32]' },
-                      { value: 'Disposed', label: 'Thanh lý phế liệu', color: 'text-[#616161]' }
-                    ].map((opt) => (
+                <fieldset>
+                  <legend className="block font-semibold text-[#1C2330] mb-2">
+                    Trạng thái tài sản sau khi xử lý
+                    <span className="ml-1 font-normal text-[#5B6472]">
+                      (hiện tại: {assetStatus.label})
+                    </span>
+                  </legend>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {choices.map((opt) => (
                       <label
-                        key={opt.value}
-                        className={`p-3 rounded-xl border flex items-center gap-2 transition-all cursor-pointer ${
+                        key={opt.value || 'keep'}
+                        className={`p-3 rounded-xl border flex items-start gap-2 transition-all cursor-pointer ${
                           newAssetStatus === opt.value
                             ? 'border-[#00375e] bg-[#eff4ff] ring-1 ring-[#00375e]'
                             : 'border-[#DFE3E8] hover:bg-[#F7F8FA]'
@@ -285,75 +269,77 @@ export const DamageReportScreen = ({ incidentId = 'RP-2024-089', onNavigate, onS
                           name="newAssetStatus"
                           value={opt.value}
                           checked={newAssetStatus === opt.value}
-                          onChange={(e) => setNewAssetStatus(e.target.value)}
-                          className="text-[#00375e] focus:ring-0"
+                          onChange={() => {
+                            setNewAssetStatus(opt.value);
+                            setConfirmDispose(false);
+                          }}
+                          className="mt-0.5 text-[#00375e] focus:ring-0"
                         />
-                        <span className={`font-semibold ${opt.color}`}>{opt.label}</span>
+                        <span>
+                          <span className="font-semibold text-[#1C2330] block">{opt.label}</span>
+                          <span className="text-[11px] text-[#5B6472]">{opt.hint}</span>
+                        </span>
                       </label>
                     ))}
                   </div>
-                </div>
+                </fieldset>
 
-                {/* Manager Note */}
+                {newAssetStatus === 'Disposed' && (
+                  <label className="p-3.5 bg-[#FFEBEE] rounded-xl border border-[#D32F2F]/30 flex items-start gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={confirmDispose}
+                      onChange={(e) => setConfirmDispose(e.target.checked)}
+                      className="mt-0.5 rounded cursor-pointer"
+                    />
+                    <span className="text-[#1C2330]">
+                      Tôi hiểu thanh lý là <span className="font-semibold">không quay lại được</span>: tài sản ẩn khỏi danh
+                      sách vận hành, không nhận báo hỏng mới, và mọi báo hỏng khác đang chờ của tài sản này sẽ tự đóng.
+                    </span>
+                  </label>
+                )}
+
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="font-semibold text-[#1C2330]">
-                      Ghi chú phương án xử lý của Quản lý (*):
+                    <label htmlFor="resolution-note" className="font-semibold text-[#1C2330]">
+                      Ghi chú xử lý <span className="font-normal text-[#5B6472]">(không bắt buộc)</span>
                     </label>
-                    <span className="text-[11px] text-[#5B6472]">Tối thiểu 10 ký tự</span>
+                    <span className="text-[11px] text-[#5B6472]">
+                      {note.length}/{NOTE_MAX}
+                    </span>
                   </div>
                   <textarea
+                    id="resolution-note"
                     rows={3}
-                    value={processingNote}
-                    onChange={(e) => setProcessingNote(e.target.value)}
-                    placeholder="Nhập chi tiết biện pháp khắc phục, đơn vị sửa chữa ngoài, thời gian dự kiến hoàn trả..."
+                    value={note}
+                    maxLength={NOTE_MAX}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Ví dụ: đã gọi thợ, hẹn sửa chiều nay. Người báo hỏng sẽ thấy ghi chú này."
                     className="w-full p-3 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#1C2330] focus:outline-none focus:border-[#0e61a1] leading-relaxed"
                   />
                 </div>
 
-                {/* Mandatory Confirmation Checkbox */}
-                <div className="p-3.5 bg-[#eff4ff] rounded-xl border border-[#d1e4ff]">
-                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={confirmCheckbox}
-                      onChange={(e) => setConfirmCheckbox(e.target.checked)}
-                      className="mt-0.5 rounded text-[#00375e] focus:ring-0 cursor-pointer"
-                    />
-                    <div className="text-xs">
-                      <span className="font-bold text-[#00375e]">
-                        Xác nhận chuyển trạng thái phiếu sự cố này sang: Đã xử lý (Processed)
-                      </span>
-                      <p className="text-[11px] text-[#5B6472] mt-0.5">
-                        Đồng thời tự động cập nhật trạng thái thiết bị <span className="font-mono">{incident.assetCode}</span> thành "{newAssetStatus}".
-                      </p>
-                    </div>
-                  </label>
-                </div>
-
-                {/* Error notice */}
-                {errorMsg && (
-                  <div className="p-3 bg-[#FFEBEE] border border-[#D32F2F]/30 text-[#D32F2F] rounded-xl text-xs font-medium">
-                    {errorMsg}
+                {formError && (
+                  <div className="p-3 bg-[#FFEBEE] border border-[#D32F2F]/30 text-[#D32F2F] rounded-xl font-medium" role="alert">
+                    {formError}
                   </div>
                 )}
 
-                {/* Submit Action */}
-                <div className="pt-2 flex items-center justify-end">
+                <div className="pt-1 flex justify-end">
                   <button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="px-6 py-2.5 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] font-bold text-xs shadow-sm flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                    disabled={submitting}
+                    className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] font-bold text-xs shadow-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    {isSubmitting ? (
+                    {submitting ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Đang cập nhật phiếu...</span>
+                        <span>Đang lưu…</span>
                       </>
                     ) : (
                       <>
                         <span className="material-symbols-outlined text-[18px]">check</span>
-                        <span>Đánh dấu Đã xử lý (Mark as Processed)</span>
+                        <span>Đóng báo hỏng</span>
                       </>
                     )}
                   </button>
@@ -363,114 +349,81 @@ export const DamageReportScreen = ({ incidentId = 'RP-2024-089', onNavigate, onS
           </div>
         </div>
 
-        {/* Right Column (5 cols): Asset Profile & Room Incident History */}
+        {/* Cột phải: tài sản + các báo hỏng khác */}
         <div className="lg:col-span-5 space-y-5">
-          {/* Room Out-of-Order Warning Badge */}
-          <div className="p-4 bg-[#FFEBEE] rounded-2xl border border-[#D32F2F]/30 flex items-start gap-3 text-xs">
-            <span className="material-symbols-outlined text-[#D32F2F] text-[24px] shrink-0">do_not_disturb_on</span>
-            <div>
-              <div className="font-bold text-sm text-[#D32F2F]">
-                Hiện trạng buồng: Phòng 205 (OOO)
-              </div>
-              <p className="text-[#5B6472] mt-0.5 leading-relaxed">
-                Tạm khóa kinh doanh (Out-of-Order) trên phần mềm lễ tân cho đến khi điều hòa được sửa chữa xong và có xác nhận của Buồng phòng.
-              </p>
-            </div>
-          </div>
-
-          {/* Asset Specification Profile Card */}
           <div className="bg-white rounded-2xl border border-[#DFE3E8] p-5 shadow-xs space-y-3">
             <div className="flex items-center justify-between border-b border-[#DFE3E8] pb-2.5">
               <h3 className="font-bold text-xs text-[#00375e] flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[16px] text-[#0e61a1]">info</span>
-                Hồ sơ thiết bị liên quan
+                Tài sản
               </h3>
               <button
-                onClick={() => {
-                  onNavigate('asset-detail', incident.assetId || incident.assetCode);
-                }}
-                className="text-xs text-[#0e61a1] hover:underline font-semibold cursor-pointer"
                 type="button"
+                onClick={() => onNavigate('asset-detail', incident.assetId)}
+                className="text-xs text-[#0e61a1] hover:underline font-semibold cursor-pointer"
               >
-                Chi tiết
+                Hồ sơ tài sản
               </button>
             </div>
-
             <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between py-1 border-b border-[#eff4ff]">
-                <span className="text-[#5B6472]">Tên thiết bị:</span>
-                <span className="font-semibold text-[#1C2330]">Điều hòa Daikin Inverter 2.0HP</span>
+              <div className="flex items-center justify-between gap-3 py-1 border-b border-[#eff4ff]">
+                <span className="text-[#5B6472]">Mã</span>
+                <span className="font-mono font-bold text-[#00375e]">{incident.assetCode}</span>
               </div>
-              <div className="flex items-center justify-between py-1 border-b border-[#eff4ff]">
-                <span className="text-[#5B6472]">Model:</span>
-                <span className="font-mono font-medium text-[#1C2330]">FTKF50XVMV</span>
+              <div className="flex items-center justify-between gap-3 py-1 border-b border-[#eff4ff]">
+                <span className="text-[#5B6472]">Tên</span>
+                <span className="font-semibold text-[#1C2330] text-right break-words">{incident.assetName}</span>
               </div>
-              <div className="flex items-center justify-between py-1 border-b border-[#eff4ff]">
-                <span className="text-[#5B6472]">Giá trị sổ sách:</span>
-                <span className="font-bold text-[#00375e]">15,850,000 đ</span>
+              <div className="flex items-center justify-between gap-3 py-1 border-b border-[#eff4ff]">
+                <span className="text-[#5B6472]">Vị trí</span>
+                {incident.roomId ? (
+                  <Link to={`/phong/${incident.roomId}`} className="font-semibold text-[#0e61a1] hover:underline">
+                    {incident.room}
+                  </Link>
+                ) : (
+                  <span className="font-semibold text-[#1C2330]">{incident.room}</span>
+                )}
               </div>
-              <div className="flex items-center justify-between py-1 border-b border-[#eff4ff]">
-                <span className="text-[#5B6472]">Bảo hành chính hãng:</span>
-                <span className="font-medium text-[#2E7D32]">Đến 12/2025</span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-[#5B6472]">Định kỳ bảo dưỡng:</span>
-                <span className="font-medium text-[#1C2330]">2 lần / năm (Tháng 5 & 11)</span>
+              <div className="flex items-center justify-between gap-3 py-1">
+                <span className="text-[#5B6472]">Trạng thái hiện tại</span>
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${assetStatus.className}`}>
+                  {assetStatus.label}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Incident History Timeline for Room 205 */}
-          <div className="bg-white rounded-2xl border border-[#DFE3E8] p-5 shadow-xs space-y-4">
+          <div className="bg-white rounded-2xl border border-[#DFE3E8] p-5 shadow-xs space-y-3">
             <h3 className="font-bold text-xs text-[#00375e] flex items-center gap-1.5">
               <span className="material-symbols-outlined text-[16px] text-[#0e61a1]">history</span>
-              Lịch sử bảo trì & sự cố Phòng 205
+              Báo hỏng khác của tài sản này
             </h3>
-
-            <div className="relative pl-6 space-y-4 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#DFE3E8]">
-              {/* Event 1 */}
-              <div className="relative text-xs">
-                <span className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-[#D32F2F] ring-4 ring-white"></span>
-                <div className="font-semibold text-[#D32F2F]">24/10/2024: Sự cố máng xả Daikin (Hiện tại)</div>
-                <div className="text-[11px] text-[#5B6472]">Chảy nước thảm buồng, chờ kỹ thuật ngoài.</div>
-              </div>
-
-              {/* Event 2 */}
-              <div className="relative text-xs">
-                <span className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-[#2E7D32] ring-4 ring-white"></span>
-                <div className="font-semibold text-[#1C2330]">15/08/2024: Vệ sinh lưới lọc bụi định kỳ</div>
-                <div className="text-[11px] text-[#5B6472]">Lê Văn Hùng kiểm tra đạt 100% độ lạnh.</div>
-              </div>
-
-              {/* Event 3 */}
-              <div className="relative text-xs">
-                <span className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-[#2E7D32] ring-4 ring-white"></span>
-                <div className="font-semibold text-[#1C2330]">10/05/2024: Thay pin điều khiển remote</div>
-                <div className="text-[11px] text-[#5B6472]">Cấp 2 pin AAA mới vào phòng khách.</div>
-              </div>
-
-              {/* Event 4 */}
-              <div className="relative text-xs">
-                <span className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-[#0e61a1] ring-4 ring-white"></span>
-                <div className="font-semibold text-[#1C2330]">12/01/2024: Lắp đặt thiết bị mới bàn giao</div>
-                <div className="text-[11px] text-[#5B6472]">Đưa vào hồ sơ tài sản cố định chi nhánh.</div>
-              </div>
-            </div>
+            {related.length === 0 ? (
+              <p className="text-xs text-[#5B6472]">Chưa có báo hỏng nào khác.</p>
+            ) : (
+              <ul className="space-y-2">
+                {related.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('incident-detail', r.id)}
+                      className="w-full text-left p-2.5 rounded-xl border border-[#DFE3E8] hover:bg-[#F7F8FA] cursor-pointer text-xs space-y-0.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-[#1C2330]">{r.reportedTime}</span>
+                        <span className={`font-bold ${r.ticketStatus === 'New' ? 'text-[#EF6C00]' : 'text-[#2E7D32]'}`}>
+                          {r.ticketStatusLabel}
+                        </span>
+                      </div>
+                      <div className="text-[#5B6472] line-clamp-2 break-words">{r.description}</div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Lightbox for Photo Zoom */}
-      {selectedPhoto && (
-        <div
-          onClick={() => setSelectedPhoto(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm cursor-zoom-out animate-in fade-in duration-150"
-        >
-          <div className="max-w-3xl max-h-[85vh] overflow-hidden rounded-2xl">
-            <img src={selectedPhoto} alt="Zoomed" className="w-full h-full object-contain" />
-          </div>
-        </div>
-      )}
     </div>
   );
-}
+};

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { STAFF_PERMISSIONS, hasPermission } from '../permissions';
+import { STAFF_PERMISSIONS, canReportDamage, hasPermission } from '../permissions';
 import Logo from './Logo';
 
 const ROLE_LABEL = {
@@ -37,9 +37,6 @@ const isDirector = (user) => user?.role === 'DIRECTOR';
 
 /** Manager CRUD tài khoản nhân viên trong khách sạn của mình — BR-PERM-03. */
 const isManager = (user) => user?.role === 'MANAGER';
-
-/** Lễ tân và Dọn dẹp được báo hỏng tài sản; Position loại Khác thì không — BR-ASSET-05, BR-PERM-06. */
-const canReportDamage = (user) => user?.role === 'STAFF' && (isReception(user) || isHousekeeper(user));
 
 /**
  * Có ca làm việc: check-in/out, xem lịch cá nhân, xin nghỉ — Manager và mọi Staff (BR-PERM-03..06).
@@ -114,7 +111,9 @@ const NAV_GROUPS = [
   {
     title: 'Cá nhân',
     items: [
-      { label: 'Gửi báo hỏng tài sản', visible: canReportDamage },
+      // Lễ tân / Dọn dẹp — BR-ASSET-05. Tài sản trong phòng báo ở chi tiết phòng; trang này có
+      // tài sản khu vực và các phiếu đã gửi.
+      { label: 'Báo hỏng của tôi', to: '/bao-hong/cua-toi', visible: canReportDamage },
       { label: 'Lịch cá nhân & Chấm công', visible: hasShifts },
     ],
   },

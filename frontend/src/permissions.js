@@ -29,3 +29,11 @@ export function permissionLabel(value) {
 export function hasPermission(user, permission) {
   return (user?.permissions ?? []).includes(permission);
 }
+
+/**
+ * Gửi báo hỏng tài sản: CHỈ nhân viên có quyền Lễ tân hoặc Dọn dẹp (BR-ASSET-05). Manager là
+ * người nhận báo hỏng nên không gửi; nhân viên chỉ có quyền chung cũng không (BR-PERM-06).
+ */
+export function canReportDamage(user) {
+  return user?.role === 'STAFF' && (hasPermission(user, 'RECEPTION') || hasPermission(user, 'HOUSEKEEPING'));
+}

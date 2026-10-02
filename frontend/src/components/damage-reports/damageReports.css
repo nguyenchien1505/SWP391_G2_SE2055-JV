@@ -1,0 +1,123 @@
+/* Báo hỏng tài sản phía nhân viên — dùng khi đang đứng trong phòng/hành lang, nên ưu tiên
+   điện thoại: mỗi tài sản là một dòng, nút to, không có bảng (cùng tinh thần "Việc của tôi"). */
+
+.badge--red {
+  background: #fdecea;
+  color: var(--danger);
+}
+
+.asset-report-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.asset-report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.asset-report-row:last-child {
+  border-bottom: none;
+}
+.asset-report-row__info {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.asset-report-row__name {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.asset-report-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.asset-report-row__action {
+  min-height: 44px;
+  min-width: 120px;
+}
+
+/* Thông tin tài sản đầu hộp thoại báo hỏng. */
+.damage-asset-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--page-bg);
+}
+.damage-asset-card__name {
+  font-weight: 600;
+}
+.damage-asset-card__meta {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+/* Danh sách phiếu của tôi. */
+.damage-ticket {
+  display: grid;
+  gap: 6px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.damage-ticket:last-child {
+  border-bottom: none;
+}
+.damage-ticket__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.damage-ticket__title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.damage-ticket__desc {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.damage-ticket__meta {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.damage-ticket__resolution {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--green);
+  background: #f3f9f3;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.area-picker {
+  max-width: 360px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 600px) {
+  .asset-report-row__action {
+    width: 100%;
+  }
+  .area-picker {
+    max-width: none;
+  }
+}
+
+/* Link nằm giữa câu (thông báo, đoạn hướng dẫn) — phải trông bấm được. */
+.inline-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+}

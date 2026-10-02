@@ -9,6 +9,7 @@ import RoomActionDialog from '../../components/rooms/RoomActionDialog';
 import RoomForm from '../../components/rooms/RoomForm';
 import RoomNoteModal from '../../components/rooms/RoomNoteModal';
 import RoomHistoryList from '../../components/rooms/RoomHistoryList';
+import RoomAssetsPanel from '../../components/damage-reports/RoomAssetsPanel';
 import RoomStatusBadge from '../../components/rooms/RoomStatusBadge';
 import { formatDateTime } from './format';
 import { LOCK, roomActionsFor, statusChangedMessage } from './roomActions';
@@ -19,6 +20,8 @@ import './rooms.css';
 const TABS = [
   { key: 'info', label: 'Thông tin phòng' },
   { key: 'history', label: 'Lịch sử trạng thái' },
+  // Nhân viên Lễ tân / Dọn dẹp báo hỏng tài sản ngay tại đây (BR-ASSET-05); vai trò khác chỉ xem.
+  { key: 'assets', label: 'Tài sản trong phòng' },
 ];
 
 /**
@@ -59,7 +62,9 @@ export default function RoomDetailPage() {
 
   // Sơ đồ phòng mở thẳng tab lịch sử qua react-router state ("Xem chi tiết và toàn bộ lịch sử").
   const { state: navigationState } = useLocation();
-  const [tab, setTab] = useState(navigationState?.tab === 'history' ? 'history' : 'info');
+  const [tab, setTab] = useState(
+    TABS.some((item) => item.key === navigationState?.tab) ? navigationState.tab : 'info',
+  );
   const [banner, setBanner] = useState(null); // { type, text }
   // Tăng lên sau mỗi lần đổi trạng thái → RoomHistoryList dựng lại, nạp từ trang đầu.
   const [historyVersion, setHistoryVersion] = useState(0);
@@ -255,6 +260,7 @@ export default function RoomDetailPage() {
             {!editing && tab === 'history' && (
               <RoomHistoryList key={`${room.id}-${historyVersion}`} roomId={room.id} />
             )}
+            {!editing && tab === 'assets' && <RoomAssetsPanel roomId={room.id} />}
           </section>
 
           {statusAction.pending?.action.flow === LOCK && (

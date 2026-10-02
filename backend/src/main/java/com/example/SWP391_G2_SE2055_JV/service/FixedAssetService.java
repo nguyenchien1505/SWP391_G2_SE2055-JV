@@ -4,14 +4,17 @@ import com.example.SWP391_G2_SE2055_JV.dto.asset.FixedAssetRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.asset.FixedAssetResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.Area;
 import com.example.SWP391_G2_SE2055_JV.entity.AssetCategory;
+import com.example.SWP391_G2_SE2055_JV.entity.DamageReport;
 import com.example.SWP391_G2_SE2055_JV.entity.FixedAsset;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
+import com.example.SWP391_G2_SE2055_JV.enums.DamageReportStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.FixedAssetStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.AreaRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.AssetCategoryRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.DamageReportRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.FixedAssetRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
@@ -23,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -47,37 +51,33 @@ public class FixedAssetService {
     private static final String ASSET_CODE_PREFIX = "TS-";
     private static final int    MAX_CODE_ATTEMPTS = 50;
 
-    /** BR-ASSET-14 — ẩn khỏi danh sách vận hành, bản ghi vẫn giữ để tra lịch sử. */
-    private static final List<FixedAssetStatus> HIDDEN_IN_OPERATIONS = List.of(FixedAssetStatus.DISPOSED);
-
     private final FixedAssetRepository    fixedAssetRepository;
     private final AssetCategoryRepository categoryRepository;
     private final RoomRepository          roomRepository;
     private final AreaRepository          areaRepository;
-    /** Chỉ dùng để tự đóng báo hỏng NEW còn treo khi thanh lý — xem {@link #updateStatus}. */
-    private final DamageReportService     damageReportService;
+    /**
+     * Chỉ dùng để tự đóng báo hỏng NEW còn treo khi thanh lý — xem {@link #updateStatus}.
+     * Dùng thẳng repository chứ không qua {@code DamageReportService}, vì service đó gọi
+     * ngược lại {@link #updateStatus} khi Manager đóng phiếu kèm đổi trạng thái tài sản.
+     */
+    private final DamageReportRepository  damageReportRepository;
 
     /**
      * @param includeDisposed bật để xem cả tài sản đã thanh lý; mặc định ẩn theo
      *                        BR-ASSET-14
+     * @param roomId          chỉ lấy tài sản của phòng này (null = không lọc)
+     * @param areaId          chỉ lấy tài sản của khu vực này (null = không lọc)
      */
     @Transactional(readOnly = true)
-    public Page<FixedAssetResponse> getFixedAssets(boolean includeDisposed, Pageable pageable) {
-        UUID tenantId = SecurityUtils.getCurrentTenantId();
+    public Page<FixedAssetResponse> getFixedAssets(boolean includeDisposed, UUID roomId, UUID areaId,
+                                                   Pageable pageable) {
+        UUID tenantId   = SecurityUtils.getCurrentTenantId();
+        UUID locationId = isTenantWide() ? null : SecurityUtils.getCurrentLocationId();
 
-        Page<FixedAsset> page;
-        if (isTenantWide()) {
-            page = includeDisposed
-                ? fixedAssetRepository.findByTenantId(tenantId, pageable)
-                : fixedAssetRepository.findByTenantIdAndStatusNotIn(tenantId, HIDDEN_IN_OPERATIONS, pageable);
-        } else {
-            UUID locationId = SecurityUtils.getCurrentLocationId();
-            page = includeDisposed
-                ? fixedAssetRepository.findByTenantIdAndLocationId(tenantId, locationId, pageable)
-                : fixedAssetRepository.findByTenantIdAndLocationIdAndStatusNotIn(
-                    tenantId, locationId, HIDDEN_IN_OPERATIONS, pageable);
-        }
-        return page.map(this::enrichResponse);
+        return fixedAssetRepository
+            .search(tenantId, locationId, roomId, areaId,
+                includeDisposed ? null : FixedAssetStatus.DISPOSED, pageable)
+            .map(this::enrichResponse);
     }
 
     @Transactional(readOnly = true)
@@ -166,10 +166,31 @@ public class FixedAssetService {
             fixedAssetRepository.save(asset);
 
             if (target == FixedAssetStatus.DISPOSED) {
-                damageReportService.autoResolveForDisposedAsset(asset.getId(), SecurityUtils.getCurrentUserId());
+                autoResolveDamageReports(asset.getId(), SecurityUtils.getCurrentUserId());
             }
         }
         return enrichResponse(asset);
+    }
+
+    /**
+     * Tự đóng mọi báo hỏng {@code NEW} còn treo trên một tài sản vừa thanh lý, tránh báo cáo
+     * treo vĩnh viễn trên tài sản không còn tồn tại về mặt vận hành.
+     */
+    private void autoResolveDamageReports(UUID fixedAssetId, UUID resolvedBy) {
+        List<DamageReport> pending =
+            damageReportRepository.findByFixedAssetIdAndStatus(fixedAssetId, DamageReportStatus.NEW);
+        if (pending.isEmpty()) {
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        for (DamageReport report : pending) {
+            report.setStatus(DamageReportStatus.RESOLVED);
+            report.setResolvedBy(resolvedBy);
+            report.setResolvedAt(now);
+        }
+        damageReportRepository.saveAll(pending);
+        log.info("Tự đóng {} báo hỏng NEW của tài sản {} do tài sản đã thanh lý", pending.size(), fixedAssetId);
     }
 
     @Transactional

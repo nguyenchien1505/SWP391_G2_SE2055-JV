@@ -65,6 +65,10 @@ public class DamageReport extends AuditableEntity {
     @Column(name = "resolved_at")
     private LocalDateTime resolvedAt;
 
+    /** Manager ghi khi đóng phiếu, không bắt buộc — bổ sung BR-ASSET-11 (V3). */
+    @Column(name = "resolution_note", length = 500)
+    private String resolutionNote;
+
     /** DM-16: màn hình tự truy vấn danh sách đang chờ = lọc theo trạng thái này. */
     public boolean isPending() {
         return status == DamageReportStatus.NEW;

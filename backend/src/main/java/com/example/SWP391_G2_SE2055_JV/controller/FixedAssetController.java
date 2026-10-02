@@ -44,13 +44,17 @@ public class FixedAssetController {
      *
      * @param includeDisposed mặc định false: tài sản đã thanh lý ẩn khỏi danh sách vận
      *                        hành nhưng vẫn tra được khi cần (BR-ASSET-14)
+     * @param roomId          lọc theo phòng — trang chi tiết phòng, nơi nhân viên báo hỏng
+     * @param areaId          lọc theo khu vực — khối "Tài sản khu vực" của nhân viên
      */
     @GetMapping
     @PreAuthorize("hasAnyRole('DIRECTOR','MANAGER','STAFF')")
     public ResponseEntity<Page<FixedAssetResponse>> getFixedAssets(
             @RequestParam(defaultValue = "false") boolean includeDisposed,
+            @RequestParam(required = false) UUID roomId,
+            @RequestParam(required = false) UUID areaId,
             @PageableDefault(size = 20, sort = "assetCode", direction = Sort.Direction.ASC) Pageable pageable) {
-        return ResponseEntity.ok(fixedAssetService.getFixedAssets(includeDisposed, pageable));
+        return ResponseEntity.ok(fixedAssetService.getFixedAssets(includeDisposed, roomId, areaId, pageable));
     }
 
     @GetMapping("/{id}")
