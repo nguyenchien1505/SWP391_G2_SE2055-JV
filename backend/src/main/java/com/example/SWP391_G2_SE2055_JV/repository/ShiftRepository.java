@@ -20,6 +20,18 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
 
     Page<Shift> findByStaffId(UUID staffId, Pageable pageable);
 
+    // Cùng ba phạm vi như trên, giới hạn theo khoảng ngày bắt đầu ca — màn xếp lịch tuần chỉ
+    // cần đúng 7 ngày. Lọc theo shift_date là đủ vì ca qua đêm thuộc về ngày bắt đầu (BR-SCH-03).
+
+    Page<Shift> findByTenantIdAndShiftDateBetween(
+        UUID tenantId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
+
+    Page<Shift> findByTenantIdAndLocationIdAndShiftDateBetween(
+        UUID tenantId, UUID locationId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
+
+    Page<Shift> findByStaffIdAndShiftDateBetween(
+        UUID staffId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
+
     Optional<Shift> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /**

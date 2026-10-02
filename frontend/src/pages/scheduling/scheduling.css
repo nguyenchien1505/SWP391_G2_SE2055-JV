@@ -1,0 +1,379 @@
+/*
+ * Bổ sung cho module Lịch làm việc — CHỈ thêm những lớp mà styles.css chung chưa có (cùng cách làm
+ * với pages/rooms/rooms.css). Bán kính, viền, bóng lấy biến :root của styles.css.
+ *
+ * File này được nạp TRƯỚC styles.css (main.jsx import App trước styles.css), nên selector cùng độ
+ * ưu tiên sẽ thua. Chỗ nào cần ghi đè lớp chung thì ghép thêm lớp cha/lớp gốc để tăng độ ưu tiên,
+ * ví dụ .btn.btn--danger-ghost, .checkbox.checkbox--inline.
+ */
+
+/* ── Tông màu ca theo giờ bắt đầu: sáng / chiều / đêm ──────────────────────
+ * Mỗi lớp shift-tone--* đặt 3 biến, thẻ ca và chú thích đọc lại — màu chỉ khai báo MỘT lần ở đây.
+ */
+.shift-tone--morning   { --tone: #2e7d32; --tone-bg: #e9f5ea; --tone-border: #c1e2c4; }
+.shift-tone--afternoon { --tone: #ef6c00; --tone-bg: #fdf0dc; --tone-border: #f6d3a1; }
+.shift-tone--night     { --tone: #6a1b9a; --tone-bg: #f3e5f5; --tone-border: #e1c4ea; }
+
+/* ── Thanh điều hướng tuần + quy định đang áp dụng ─────────────────────── */
+.sched-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 12px;
+}
+.week-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.week-nav__label {
+  min-width: 250px;
+  text-align: center;
+  font-weight: 700;
+}
+.week-nav__label small {
+  display: block;
+  font-weight: 400;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.sched-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip.chip--warn {
+  background: #fdf0dc;
+  color: #b85300;
+}
+.sched-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.sched-info b {
+  color: var(--text);
+}
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tone, var(--grey));
+}
+
+/* ── Lưới tuần: hàng = nhân viên, cột = 7 ngày (design.md màn 21) ──────────
+ * Cuộn ngang trên màn nhỏ, cột tên nhân viên dính bên trái để không lạc hàng khi cuộn.
+ */
+.sched-scroll {
+  overflow-x: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.sched-grid {
+  width: 100%;
+  min-width: 1040px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 13px;
+}
+.sched-grid th,
+.sched-grid td {
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid #eef1f5;
+  padding: 8px;
+  vertical-align: top;
+}
+.sched-grid thead th {
+  background: #f5f7fa;
+  text-align: center;
+  font-weight: 600;
+  color: var(--muted);
+}
+.sched-grid thead th b {
+  display: block;
+  font-size: 15px;
+  color: var(--text);
+}
+.sched-grid__person {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 210px;
+  background: var(--card-bg);
+  text-align: left;
+}
+.sched-grid thead .sched-grid__person {
+  z-index: 2;
+  background: #f5f7fa;
+}
+.sched-grid .is-today {
+  background: #f3f8fd;
+}
+.sched-grid thead th.is-today {
+  background: #e7eff8;
+  color: var(--accent);
+}
+.sched-grid .is-past {
+  background: #fafbfc;
+}
+.sched-grid tbody tr:last-child th,
+.sched-grid tbody tr:last-child td {
+  border-bottom: 0;
+}
+.today-chip {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.person-cell b {
+  display: block;
+  line-height: 1.35;
+}
+.person-cell small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.person-cell__hours {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.person-cell__hours.is-over {
+  color: var(--danger);
+}
+
+/* Hàng ca chưa phân công — nổi lên đầu bảng vì đó là việc Manager cần xử lý. */
+.sched-row--open th,
+.sched-row--open td {
+  background: #fffaf3;
+}
+.sched-row--open .sched-grid__person {
+  background: #fffaf3;
+}
+.sched-row--readonly .person-cell b {
+  color: var(--muted);
+}
+
+/* ── Thẻ ca ───────────────────────────────────────────────────────────── */
+.shift-chip {
+  display: block;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--tone-border);
+  border-left: 4px solid var(--tone);
+  border-radius: var(--radius-control);
+  background: var(--tone-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.shift-chip:hover,
+.shift-chip:focus-visible {
+  outline: 2px solid var(--tone);
+  outline-offset: 1px;
+}
+/* design.md: ca chưa có người — viền đứt nét, nền nhạt. */
+.shift-chip--open {
+  border-style: dashed;
+  border-left-style: solid;
+  background: #fff;
+}
+.shift-chip__name {
+  display: block;
+  font-weight: 700;
+}
+.shift-chip__time {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+.shift-chip__meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.cell-add {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: #9aa2ae;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.cell-add:hover,
+.cell-add:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #f3f8fd;
+}
+
+/* ── Hộp thoại ca ─────────────────────────────────────────────────────── */
+.dialog-section {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 14px;
+}
+.dialog-section h3 {
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+.dialog-inline {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.form .dialog-inline .field {
+  flex: 1;
+  min-width: 200px;
+  margin: 0;
+}
+.dialog-inline__note {
+  flex: 1;
+  min-width: 200px;
+  font-size: 13.5px;
+}
+.choice-fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.choice-fieldset legend {
+  padding: 0;
+}
+.btn.btn--danger-ghost {
+  background: #fff;
+  border-color: #f5c2c2;
+  color: var(--danger);
+}
+.btn.btn--danger-ghost:hover:not(:disabled) {
+  background: #fdecec;
+}
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.segmented label {
+  padding: 8px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--muted);
+}
+.segmented label + label {
+  border-left: 1px solid var(--border);
+}
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.segmented label.is-selected {
+  background: #e7eff8;
+  color: var(--primary);
+}
+.segmented label:focus-within {
+  outline: 2px solid rgba(46, 116, 181, 0.35);
+  outline-offset: -2px;
+}
+.shift-preview {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.shift-preview b {
+  color: var(--text);
+}
+.shift-preview--warn {
+  color: #7a3e00;
+}
+.alert__title {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.modal .modal__actions.modal__actions--split {
+  justify-content: space-between;
+}
+
+/* ── Quy định xếp ca (Giám đốc) ───────────────────────────────────────── */
+.input-unit {
+  position: relative;
+  display: block;
+}
+.field .input-unit input {
+  padding-right: 64px;
+}
+.input-unit__suffix {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+.template-time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.checkbox.checkbox--inline {
+  margin: 0;
+}
+.cell-hotel .legend {
+  margin-top: 6px;
+}
+
+@media (max-width: 860px) {
+  /* Nhãn tuần lên một hàng riêng phía trên, các nút xuống hàng dưới — không bị ép mất chữ. */
+  .week-nav__label {
+    order: -1;
+    flex-basis: 100%;
+    min-width: 0;
+    text-align: left;
+  }
+  .sched-grid__person {
+    width: 150px;
+  }
+}
