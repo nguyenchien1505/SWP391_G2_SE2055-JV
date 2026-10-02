@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -33,4 +36,13 @@ public interface LocationRepository extends JpaRepository<Location, UUID> {
      * mềm) nên đếm toàn bộ bản ghi của Tenant.
      */
     long countByTenantId(UUID tenantId);
+
+    /** Tên khách sạn theo id — gắn tên vào một danh sách bằng MỘT câu truy vấn. */
+    default Map<UUID, String> findNamesByIds(Collection<UUID> ids) {
+        Map<UUID, String> names = new HashMap<>();
+        if (!ids.isEmpty()) {
+            findAllById(ids).forEach(location -> names.put(location.getId(), location.getName()));
+        }
+        return names;
+    }
 }

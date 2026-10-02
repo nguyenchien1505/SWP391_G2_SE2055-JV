@@ -1,10 +1,13 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.dto.CatalogUsageResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomTypeRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomTypeResponse;
+import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomTypeRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
@@ -13,7 +16,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.UUID;
 
 /**
@@ -29,6 +35,7 @@ public class RoomTypeService {
 
     private final RoomTypeRepository roomTypeRepository;
     private final RoomRepository     roomRepository;
+    private final LocationRepository locationRepository;
 
     @Transactional(readOnly = true)
     public List<RoomTypeResponse> getRoomTypes(boolean includeInactive) {
@@ -104,6 +111,28 @@ public class RoomTypeService {
 
         roomTypeRepository.delete(roomType);
         log.info("Xóa Loại phòng {}", roomType.getId());
+    }
+
+    /**
+     * Các phòng đang dùng loại phòng này — TÍNH CẢ phòng đã xóa mềm, đúng tập mà
+     * {@link #deleteRoomType} dựa vào để chặn xóa. Giám đốc xem được phòng ở mọi khách sạn.
+     */
+    @Transactional(readOnly = true)
+    public CatalogUsageResponse getUsage(UUID id) {
+        RoomType roomType = getOwnedRoomType(id);
+        List<Room> rooms = roomRepository.findByTenantIdAndRoomTypeId(roomType.getTenantId(), roomType.getId());
+        Map<UUID, String> locationNames = locationRepository.findNamesByIds(
+            rooms.stream().map(Room::getLocationId).collect(Collectors.toSet()));
+
+        List<CatalogUsageResponse.RoomRef> refs = rooms.stream()
+            .map(room -> new CatalogUsageResponse.RoomRef(room.getId(), room.getRoomNumber(), room.getFloor(),
+                room.getLocationId(), locationNames.get(room.getLocationId()), room.getStatus(), room.isActive()))
+            // Theo khách sạn, rồi số phòng kiểu tự nhiên (2 trước 10).
+            .sorted(Comparator.comparing((CatalogUsageResponse.RoomRef r) -> String.valueOf(r.locationName()))
+                .thenComparingInt(r -> r.roomNumber().length())
+                .thenComparing(CatalogUsageResponse.RoomRef::roomNumber))
+            .toList();
+        return CatalogUsageResponse.builder().rooms(refs).build();
     }
 
     private RoomType getOwnedRoomType(UUID id) {

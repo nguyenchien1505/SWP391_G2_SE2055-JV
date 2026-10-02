@@ -38,6 +38,9 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
      */
     boolean existsByRoomTypeId(UUID roomTypeId);
 
+    /** Mọi phòng thuộc một loại, TÍNH CẢ phòng đã xóa mềm — đúng tập đang chặn xóa loại phòng. */
+    List<Room> findByTenantIdAndRoomTypeId(UUID tenantId, UUID roomTypeId);
+
     /**
      * Đếm gộp cho màn hình danh sách Location — tránh N+1 query khi mỗi Location đều cần
      * "Tổng số phòng" (BR-ORG-04). Chỉ đếm cho các Location của TRANG hiện tại.

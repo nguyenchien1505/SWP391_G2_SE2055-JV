@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.CatalogUsageResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomTypeRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RoomTypeResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.SetActiveRequest;
@@ -36,6 +37,13 @@ public class RoomTypeController {
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER')")
     public ResponseEntity<RoomTypeResponse> getRoomTypeById(@PathVariable UUID id) {
         return ResponseEntity.ok(roomTypeService.getRoomTypeById(id));
+    }
+
+    /** Các phòng đang dùng loại phòng này (kể cả phòng đã xóa) — thứ chặn việc xóa. Chỉ Giám đốc — màn Danh mục. */
+    @GetMapping("/{id}/usage")
+    @PreAuthorize("hasRole('DIRECTOR')")
+    public ResponseEntity<CatalogUsageResponse> getUsage(@PathVariable UUID id) {
+        return ResponseEntity.ok(roomTypeService.getUsage(id));
     }
 
     @PostMapping

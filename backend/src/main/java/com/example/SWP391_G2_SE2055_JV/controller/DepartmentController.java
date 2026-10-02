@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.CatalogUsageResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.DepartmentRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.DepartmentResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.SetActiveRequest;
@@ -45,6 +46,13 @@ public class DepartmentController {
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER')")
     public ResponseEntity<DepartmentResponse> getDepartmentById(@PathVariable UUID id) {
         return ResponseEntity.ok(departmentService.getDepartmentById(id));
+    }
+
+    /** Các vị trí thuộc phòng ban này, kèm số nhân viên — thứ chặn việc xóa. Chỉ Giám đốc — màn Danh mục. */
+    @GetMapping("/{id}/usage")
+    @PreAuthorize("hasRole('DIRECTOR')")
+    public ResponseEntity<CatalogUsageResponse> getUsage(@PathVariable UUID id) {
+        return ResponseEntity.ok(departmentService.getUsage(id));
     }
 
     @PostMapping

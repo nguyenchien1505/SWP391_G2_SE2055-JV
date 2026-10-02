@@ -5,6 +5,8 @@ import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -27,8 +29,21 @@ public interface PositionRepository extends JpaRepository<Position, UUID> {
      */
     Page<Position> findByTenantId(UUID tenantId, Pageable pageable);
 
-    /** BR-ORG-14: danh sách chọn chỉ lấy mục đang hiện. */
-    Page<Position> findByTenantIdAndActiveTrue(UUID tenantId, Pageable pageable);
+    /**
+     * BR-ORG-14: danh sách CHỌN — chức danh đang hiện VÀ thuộc phòng ban đang hiện. Ẩn một phòng ban
+     * là ẩn luôn mọi chức danh bên trong khỏi ô chọn, không phải đi ẩn từng chức danh.
+     */
+    @Query(value = """
+        select p from Position p
+        where p.tenantId = :tenantId and p.active = true
+          and exists (select 1 from Department d where d.id = p.departmentId and d.active = true)
+        """,
+        countQuery = """
+        select count(p) from Position p
+        where p.tenantId = :tenantId and p.active = true
+          and exists (select 1 from Department d where d.id = p.departmentId and d.active = true)
+        """)
+    Page<Position> findSelectableByTenantId(@Param("tenantId") UUID tenantId, Pageable pageable);
 
     Optional<Position> findByIdAndTenantId(UUID id, UUID tenantId);
 
@@ -42,5 +57,8 @@ public interface PositionRepository extends JpaRepository<Position, UUID> {
 
     /** BR-ORG-10: chặn xóa Department khi còn Position trỏ vào. */
     boolean existsByDepartmentId(UUID departmentId);
+
+    /** Mọi vị trí thuộc một phòng ban — đúng tập đang chặn xóa phòng ban. */
+    List<Position> findByDepartmentId(UUID departmentId);
 
 }
