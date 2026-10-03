@@ -23,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.UUID;
@@ -47,21 +48,43 @@ public class ShiftService {
     private final ShiftTemplateRepository  shiftTemplateRepository;
     private final SchedulePolicyValidator  policyValidator;
 
+    /**
+     * @param from ngày bắt đầu ca nhỏ nhất (tính cả ngày này), đi cùng {@code to}. Bỏ trống cả
+     *             hai thì không lọc theo ngày.
+     * @param to   ngày bắt đầu ca lớn nhất (tính cả ngày này).
+     */
     @Transactional(readOnly = true)
-    public Page<ShiftResponse> getShifts(Pageable pageable) {
+    public Page<ShiftResponse> getShifts(LocalDate from, LocalDate to, Pageable pageable) {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
+
+        if ((from == null) != (to == null)) {
+            throw new BusinessException("Lọc theo ngày cần đủ cả from và to.");
+        }
+        if (from != null && to.isBefore(from)) {
+            throw new BusinessException("Ngày kết thúc (to) không được trước ngày bắt đầu (from).");
+        }
+        boolean byDate = from != null;
 
         // Staff chỉ thấy ca của chính mình; Manager giới hạn trong Location của mình.
         if (SecurityUtils.hasRole(Role.STAFF)) {
-            return shiftRepository.findByStaffId(SecurityUtils.getCurrentUserId(), pageable)
+            UUID staffId = SecurityUtils.getCurrentUserId();
+            return (byDate
+                    ? shiftRepository.findByStaffIdAndShiftDateBetween(staffId, from, to, pageable)
+                    : shiftRepository.findByStaffId(staffId, pageable))
                 .map(ShiftResponse::fromEntity);
         }
         if (SecurityUtils.hasRole(Role.MANAGER)) {
-            return shiftRepository
-                .findByTenantIdAndLocationId(tenantId, SecurityUtils.getCurrentLocationId(), pageable)
+            UUID locationId = SecurityUtils.getCurrentLocationId();
+            return (byDate
+                    ? shiftRepository.findByTenantIdAndLocationIdAndShiftDateBetween(
+                        tenantId, locationId, from, to, pageable)
+                    : shiftRepository.findByTenantIdAndLocationId(tenantId, locationId, pageable))
                 .map(ShiftResponse::fromEntity);
         }
-        return shiftRepository.findByTenantId(tenantId, pageable).map(ShiftResponse::fromEntity);
+        return (byDate
+                ? shiftRepository.findByTenantIdAndShiftDateBetween(tenantId, from, to, pageable)
+                : shiftRepository.findByTenantId(tenantId, pageable))
+            .map(ShiftResponse::fromEntity);
     }
 
     /**
@@ -134,6 +157,11 @@ public class ShiftService {
     public ShiftResponse updateShift(UUID id, UpdateShiftRequest request) {
         Shift shift = getOwnedShift(id);
         assertManagesLocation(shift.getLocationId());
+        // DM-15: mốc chấm công nằm trên chính bản ghi ca — đổi ngày giờ sau khi đã vào ca thì
+        // giờ ca không còn khớp với giờ chấm công nữa.
+        if (shift.isCheckedIn()) {
+            throw new BusinessException("Không sửa được ca đã check-in — giờ ca sẽ lệch với dữ liệu chấm công.");
+        }
 
         if (request.getShiftDate() != null) {
             shift.setShiftDate(request.getShiftDate());
@@ -205,6 +233,10 @@ public class ShiftService {
 
         if (!shift.isAssigned()) {
             throw new BusinessException("Ca này vốn đã ở trạng thái chưa phân công.");
+        }
+        // DM-15: gỡ người thì giờ check-in còn đó nhưng không còn biết là của ai.
+        if (shift.isCheckedIn()) {
+            throw new BusinessException("Không gỡ người khỏi ca đã check-in — sẽ mất dữ liệu chấm công của người đó.");
         }
 
         shift.setStaffId(null);

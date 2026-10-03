@@ -64,7 +64,7 @@ const NAV_GROUPS = [
       // Nhân viên có mục sơ đồ phòng riêng trong nhóm nghiệp vụ của mình (bên dưới).
       { label: 'Sơ đồ phòng', to: '/so-do-phong', visible: isManagement },
       { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
-      { label: 'Xếp lịch làm việc', visible: isBranchManager },
+      { label: 'Xếp lịch làm việc', to: '/xep-lich', visible: isBranchManager },
       { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
       { label: 'Quản lý tài sản', to: '/tai-san', visible: isManagement },
       { label: 'Vật tư tiêu hao', to: '/vat-tu', visible: isManagement },
@@ -85,7 +85,7 @@ const NAV_GROUPS = [
       // Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12).
       { label: 'Khu vực', visible: isManager },
       // Schedule Policy và Shift Template — Giám đốc (BR-SCH-01, BR-SCH-22).
-      { label: 'Quy định & Mẫu ca', visible: isDirector },
+      { label: 'Quy định & Mẫu ca', to: '/quy-dinh-ca', visible: isDirector },
     ],
   },
   // ── Nhóm theo NGHIỆP VỤ của nhân viên ──────────────────────────────────────────────────
