@@ -51,7 +51,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * F5 — {@code /housekeeping/tasks/**}. Nạp SecurityConfig thật ({@link SecuredWebMvcTest}) nên
  * kiểm được CẢ HAI tầng phân quyền và cả hai trục {@code ROLE_*} / {@code POSITION_*}:
- * lịch dọn là chỗ duy nhất mà quyền đi theo Loại Position chứ không theo role (BR-PERM-05).
+ * hoàn thành việc dọn đòi quyền Dọn dẹp Manager đã tick cho người đó ({@code POSITION_HOUSEKEEPING}),
+ * không theo role (BR-PERM-05).
  *
  * <p>{@link HousekeepingService} được mock — luật nghiệp vụ đã test ở {@code HousekeepingServiceTest}.
  */
@@ -267,7 +268,7 @@ class HousekeepingTaskControllerTest {
                 .andExpect(jsonPath("$.status").value("PENDING_INSPECTION"));
         }
 
-        /** Lễ tân có role STAFF nhưng sai Loại Position — chặn ngay ở tầng URL. */
+        /** Nhân viên chỉ có quyền Lễ tân (không có quyền Dọn dẹp) — chặn ngay ở tầng URL. */
         @Test
         @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_RECEPTION"})
         void shouldForbidReceptionAtUrlLevel() throws Exception {

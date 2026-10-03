@@ -38,7 +38,7 @@ const isDirector = (user) => user?.role === 'DIRECTOR';
 /** Manager CRUD tài khoản nhân viên trong khách sạn của mình — BR-PERM-03. */
 const isManager = (user) => user?.role === 'MANAGER';
 
-/** Lễ tân và Dọn dẹp được báo hỏng tài sản; Position loại Khác thì không — BR-ASSET-05, BR-PERM-06. */
+/** Nhân viên có quyền Lễ tân hoặc Dọn dẹp được báo hỏng tài sản; không có quyền nào thì không — BR-ASSET-05, BR-PERM-06. */
 const canReportDamage = (user) => user?.role === 'STAFF' && (isReception(user) || isHousekeeper(user));
 
 /**

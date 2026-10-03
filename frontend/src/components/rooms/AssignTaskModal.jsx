@@ -8,7 +8,7 @@ import { taskTypeLabel } from '../../pages/rooms/roomLabels';
  * S-10 Phân công việc dọn — RM-14, BR-HK-02, BR-HK-03.
  *
  * Danh sách người nhận việc do BACKEND lọc (`/assignable-staff?date=`) với đúng bộ điều kiện mà
- * lệnh gán sẽ kiểm lại: đang làm việc, cùng khách sạn, Position loại Dọn dẹp, và có ca ngày đó.
+ * lệnh gán sẽ kiểm lại: đang làm việc, cùng khách sạn, có quyền Dọn dẹp, và có ca ngày đó.
  * Nhờ vậy ai hiện ra là gán được — Quản lý không bấm rồi mới nhận lỗi.
  *
  * Đổi ngày là tải lại danh sách, vì "có ca" phụ thuộc ngày. KHÔNG hiện giới hạn số việc mỗi

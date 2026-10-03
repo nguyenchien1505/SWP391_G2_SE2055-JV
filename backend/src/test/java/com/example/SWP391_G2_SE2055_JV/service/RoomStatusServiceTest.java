@@ -390,7 +390,7 @@ class RoomStatusServiceTest {
             assertNothingWritten(room, RoomStatus.OCCUPIED);
         }
 
-        /** Position loại Khác không có quyền nghiệp vụ đặc thù nào. */
+        /** Nhân viên không được tick quyền nào (mặc định của vị trí loại Khác) chỉ có quyền chung. */
         @Test
         void shouldForbidOtherPositionFromReserving() {
             TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.OTHER);

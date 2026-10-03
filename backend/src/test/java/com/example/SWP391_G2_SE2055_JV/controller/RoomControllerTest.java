@@ -98,7 +98,7 @@ class RoomControllerTest {
         mockMvc.perform(get("/rooms")).andExpect(status().isOk());
     }
 
-    /** Trục 2: Lễ tân là Loại Position, không phải role (BR-ORG-08). */
+    /** Trục 2: Lễ tân là quyền nghiệp vụ Manager tick ({@code POSITION_RECEPTION}), không phải role. */
     @Test
     @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_RECEPTION"})
     void shouldListRoomsForReceptionStaff() throws Exception {

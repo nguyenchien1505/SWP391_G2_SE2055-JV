@@ -56,7 +56,7 @@ public class HousekeepingTaskController {
 
     /**
      * S-10 — nhân viên dọn phòng gán được việc trong ngày {@code date}: đang làm việc, thuộc
-     * Location của Manager, Position loại Dọn dẹp, và CÓ CA ngày đó (BR-HK-03).
+     * Location của Manager, có quyền Dọn dẹp, và CÓ CA ngày đó (BR-HK-03).
      *
      * <p>Không nhận {@code locationId}: phạm vi luôn là Location của người đang đăng nhập.
      * Khai báo trước {@code /{id}} cho dễ đọc — Spring vẫn ưu tiên path cố định hơn path có biến.
