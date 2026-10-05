@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.CatalogUsageResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.CreatePositionRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.PositionResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.SetActiveRequest;
@@ -47,6 +48,13 @@ public class PositionController {
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER')")
     public ResponseEntity<PositionResponse> getPositionById(@PathVariable UUID id) {
         return ResponseEntity.ok(positionService.getPositionById(id));
+    }
+
+    /** Các nhân viên giữ vị trí này (kể cả người đã nghỉ việc) — thứ chặn việc xóa. Chỉ Giám đốc — màn Danh mục. */
+    @GetMapping("/{id}/usage")
+    @PreAuthorize("hasRole('DIRECTOR')")
+    public ResponseEntity<CatalogUsageResponse> getUsage(@PathVariable UUID id) {
+        return ResponseEntity.ok(positionService.getUsage(id));
     }
 
     @PostMapping

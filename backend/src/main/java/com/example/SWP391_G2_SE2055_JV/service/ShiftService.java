@@ -54,6 +54,9 @@ public class ShiftService {
     private final LocationRepository       locationRepository;
     private final ShiftTemplateRepository  shiftTemplateRepository;
     private final SchedulePolicyValidator  policyValidator;
+    // BR-HK-03: lịch dọn phụ thuộc lịch làm việc. Không vòng bean — HousekeepingService chỉ
+    // dùng ShiftRepository, không dùng ShiftService.
+    private final HousekeepingService      housekeepingService;
 
     /**
      * @param from ngày bắt đầu ca nhỏ nhất (tính cả ngày này), đi cùng {@code to}. Bỏ trống cả
@@ -207,6 +210,12 @@ public class ShiftService {
             throw new BusinessException("Không sửa được ca đã check-in — giờ ca sẽ lệch với dữ liệu chấm công.");
         }
 
+        // Dời ca sang ngày khác: người được gán mất ngày CŨ — kiểm tra trước khi đổi (BR-HK-03).
+        boolean movingDay = request.getShiftDate() != null
+            && !request.getShiftDate().equals(shift.getShiftDate());
+        if (movingDay && shift.isAssigned()) {
+            housekeepingService.assertCanLeaveShiftDay(shift.getStaffId(), shift.getShiftDate(), shift.getId());
+        }
         if (request.getShiftDate() != null) {
             shift.setShiftDate(request.getShiftDate());
         }
@@ -282,6 +291,8 @@ public class ShiftService {
         if (shift.isCheckedIn()) {
             throw new BusinessException("Không gỡ người khỏi ca đã check-in — sẽ mất dữ liệu chấm công của người đó.");
         }
+        // BR-HK-03: không bỏ lại việc dọn trên tên một người đã hết ca hôm đó.
+        housekeepingService.assertCanLeaveShiftDay(shift.getStaffId(), shift.getShiftDate(), shift.getId());
 
         shift.setStaffId(null);
         shift.setUnassignedReason(reason);
@@ -298,6 +309,9 @@ public class ShiftService {
         // DM-15: dữ liệu chấm công nằm ngay trên bản ghi ca — xóa ca đã check-in là mất luôn.
         if (shift.isCheckedIn()) {
             throw new BusinessException("Không xóa được ca đã check-in — sẽ mất dữ liệu chấm công.");
+        }
+        if (shift.isAssigned()) {
+            housekeepingService.assertCanLeaveShiftDay(shift.getStaffId(), shift.getShiftDate(), shift.getId());
         }
         // Ca không có cột xóa mềm: BR-ROOM-09/DM-17 chỉ yêu cầu lưu vết cho phòng,
         // còn một slot ca chưa ai làm thì không còn giá trị lịch sử nào.

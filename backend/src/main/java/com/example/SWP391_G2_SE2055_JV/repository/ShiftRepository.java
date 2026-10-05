@@ -45,6 +45,12 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
     boolean existsByStaffIdAndShiftDate(UUID staffId, LocalDate shiftDate);
 
     /**
+     * Còn ca nào KHÁC trong ngày không — gỡ / xóa / dời một ca chỉ làm người đó mất ngày làm
+     * việc (và chạm BR-HK-03) khi đây là ca duy nhất của họ hôm ấy.
+     */
+    boolean existsByStaffIdAndShiftDateAndIdNot(UUID staffId, LocalDate shiftDate, UUID id);
+
+    /**
      * BR-SCH-17 + BR-TRF-05 + BR-USER-04: gỡ ca TƯƠNG LAI khi điều chuyển / nghỉ việc.
      * "Tương lai" nghĩa là ngày LỚN HƠN hôm nay theo múi giờ Location — ca của chính
      * hôm nay KHÔNG bị gỡ, nên dùng {@code GreaterThan} chứ không phải {@code GreaterThanEqual}.

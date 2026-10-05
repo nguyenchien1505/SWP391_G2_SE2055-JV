@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.CreateStayoverTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.StayoverBatchResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.Department;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
@@ -27,6 +28,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
@@ -72,6 +74,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class HousekeepingFlowTest {
 
     @Autowired HousekeepingService         housekeepingService;
+    @Autowired ShiftService                shiftService;
     @Autowired RoomService                 roomService;
     @Autowired HousekeepingTaskRepository  taskRepository;
     @Autowired InspectionRecordRepository inspectionRepository;
@@ -85,6 +88,7 @@ class HousekeepingFlowTest {
     private Room occupied102;
     private HousekeepingTask checkoutTaskOf201;
     private LocalDate today;
+    private Shift cleanerShiftToday;
 
     /** Dựng đúng tình huống sau khi Lễ tân vừa check-out: phòng Chờ dọn + 1 task chưa phân công. */
     @BeforeEach
@@ -108,7 +112,7 @@ class HousekeepingFlowTest {
             .email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
             .fullName("Phạm Dọn Dẹp").phone("0900000001").build());
         // BR-HK-03: có ca trong ngày mới nhận được task.
-        persist(Shift.builder().tenantId(tenantId).locationId(hanoi).staffId(cleaner.getId())
+        cleanerShiftToday = persist(Shift.builder().tenantId(tenantId).locationId(hanoi).staffId(cleaner.getId())
             .shiftDate(today).startTime(LocalTime.of(8, 0)).endTime(LocalTime.of(16, 0))
             .durationHours(new BigDecimal("8.00")).build());
 
@@ -342,6 +346,47 @@ class HousekeepingFlowTest {
         assertThatThrownBy(() -> housekeepingService.cancelTask(checkoutTaskOf201.getId()))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("Không khả dụng");
+    }
+
+    // ── Lịch dọn ↔ lịch làm việc — BR-HK-03, BR-HK-05 ───────────────────────
+
+    /**
+     * Gỡ / xóa ca hôm nay bị chặn khi người đó còn việc dọn hôm nay; gỡ người khỏi việc dọn
+     * trước thì gỡ ca được. Chạy trên DB thật để kiểm luôn hai truy vấn mới của repository.
+     */
+    @Test
+    void shouldBlockRemovingCleanerFromTodaysShiftUntilTheirTasksAreReassigned() {
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
+        flushAndClear();
+
+        assertThatThrownBy(() -> shiftService.unassignStaff(cleanerShiftToday.getId(), UnassignedReason.MANAGER_MANUAL))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("Phạm Dọn Dẹp đang giữ 1 việc dọn")
+            .hasMessageContaining("phòng 201");
+        assertThatThrownBy(() -> shiftService.deleteShift(cleanerShiftToday.getId()))
+            .isInstanceOf(BusinessException.class);
+
+        housekeepingService.unassignTask(checkoutTaskOf201.getId());
+        shiftService.unassignStaff(cleanerShiftToday.getId(), UnassignedReason.MANAGER_MANUAL);
+        flushAndClear();
+
+        assertThat(em.find(Shift.class, cleanerShiftToday.getId()).getStaffId()).isNull();
+    }
+
+    /** Bấm lại lần hai không sinh trùng — vừa do service bỏ qua, vừa do uk_hk_open_task_per_room_type. */
+    @Test
+    void shouldCreateStayoverTasksForOccupiedRoomsOnlyOnce() {
+        StayoverBatchResponse first = housekeepingService.createStayoverTasksForOccupiedRooms();
+        flushAndClear();
+        StayoverBatchResponse second = housekeepingService.createStayoverTasksForOccupiedRooms();
+        flushAndClear();
+
+        assertThat(first.getCreated()).isEqualTo(1);
+        assertThat(first.getTasks()).singleElement()
+            .satisfies(task -> assertThat(task.getRoomNumber()).isEqualTo("102"));
+        assertThat(second.getCreated()).isZero();
+        assertThat(second.getSkipped()).isEqualTo(1);
+        assertThat(em.find(Room.class, occupied102.getId()).getStatus()).isEqualTo(RoomStatus.OCCUPIED);
     }
 
     // ── Tiện ích ────────────────────────────────────────────────────────────

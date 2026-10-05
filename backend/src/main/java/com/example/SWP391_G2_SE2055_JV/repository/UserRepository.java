@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -50,6 +51,23 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      */
     @Query("select case when count(u) > 0 then true else false end from User u where u.positionId = :positionId")
     boolean isPositionHeld(@Param("positionId") UUID positionId);
+
+    /** Mọi người giữ một vị trí, TÍNH CẢ người đã nghỉ việc — đúng tập đang chặn xóa vị trí. */
+    List<User> findByPositionId(UUID positionId);
+
+    /** Đếm người giữ từng vị trí theo trạng thái — một câu cho cả phòng ban, không N+1. */
+    @Query("""
+        select u.positionId as positionId, u.status as status, count(u) as total
+        from User u where u.positionId in :positionIds
+        group by u.positionId, u.status
+        """)
+    List<PositionStaffCount> countStaffByPositionAndStatus(@Param("positionIds") Collection<UUID> positionIds);
+
+    interface PositionStaffCount {
+        UUID getPositionId();
+        UserStatus getStatus();
+        long getTotal();
+    }
 
     /**
      * Quyền nghiệp vụ của một người — để dựng principal trong session. Truy vấn riêng thay vì đọc

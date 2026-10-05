@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.StayoverBatchResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
@@ -23,6 +24,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.exception.UnauthorizedException;
 import com.example.SWP391_G2_SE2055_JV.repository.AssignableStaffRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.InspectionRecordRepository;
@@ -44,6 +46,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -57,9 +60,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -643,6 +648,124 @@ class HousekeepingServiceTest {
         }
     }
 
+    // ── Gỡ / xóa / dời ca khi còn việc dọn — BR-HK-03 ───────────────────────
+
+    @Nested
+    class LeaveShiftDay {
+
+        private final UUID shiftId = UUID.randomUUID();
+
+        @BeforeEach
+        void loginAsManager() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+        }
+
+        /** Còn ca khác cùng ngày thì người đó vẫn có ngày làm việc — không cần xét việc dọn. */
+        @Test
+        void shouldAllowWhenStaffHasAnotherShiftThatDay() {
+            when(shiftRepository.existsByStaffIdAndShiftDateAndIdNot(STAFF_ID, today, shiftId)).thenReturn(true);
+
+            service.assertCanLeaveShiftDay(STAFF_ID, today, shiftId);
+
+            verify(taskRepository, never()).findByAssignedStaffIdAndAssignedDateAndStatus(any(), any(), any());
+        }
+
+        /** Chỉ xét việc «Đang thực hiện»: việc «Chờ kiểm tra» người dọn đã xong phần mình. */
+        @Test
+        void shouldAllowWhenStaffHoldsNoInProgressTaskThatDay() {
+            when(shiftRepository.existsByStaffIdAndShiftDateAndIdNot(STAFF_ID, today, shiftId)).thenReturn(false);
+            when(taskRepository.findByAssignedStaffIdAndAssignedDateAndStatus(
+                STAFF_ID, today, HousekeepingTaskStatus.IN_PROGRESS)).thenReturn(List.of());
+
+            service.assertCanLeaveShiftDay(STAFF_ID, today, shiftId);
+
+            verify(taskRepository).findByAssignedStaffIdAndAssignedDateAndStatus(
+                STAFF_ID, today, HousekeepingTaskStatus.IN_PROGRESS);
+        }
+
+        /** Nhóm đã chốt: chặn và chỉ rõ phòng (số phòng theo thứ tự tự nhiên), không tự gỡ việc. */
+        @Test
+        void shouldRejectAndNameRoomsWhenStaffStillHoldsTasksThatDay() {
+            when(shiftRepository.existsByStaffIdAndShiftDateAndIdNot(STAFF_ID, today, shiftId)).thenReturn(false);
+            HousekeepingTask checkout = inProgressTask(HousekeepingTaskType.CHECKOUT);   // phòng 201
+            HousekeepingTask stayover = inProgressTask(HousekeepingTaskType.STAYOVER);
+            Room room1005 = occupiedRoom("1005");
+            stayover.setRoomId(room1005.getId());
+            when(taskRepository.findByAssignedStaffIdAndAssignedDateAndStatus(
+                STAFF_ID, today, HousekeepingTaskStatus.IN_PROGRESS)).thenReturn(List.of(checkout, stayover));
+            when(roomRepository.findAllById(any())).thenReturn(List.of(room1005, room()));
+            stubStaff(housekeepingStaff());
+
+            assertThatThrownBy(() -> service.assertCanLeaveShiftDay(STAFF_ID, today, shiftId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Phạm Dọn Dẹp đang giữ 2 việc dọn")
+                .hasMessageContaining("phòng 201, 1005")
+                .hasMessageContaining("Công việc dọn phòng");
+            verifyNoInteractions(roomStatusService);
+        }
+    }
+
+    // ── Tạo việc dọn hằng ngày hàng loạt — BR-HK-05, BR-HK-11 ──────────────
+
+    @Nested
+    class StayoverBatch {
+
+        @Test
+        void shouldCreateForOccupiedRoomsOfOwnLocationAndSkipRoomsWithOpenStayover() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            Room room301 = occupiedRoom("301");
+            Room room1002 = occupiedRoom("1002");
+            Room room205 = occupiedRoom("205");   // đã có việc dọn hằng ngày đang mở
+            when(roomRepository.search(eq(TENANT_ID), eq(LOCATION_ID), eq(RoomStatus.OCCUPIED),
+                isNull(), isNull(), any())).thenReturn(new PageImpl<>(List.of(room1002, room205, room301)));
+            when(taskRepository.existsByRoomIdAndTaskTypeAndStatusIn(any(), eq(HousekeepingTaskType.STAYOVER), any()))
+                .thenAnswer(invocation -> room205.getId().equals(invocation.getArgument(0)));
+            when(taskRepository.save(any(HousekeepingTask.class)))
+                .thenAnswer(invocation -> withId(invocation.getArgument(0)));
+
+            StayoverBatchResponse result = service.createStayoverTasksForOccupiedRooms();
+
+            assertThat(result.getCreated()).isEqualTo(2);
+            assertThat(result.getSkipped()).isEqualTo(1);
+            // Số phòng theo thứ tự tự nhiên: 301 trước 1002.
+            assertThat(result.getTasks()).extracting(HousekeepingTaskResponse::getRoomNumber)
+                .containsExactly("301", "1002");
+            ArgumentCaptor<HousekeepingTask> saved = ArgumentCaptor.forClass(HousekeepingTask.class);
+            verify(taskRepository, times(2)).save(saved.capture());
+            assertThat(saved.getAllValues()).allSatisfy(task -> {
+                assertThat(task.getTaskType()).isEqualTo(HousekeepingTaskType.STAYOVER);
+                assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
+                assertThat(task.getCreatedSource()).isEqualTo(TaskCreatedSource.MANAGER_STAYOVER);
+                assertThat(task.getLocationId()).isEqualTo(LOCATION_ID);
+            });
+            // Dọn hằng ngày không đụng trạng thái phòng (BR-HK-05).
+            verifyNoInteractions(roomStatusService);
+        }
+
+        @Test
+        void shouldCreateNothingWhenNoRoomIsOccupied() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            when(roomRepository.search(eq(TENANT_ID), eq(LOCATION_ID), eq(RoomStatus.OCCUPIED),
+                isNull(), isNull(), any())).thenReturn(new PageImpl<>(List.of()));
+
+            StayoverBatchResponse result = service.createStayoverTasksForOccupiedRooms();
+
+            assertThat(result.getCreated()).isZero();
+            assertThat(result.getSkipped()).isZero();
+            verify(taskRepository, never()).save(any());
+        }
+
+        /** Cần một khách sạn cụ thể: người không gắn khách sạn (Giám đốc) không dùng được. */
+        @Test
+        void shouldRejectUserWithoutLocation() {
+            TestAuth.loginAsDirector(TENANT_ID);
+
+            assertThatThrownBy(() -> service.createStayoverTasksForOccupiedRooms())
+                .isInstanceOf(UnauthorizedException.class);
+            verifyNoInteractions(roomRepository, taskRepository);
+        }
+    }
+
     // ── Phạm vi dữ liệu ─────────────────────────────────────────────────────
 
     @Nested
@@ -797,6 +920,14 @@ class HousekeepingServiceTest {
             .id(ROOM_ID).tenantId(TENANT_ID).locationId(LOCATION_ID)
             .roomNumber("201").floor("2").roomTypeId(UUID.randomUUID()).capacity(2)
             .status(RoomStatus.DIRTY)
+            .build();
+    }
+
+    private static Room occupiedRoom(String number) {
+        return Room.builder()
+            .id(UUID.randomUUID()).tenantId(TENANT_ID).locationId(LOCATION_ID)
+            .roomNumber(number).floor("3").roomTypeId(UUID.randomUUID()).capacity(2)
+            .status(RoomStatus.OCCUPIED)
             .build();
     }
 

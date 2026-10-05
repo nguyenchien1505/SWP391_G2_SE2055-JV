@@ -60,41 +60,6 @@
   color: var(--tone-text);
 }
 
-/* ── Chip lọc gọn (sơ đồ phòng) ────────────────────────────────────── */
-.status-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 6px 14px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--tone-bg, #eceef1);
-  color: var(--tone-text, var(--text));
-}
-.status-chip b {
-  font-size: 15px;
-}
-.status-chip.is-selected {
-  border-color: var(--tone, var(--primary));
-  box-shadow: inset 0 0 0 1px var(--tone, var(--primary));
-}
-.status-chip--all {
-  background: #fff;
-  border-color: var(--border);
-  color: var(--text);
-}
-
 /* ── Thanh lọc ─────────────────────────────────────────────────────── */
 .rooms-toolbar input {
   width: 150px;
@@ -136,32 +101,66 @@
   gap: 10px;
 }
 .room-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+  min-width: 0;
   min-height: 48px; /* vùng bấm tối thiểu — design.md mục 3 */
   width: 100%;
-  padding: 12px;
+  padding: 14px 12px 12px;
   font: inherit;
   text-align: left;
   color: var(--text);
-  background: var(--tone-bg);
+  /* Nền nhạt theo trạng thái: "lưới thẻ màu" (design.md màn 30) nhưng vẫn nhẹ như bản mẫu Stitch. */
+  background: color-mix(in srgb, var(--tone-bg) 60%, #fff);
   border: 1px solid var(--border);
-  border-left: 5px solid var(--tone);
   border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
   cursor: pointer;
-  transition: box-shadow 0.15s, transform 0.15s;
+  transition: box-shadow 0.15s, transform 0.15s, border-color 0.15s;
+}
+/* Vạch màu trạng thái ở mép trên thẻ (bản mẫu Stitch). */
+.room-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: var(--tone);
 }
 .room-card:hover,
 .room-card:focus-visible {
-  box-shadow: 0 4px 12px rgba(28, 35, 48, 0.12);
+  border-color: var(--tone);
+  box-shadow: 0 6px 16px rgba(28, 35, 48, 0.12);
   transform: translateY(-1px);
+}
+.room-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Phòng đang mở ở bảng chi tiết. */
+.room-card.is-selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary), 0 6px 16px rgba(28, 35, 48, 0.12);
+}
+.room-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
 }
 .room-card__number {
   font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
+}
+.room-card__icon {
+  flex-shrink: 0;
+  font-size: 20px;
+  color: var(--tone-text);
 }
 .room-card__meta {
   font-size: 13px;
@@ -174,21 +173,27 @@
   max-width: 100%;
   white-space: normal;
 }
-
-/* ── Sơ đồ phòng: nhóm theo tầng ───────────────────────────────────── */
-.floor-group + .floor-group {
-  margin-top: 20px;
-}
-.floor-group__title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 15px;
-}
-.floor-group__title small {
-  font-weight: 400;
+/* Dòng gợi ý: lý do khóa, người đang dọn… — tối đa HAI dòng rồi mới cắt bằng "…". Một dòng thì
+   trên điện thoại (thẻ ~140px) mất đúng phần quan trọng: "Dọn hằng ngày: chưa phân…". */
+.room-card__hint {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  width: 100%;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  font-size: 12.5px;
+  line-height: 1.35;
   color: var(--muted);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+/* Việc cần Quản lý xử lý (chưa phân công, chờ kiểm tra, tồn đọng): cam cảnh báo, không dùng đỏ. */
+.room-card__hint.is-attention {
+  color: #b85300;
+  font-weight: 600;
 }
 
 /* ── Chi tiết phòng ────────────────────────────────────────────────── */
@@ -306,7 +311,7 @@
   overflow-wrap: anywhere;
 }
 
-/* ── F2: S-08 hộp thoại khóa / mở khóa + bảng thao tác trên sơ đồ ──── */
+/* ── F2: S-08 hộp thoại khóa / mở khóa ───────────────────────────── */
 .room-modal {
   max-height: calc(100vh - 32px);
   overflow-y: auto;
@@ -373,21 +378,6 @@
   font-size: 13px;
   color: var(--muted);
 }
-.action-sheet__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.action-sheet__reason {
-  margin-top: 8px;
-  font-size: 14px;
-}
-.action-sheet__list {
-  display: grid;
-  gap: 10px;
-  margin: 16px 0;
-}
 
 /* ── Responsive — BR-ROOM-06 ───────────────────────────────────────── */
 .rooms-cards {
@@ -407,6 +397,14 @@
     flex: 1 1 140px;
     min-width: 0;
     width: auto;
+    min-height: 48px;
+  }
+  /* Liên kết quay lại ở đầu S-04: vùng bấm cao 48px, chữ vẫn sát lề trái. */
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
+    margin-bottom: 4px;
   }
   .room-stat .stat-card__value {
     font-size: 24px;
@@ -481,44 +479,6 @@
   }
 }
 
-/* ── F4: S-15 bảng thao tác của Lễ tân ─────────────────────────────── */
-/* Trên điện thoại, bảng trượt lên từ cạnh dưới: đó là vùng ngón cái với tới được khi cầm một
-   tay ở quầy (design.md mục 2). Trên desktop giữ nguyên hộp thoại giữa màn hình. */
-@keyframes action-sheet-up {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: none;
-  }
-}
-
-@media (max-width: 860px) {
-  /* Ghi đè .modal-backdrop / .modal của styles.css — file dùng chung được nạp SAU rooms.css nên
-     phải dùng 2 lớp để thắng về độ ưu tiên, thay vì sửa file của cả nhóm. */
-  .modal-backdrop.action-sheet-backdrop {
-    place-items: end stretch;
-    padding: 0;
-  }
-  .modal.action-sheet {
-    max-width: none;
-    border-radius: var(--radius-card) var(--radius-card) 0 0;
-    padding-bottom: calc(22px + env(safe-area-inset-bottom));
-    animation: action-sheet-up 0.18s ease-out;
-  }
-  /* Nút thao tác trải hết chiều ngang, cao ≥ 48px — bấm bằng ngón cái. */
-  .action-sheet .action-sheet__list .btn {
-    width: 100%;
-    min-height: 48px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .action-sheet {
-    animation: none;
-  }
-}
-
 /* ── F5: S-09/S-11 bảng lịch dọn phòng ─────────────────────────────── */
 /* Desktop: 4 cột cạnh nhau, Quản lý nhìn một phát ra cả bức tranh. */
 .task-board {
@@ -554,6 +514,15 @@
   display: none;
 }
 
+/* Khổ trung gian (máy tính bảng nằm ngang, cửa sổ không mở hết): 4 cột cạnh nhau thì mỗi cột
+   chỉ còn ~167px trong khi thẻ việc cần ~205px, thẻ tràn đè sang cột bên. Xếp 2 hàng × 2 cột.
+   Khối này phải đứng TRƯỚC khối 860px ở cuối file: dưới 860px thì khối đó mới là khối thắng. */
+@media (max-width: 1200px) {
+  .task-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ── F5: thẻ một việc dọn ──────────────────────────────────────────── */
 .task-card {
   background: var(--tone-bg);
@@ -568,6 +537,12 @@
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
+  /* Cột hẹp: huy hiệu xuống dòng dưới số phòng thay vì đẩy thẻ rộng ra ngoài cột. */
+  flex-wrap: wrap;
+}
+/* Nhãn dài ("Chưa phân công", "Chờ kiểm tra") được xuống dòng — .badge chung là nowrap. */
+.task-card .badge {
+  white-space: normal;
 }
 .task-card__room {
   font-size: 22px;
@@ -757,9 +732,1021 @@
   color: var(--accent);
 }
 
+@media (max-width: 860px) {
+  /* Liên kết chữ cao 17px thì không bấm nổi bằng ngón tay, mà S-16 lại là màn dùng khi đang
+     đứng trong hành lang: nới chiều cao vùng bấm lên 48px, chữ vẫn nằm sát lề trái. */
+  .link-btn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
+  }
+}
+
 @media (max-width: 480px) {
   /* Hai ô cạnh nhau ở 360px thì chữ gợi ý bị vỡ dòng liên tục → xếp dọc. */
   .inspect-choices {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ══ S-06 / S-15 Sơ đồ phòng — bố cục theo bản mẫu Stitch (28/09/2026) ═══════════════════
+ * Đầu trang có ô tìm số phòng + chuyển Sơ đồ/Danh sách, dải thẻ số liệu 7 trạng thái, thanh tab
+ * tầng, lưới phòng nhóm theo tầng (thu gọn được) và bảng chi tiết bên phải. Mọi màu lấy biến
+ * :root của styles.css và biến --tone* của lớp room-tone--*.
+ */
+
+/* ── Đầu trang ─────────────────────────────────────────────────────── */
+.board-head__sub {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.board-head__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.board-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.board-search .material-symbols-outlined {
+  position: absolute;
+  left: 10px;
+  font-size: 20px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.board-search input {
+  width: 200px;
+  height: 42px;
+  padding: 0 12px 0 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+.board-search input:focus,
+.board-select:focus {
+  outline: 2px solid rgba(46, 116, 181, 0.35);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.board-select {
+  height: 42px;
+  max-width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+/* Sơ đồ / Danh sách: hai kiểu xem của cùng dữ liệu phòng (S-06 và S-02). */
+.view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: #e7eff8;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.view-switch__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+}
+.view-switch__item .material-symbols-outlined {
+  font-size: 18px;
+}
+.view-switch__item.is-active {
+  background: #fff;
+  color: var(--primary);
+  box-shadow: var(--shadow-card);
+}
+a.view-switch__item:hover {
+  color: var(--text);
+}
+.board-refresh {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+}
+.is-spinning {
+  animation: board-spin 0.8s linear infinite;
+}
+@keyframes board-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Câu báo kết quả bám mép trên khi cuộn: đổi trạng thái ở cuối sơ đồ vẫn thấy ngay kết quả. */
+.board-banner {
+  position: sticky;
+  top: 8px;
+  z-index: 30;
+  padding-right: 36px;
+  box-shadow: 0 6px 16px rgba(28, 35, 48, 0.12);
+}
+
+/* ── Dải thẻ số liệu 7 trạng thái + "Tất cả" ───────────────────────── */
+.status-tiles {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.status-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 76px;
+  padding: 10px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.status-tile:hover {
+  border-color: var(--tone, var(--accent));
+}
+.status-tile.is-selected {
+  background: var(--tone-bg, #eaf2fb);
+  border-color: var(--tone, var(--primary));
+  box-shadow: inset 0 0 0 1px var(--tone, var(--primary));
+}
+.status-tile__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--tone-text, var(--muted));
+}
+.status-tile__label .material-symbols-outlined {
+  flex-shrink: 0;
+  font-size: 18px;
+}
+.status-tile__value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+.status-tile__value small {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ── Thanh lọc: tab tầng + loại phòng ──────────────────────────────── */
+.board-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+/* Nhiều tầng thì cuộn ngang BÊN TRONG thanh tab, không đẩy cả trang rộng ra. */
+.floor-tabs {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px;
+  overflow-x: auto;
+  background: var(--page-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.floor-tab {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.floor-tab:hover {
+  color: var(--text);
+}
+.floor-tab.is-active {
+  background: #fff;
+  color: var(--primary);
+  box-shadow: var(--shadow-card);
+}
+.floor-tab .chip {
+  padding: 2px 8px;
+}
+
+/* ── Lưới + bảng chi tiết ──────────────────────────────────────────── */
+.board-layout--with-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+.board-main {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+.floor-section {
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.floor-section__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.floor-section .room-grid {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+/* Tầng là chữ (G, M, B1 — BR-ROOM-05) nên ô số tầng co giãn theo độ dài, không cố định vuông. */
+.floor-section__badge {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  background: var(--primary);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+.floor-section__title {
+  flex: 1;
+  min-width: 0;
+}
+.floor-section__title h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+}
+.floor-section__sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.floor-sum {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.floor-sum__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+.floor-section__toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+  min-height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.floor-section__toggle:hover {
+  background: #f3f8fd;
+}
+.floor-section__toggle .is-flipped {
+  transform: rotate(180deg);
+}
+
+/* ── Bảng chi tiết phòng ───────────────────────────────────────────── */
+.board-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 8px 24px rgba(28, 35, 48, 0.08);
+}
+/* Màn rộng: bảng bám theo khi cuộn lưới, cuộn riêng phần thân nếu dài hơn màn hình. */
+.board-layout--with-panel > .board-panel {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+}
+.board-panel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  background: linear-gradient(90deg, #fff 40%, var(--tone-bg));
+}
+.board-panel__tile {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 52px;
+  height: 52px;
+  padding: 0 6px;
+  border: 1px solid var(--tone);
+  border-radius: var(--radius-card);
+  background: var(--tone-bg);
+  color: var(--tone-text);
+  font-size: 18px;
+  font-weight: 700;
+}
+.board-panel__title {
+  display: grid;
+  flex: 1;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+}
+.board-panel__title h2 {
+  font-size: 18px;
+}
+.board-panel__title p {
+  font-size: 13px;
+}
+.board-panel__close {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.board-panel__close:hover {
+  background: #eef1f5;
+  color: var(--text);
+}
+.board-panel__body {
+  display: grid;
+  gap: 18px;
+  min-height: 0;
+  padding: 14px;
+  overflow-y: auto;
+}
+.board-panel__section {
+  display: grid;
+  gap: 8px;
+}
+.board-panel__heading {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.board-panel__actions {
+  display: grid;
+  gap: 8px;
+}
+.board-panel__actions .btn {
+  width: 100%;
+  min-height: 48px;
+}
+/* Không có nút nào: nói rõ vì sao (design.md mục 1), không để trống. */
+.board-panel__why {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: #f5f7fa;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.board-panel__why .material-symbols-outlined {
+  flex-shrink: 0;
+  font-size: 20px;
+  color: var(--accent);
+}
+.board-panel__facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: #f5f7fa;
+}
+.board-panel__facts dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.board-panel__facts dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.board-panel__note-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.board-panel__note-head .link-btn {
+  margin-top: 0;
+}
+.board-panel__note p {
+  overflow-wrap: anywhere;
+}
+.board-panel__more {
+  justify-self: start;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.board-panel__more:hover {
+  text-decoration: underline;
+}
+.board-panel--empty {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 220px;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+.board-panel--empty .material-symbols-outlined {
+  font-size: 36px;
+  color: #b8c2cf;
+}
+
+/* Việc dọn đang mở của phòng — chỉ Quản lý chi nhánh thấy. */
+.board-task {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: #fff;
+}
+.board-task__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.board-task__meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+.board-task__meta b {
+  color: var(--text);
+}
+.board-task__flag {
+  font-size: 13px;
+  font-weight: 600;
+  color: #b85300;
+}
+.board-task .link-btn {
+  justify-self: start;
+  margin-top: 2px;
+}
+.board-task__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.board-task__actions:empty {
+  display: none;
+}
+.board-task__actions .btn {
+  flex: 1 1 auto;
+}
+
+/* Lịch sử gần đây dạng dòng thời gian — chấm màu theo trạng thái đích. */
+.board-timeline {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0 0 0 18px;
+  list-style: none;
+}
+.board-timeline::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 5px;
+  width: 2px;
+  background: var(--border);
+}
+.board-timeline__item {
+  position: relative;
+}
+.board-timeline__item::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: -17px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tone);
+  box-shadow: 0 0 0 3px #fff;
+}
+.board-timeline__change {
+  font-size: 14px;
+}
+.board-timeline__meta {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.board-timeline__reason {
+  margin-top: 2px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* ── Bảng chi tiết khi màn hẹp hơn 1200px: đè lên trang ────────────── */
+/* z-index 45: trên ngăn kéo menu (40), dưới hộp thoại (50) — hộp thoại khóa phòng, phân công…
+   mở từ bảng này phải nằm trên nó. */
+.board-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(28, 35, 48, 0.45);
+}
+/* Máy tính bảng: ngăn kéo trượt từ phải, cao hết màn hình. */
+.board-overlay__sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 100%);
+  height: 100%;
+  background: #fff;
+  box-shadow: -16px 0 48px rgba(28, 35, 48, 0.2);
+  animation: board-drawer-in 0.18s ease-out;
+}
+.board-overlay__sheet .board-panel {
+  flex: 1 1 auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.board-overlay__sheet .board-panel__head {
+  border-radius: 0;
+}
+@keyframes board-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes board-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-overlay__sheet {
+    animation: none;
+  }
+}
+
+/* ── Sơ đồ phòng — khổ trung gian và điện thoại ────────────────────── */
+@media (max-width: 1100px) {
+  .status-tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .board-head__tools {
+    width: 100%;
+  }
+  .board-search {
+    flex: 1 1 180px;
+  }
+  .board-search input {
+    width: 100%;
+    height: 48px;
+  }
+  .board-select {
+    flex: 1 1 100%;
+    height: 48px;
+  }
+  /* Hai thanh chọn bỏ đệm ngoài để mỗi mục cao 46px + viền = 48px, bằng ô tìm kiếm và nút làm
+     mới trên cùng hàng — vùng bấm ≥ 48px (design.md mục 3). */
+  .view-switch,
+  .floor-tabs {
+    padding: 0;
+  }
+  .view-switch__item,
+  .floor-tab {
+    min-height: 46px;
+  }
+  .board-refresh {
+    width: 48px;
+    height: 48px;
+  }
+  .board-filters .floor-tabs {
+    flex: 1 1 100%;
+  }
+  .board-panel__more {
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
+  }
+  .floor-section {
+    padding: 12px;
+  }
+  .floor-section__toggle {
+    min-height: 48px;
+  }
+  .room-card__hint {
+    font-size: 13px;
+  }
+  /* Điện thoại: trượt lên từ cạnh dưới — vùng ngón cái với tới được (design.md mục 2). */
+  .board-overlay {
+    align-items: flex-end;
+    justify-content: stretch;
+  }
+  .board-overlay__sheet {
+    width: 100%;
+    height: auto;
+    max-height: 88vh;
+    border-radius: 12px 12px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation-name: board-sheet-up;
+  }
+  .board-overlay__sheet .board-panel,
+  .board-overlay__sheet .board-panel__head {
+    border-radius: 12px 12px 0 0;
+  }
+  .board-panel__close {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Bảy thẻ số liệu thành MỘT hàng cuộn ngang: nhường chỗ màn hình cho lưới phòng. */
+  .status-tiles {
+    display: flex;
+    margin: 0 -4px 14px;
+    padding: 0 4px 4px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+  .status-tile {
+    flex: 0 0 128px;
+    min-height: 72px;
+    scroll-snap-align: start;
+  }
+  /* Tóm tắt trạng thái từng tầng đã có trên thẻ số liệu — bỏ bớt cho gọn. */
+  .floor-section__sum {
+    display: none;
+  }
+}
+
+/* ── Lịch dọn theo nhân viên (BR-HK-02, BR-HK-03) ──────────────────── */
+/* Nút chuyển cách xem: hai lựa chọn liền nhau như một công tắc. */
+.view-toggle {
+  display: inline-flex;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+.view-toggle__btn {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.view-toggle__btn + .view-toggle__btn {
+  border-left: 1px solid var(--border);
+}
+.view-toggle__btn.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.day-board__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+}
+.day-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.day-nav input[type='date'] {
+  min-height: 34px;
+}
+.day-board__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 700;
+}
+.day-board__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Cột trái: hàng chờ + tồn đọng; bên phải: mỗi người có ca một hàng. */
+.day-board {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.day-board.is-loading {
+  opacity: 0.6;
+}
+.day-board__side,
+.day-board__main {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+.day-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.day-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.day-panel__head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.day-panel__note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+/* Tồn đọng: cam như nhãn "Tồn đọng" trên thẻ; Cần xử lý: đỏ nhạt — có việc nằm sai chỗ. */
+.day-panel--warn {
+  border-color: #f2c48d;
+  background: #fff8ef;
+}
+.day-panel--alert {
+  border-color: #f0b4b4;
+  background: #fff5f5;
+}
+.day-board__empty {
+  background: var(--card-bg);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-card);
+}
+
+.staff-row {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 12px;
+}
+.staff-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.staff-row__who {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.staff-row__who small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.staff-row__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.staff-row__empty {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.staff-row__tasks {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+/* Một việc dạng gọn: màu viền trái theo trạng thái, cùng hệ màu với thẻ việc (room-tone--*). */
+.hk-chip {
+  background: var(--tone-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--tone);
+  border-radius: var(--radius-control);
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+}
+.hk-chip__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.hk-chip__main .badge {
+  white-space: normal;
+}
+.hk-chip__room {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.hk-chip__type,
+.hk-chip__who {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.hk-chip__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Giao nhiều việc: việc không giao được cho ngày đang chọn thì mờ đi (Q5). */
+.choice.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Dashboard Manager: số liệu vận hành hôm nay (BR-DASH-03) ──────── */
+.ops-summary {
+  margin-bottom: 24px;
+}
+.ops-summary__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.ops-summary__head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.ops-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.ops-card-link:hover .stat-card,
+.ops-card-link:focus-visible .stat-card {
+  border-color: var(--accent);
+}
+
+/* ── Việc của tôi: ca hôm nay ──────────────────────────────────────── */
+.my-shift {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.my-shift__label {
+  font-weight: 700;
+}
+.my-shift__time {
+  font-size: 18px;
+  font-weight: 700;
+}
+.my-shift__time small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.my-shift__none {
+  color: var(--muted);
+}
+
+@media (max-width: 1100px) {
+  .day-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .day-board__stats {
+    margin-left: 0;
+  }
+  .staff-row__head .btn {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+  .staff-row__tasks {
+    grid-template-columns: 1fr;
+  }
+  .hk-chip__actions .btn {
+    flex: 1 1 auto;
+    min-height: 44px;
   }
 }

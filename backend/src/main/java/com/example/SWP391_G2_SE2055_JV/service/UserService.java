@@ -18,6 +18,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.DepartmentRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
@@ -62,6 +63,7 @@ public class UserService {
 
     private final UserRepository     userRepository;
     private final PositionRepository positionRepository;
+    private final DepartmentRepository departmentRepository;
     private final LocationRepository locationRepository;
     private final ShiftRepository    shiftRepository;
     private final SubscriptionRepository subscriptionRepository;
@@ -190,6 +192,7 @@ public class UserService {
                 throw new BusinessException("Chỉ nhân viên (STAFF) mới được cấp quyền nghiệp vụ.");
             }
             Set<StaffPermission> requested = toPermissionSet(request.getPermissions());
+            assertCanDropHousekeeping(user, requested);
             user.getPermissions().retainAll(requested);
             user.getPermissions().addAll(requested);
         }
@@ -540,12 +543,20 @@ public class UserService {
         // nhân viên đã đi làm từ trước, và Manager nhận bàn giao thì làm ngay trong hôm nay.
     }
 
-    /** Position thuộc Tenant và chưa bị ẩn — BR-ORG-14: mục đã ẩn không còn được chọn. */
+    /** Position thuộc Tenant, chưa bị ẩn và thuộc phòng ban chưa bị ẩn — BR-ORG-14: mục đã ẩn không còn được chọn. */
     private void assertPositionSelectable(UUID positionId, UUID tenantId) {
         Position position = positionRepository.findByIdAndTenantId(positionId, tenantId)
             .orElseThrow(() -> new ResourceNotFoundException("Position", "id", positionId));
         if (!position.isActive()) {
             throw new BusinessException("Vị trí \"" + position.getName() + "\" đã ngừng sử dụng, hãy chọn vị trí khác.");
+        }
+        // Ẩn phòng ban là ẩn luôn các vị trí bên trong — BR-ORG-14.
+        boolean departmentActive = departmentRepository.findByIdAndTenantId(position.getDepartmentId(), tenantId)
+            .map(department -> department.isActive())
+            .orElse(false);
+        if (!departmentActive) {
+            throw new BusinessException("Vị trí \"" + position.getName()
+                + "\" thuộc phòng ban đã ngừng sử dụng, hãy chọn vị trí khác.");
         }
     }
 
@@ -564,6 +575,26 @@ public class UserService {
         return positionRepository.findByIdAndTenantId(request.getPositionId(), tenantId)
             .map(position -> StaffPermission.defaultFor(position.getPositionType()))
             .orElseGet(() -> EnumSet.noneOf(StaffPermission.class));
+    }
+
+    /**
+     * Không cho bỏ quyền Dọn dẹp khi nhân viên còn việc dọn đang làm dở: nút "Hoàn thành" đòi quyền
+     * này, nên việc sẽ kẹt ở «Đang thực hiện» và phòng kẹt ở «Đang dọn». Manager gỡ người khỏi các
+     * việc đó trước (màn Công việc dọn phòng hoặc bảng chi tiết trên Sơ đồ phòng).
+     */
+    private void assertCanDropHousekeeping(User user, Set<StaffPermission> requested) {
+        boolean dropping = user.getPermissions().contains(StaffPermission.HOUSEKEEPING)
+            && !requested.contains(StaffPermission.HOUSEKEEPING);
+        if (!dropping) {
+            return;
+        }
+        long inProgress = housekeepingService.countInProgressTasksOf(user.getId());
+        if (inProgress > 0) {
+            throw new BusinessException(String.format(
+                "%s đang có %d việc dọn chưa xong. Gỡ người khỏi các việc đó (màn \"Công việc dọn phòng\" "
+                    + "hoặc Sơ đồ phòng) trước khi bỏ quyền Dọn dẹp.",
+                user.getFullName(), inProgress));
+        }
     }
 
     /** Bỏ phần tử null và trùng lặp — giá trị lạ đã bị chặn từ lúc đọc JSON (enum). */

@@ -6,7 +6,8 @@ import { ROOM_STATUS_ORDER, roomStatusMeta } from '../../pages/rooms/roomLabels'
  *
  * Hai kiểu hiển thị, cùng một hành vi:
  *   - "cards": thẻ số liệu lớn cho trang danh sách (S-02)
- *   - "chips": chip gọn cho sơ đồ phòng (S-06), nhường chỗ cho lưới phòng
+ *   - "tiles": dải thẻ có biểu tượng + tỉ lệ cho sơ đồ phòng (S-06); thêm ô "Tất cả" đứng đầu,
+ *     trên điện thoại cuộn ngang thành MỘT hàng để nhường chỗ cho lưới phòng
  *
  * @param counts   { AVAILABLE: 3, DIRTY: 2, … } — trạng thái thiếu coi như 0
  * @param selected mã trạng thái đang lọc, hoặc '' nếu không lọc
@@ -15,28 +16,40 @@ import { ROOM_STATUS_ORDER, roomStatusMeta } from '../../pages/rooms/roomLabels'
 export default function RoomStatusFilter({ counts = {}, total = 0, selected, onSelect, variant = 'cards' }) {
   const toggle = (status) => onSelect(selected === status ? '' : status);
 
-  if (variant === 'chips') {
+  if (variant === 'tiles') {
     return (
-      <div className="status-chips" role="group" aria-label="Lọc theo trạng thái">
+      <div className="status-tiles" role="group" aria-label="Lọc theo trạng thái">
         <button
           type="button"
-          className={`status-chip status-chip--all ${selected ? '' : 'is-selected'}`}
+          className={`status-tile status-tile--all ${selected ? '' : 'is-selected'}`}
           onClick={() => onSelect('')}
           aria-pressed={!selected}
         >
-          Tất cả <b>{total}</b>
+          <span className="status-tile__label">
+            <span className="material-symbols-outlined" aria-hidden="true">apps</span>
+            Tất cả
+          </span>
+          <span className="status-tile__value">{total}</span>
         </button>
         {ROOM_STATUS_ORDER.map((status) => {
           const meta = roomStatusMeta(status);
+          const count = counts[status] ?? 0;
           return (
             <button
               key={status}
               type="button"
-              className={`status-chip room-tone--${meta.tone} ${selected === status ? 'is-selected' : ''}`}
+              className={`status-tile room-tone--${meta.tone} ${selected === status ? 'is-selected' : ''}`}
               onClick={() => toggle(status)}
               aria-pressed={selected === status}
             >
-              {meta.label} <b>{counts[status] ?? 0}</b>
+              <span className="status-tile__label">
+                <span className="material-symbols-outlined" aria-hidden="true">{meta.icon}</span>
+                {meta.label}
+              </span>
+              <span className="status-tile__value">
+                {count}
+                <small>{total > 0 ? `${Math.round((count / total) * 100)}%` : '0%'}</small>
+              </span>
             </button>
           );
         })}

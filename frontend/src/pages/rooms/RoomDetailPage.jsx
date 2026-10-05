@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
 import { deleteRoom, fetchRoom, updateRoom } from '../../api/rooms';
@@ -57,7 +57,9 @@ export default function RoomDetailPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  const [tab, setTab] = useState('info');
+  // Sơ đồ phòng mở thẳng tab lịch sử qua react-router state ("Xem chi tiết và toàn bộ lịch sử").
+  const { state: navigationState } = useLocation();
+  const [tab, setTab] = useState(navigationState?.tab === 'history' ? 'history' : 'info');
   const [banner, setBanner] = useState(null); // { type, text }
   // Tăng lên sau mỗi lần đổi trạng thái → RoomHistoryList dựng lại, nạp từ trang đầu.
   const [historyVersion, setHistoryVersion] = useState(0);

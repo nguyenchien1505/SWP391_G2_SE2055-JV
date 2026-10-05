@@ -61,7 +61,7 @@ export const DamageReportScreen = ({ incidentId = 'RP-2024-089', onNavigate, onS
       setToastMessage('Đã chuyển phiếu sang "Đã xử lý" và cập nhật trạng thái tài sản thành công!');
       setTimeout(() => setToastMessage(''), 4000);
     } catch (err) {
-      setErrorMsg('Xử lý thất bại. Vui lòng thử lại.');
+      setErrorMsg(err.message || 'Xử lý thất bại. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }
@@ -172,7 +172,7 @@ export const DamageReportScreen = ({ incidentId = 'RP-2024-089', onNavigate, onS
                   <span>{incident.assetCode}</span>
                   <button
                     onClick={() => {
-                      onNavigate('asset-detail', incident.assetCode);
+                      onNavigate('asset-detail', incident.assetId || incident.assetCode);
                     }}
                     className="text-[#0e61a1] text-xs hover:underline cursor-pointer"
                     type="button"
@@ -192,7 +192,7 @@ export const DamageReportScreen = ({ incidentId = 'RP-2024-089', onNavigate, onS
               <div className="p-3 bg-[#F7F8FA] rounded-xl border border-[#DFE3E8]">
                 <span className="text-[#5B6472] text-[11px] block">Người lập báo cáo:</span>
                 <span className="font-semibold text-[#1C2330] mt-0.5 block">
-                  {incident.reportedBy} ({incident.reportedRole})
+                  {incident.reportedBy}{incident.reporterEmail && incident.reporterEmail !== incident.reportedBy ? ` (${incident.reporterEmail})` : ''}
                 </span>
               </div>
 
@@ -387,7 +387,7 @@ export const DamageReportScreen = ({ incidentId = 'RP-2024-089', onNavigate, onS
               </h3>
               <button
                 onClick={() => {
-                  onNavigate('asset-detail', incident.assetCode);
+                  onNavigate('asset-detail', incident.assetId || incident.assetCode);
                 }}
                 className="text-xs text-[#0e61a1] hover:underline font-semibold cursor-pointer"
                 type="button"

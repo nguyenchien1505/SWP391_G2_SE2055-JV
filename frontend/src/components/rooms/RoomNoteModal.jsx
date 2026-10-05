@@ -11,6 +11,9 @@ const NOTE_MAX = 500;
  * Phần duy nhất của phòng mà Quản lý chi nhánh được sửa: số phòng, tầng, loại phòng và sức chứa
  * là thông tin cấu trúc, thuộc quyền Giám đốc. Để trống ô ghi chú nghĩa là XÓA ghi chú.
  *
+ * Giám đốc cũng mở hộp thoại này từ sơ đồ phòng (S-06), nơi không có form "Sửa thông tin".
+ * Ở trang chi tiết (S-04) Giám đốc sửa ghi chú ngay trong form đó nên không cần nút riêng.
+ *
  * Thành công thì trả phòng MỚI qua `onSaved` để màn hình cập nhật ngay, không phải tải lại.
  */
 export default function RoomNoteModal({ room, onClose, onSaved }) {

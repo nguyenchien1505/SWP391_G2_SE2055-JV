@@ -22,7 +22,7 @@ public class CreatePositionRequest {
     @Size(max = 100, message = "Tên chức danh tối đa 100 ký tự")
     private String name;
 
-    /** BR-ORG-08: quyền nghiệp vụ đặc thù gán theo LOẠI này, không theo tên. */
+    /** Loại chức danh — chỉ để tick sẵn quyền khi Manager chọn chức danh này (BR-ORG-08 bản sửa). */
     @NotNull(message = "Loại chức danh là bắt buộc")
     private PositionType positionType;
 }

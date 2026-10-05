@@ -15,6 +15,9 @@ export const POSITION_TYPE_LABEL = {
   OTHER: 'Khác',
 };
 
+/** Chọn được khi cả vị trí lẫn phòng ban của nó đều đang dùng (BR-ORG-14). */
+const isSelectable = (position) => position.active && position.departmentActive !== false;
+
 const EMPTY = {
   fullName: '',
   email: '',
@@ -67,10 +70,10 @@ export default function StaffForm({ editing, positions, locationName, onSubmit, 
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // BR-ORG-14: Position đã ẩn không được chọn mới, nhưng hồ sơ đang giữ nó thì vẫn hiện để không
-  // bị đổi ngầm khi bấm lưu.
+  // BR-ORG-14: Position đã ẩn — hoặc thuộc phòng ban đã ẩn — không được chọn mới, nhưng hồ sơ đang
+  // giữ nó thì vẫn hiện để không bị đổi ngầm khi bấm lưu.
   const groups = useMemo(() => {
-    const selectable = positions.filter((p) => p.active || p.id === editing?.positionId);
+    const selectable = positions.filter((p) => isSelectable(p) || p.id === editing?.positionId);
     const byDepartment = {};
     for (const p of selectable) {
       (byDepartment[p.departmentName ?? 'Khác'] ??= []).push(p);
@@ -249,7 +252,7 @@ export default function StaffForm({ editing, positions, locationName, onSubmit, 
               {items.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({POSITION_TYPE_LABEL[p.positionType] ?? p.positionType})
-                  {p.active ? '' : ' — đã ngừng sử dụng'}
+                  {isSelectable(p) ? '' : ' — đã ngừng sử dụng'}
                 </option>
               ))}
             </optgroup>

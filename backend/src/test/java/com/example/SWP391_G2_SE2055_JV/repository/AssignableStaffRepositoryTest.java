@@ -59,8 +59,8 @@ class AssignableStaffRepositoryTest {
     private LocalDate today;
 
     /**
-     * Một người ĐÚNG mọi điều kiện, và bên cạnh là các biến thể sai đúng một điều: sai Loại
-     * Position, sai Location, đã nghỉ việc, không có ca.
+     * Một người ĐÚNG mọi điều kiện, và bên cạnh là các biến thể sai đúng một điều: không được
+     * tick quyền Dọn dẹp, sai Location, đã nghỉ việc, không có ca.
      */
     @BeforeEach
     void setUp() {

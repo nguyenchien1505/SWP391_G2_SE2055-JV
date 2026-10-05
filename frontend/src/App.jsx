@@ -18,7 +18,10 @@ import HousekeepingPage from './pages/rooms/HousekeepingPage';
 import MyTasksPage from './pages/rooms/MyTasksPage';
 import SchedulePage from './pages/scheduling/SchedulePage';
 import ScheduleRulesPage from './pages/scheduling/ScheduleRulesPage';
+import HotelOpsSummary from './components/rooms/HotelOpsSummary';
 import ReserveManagerPage from './pages/ReserveManagerPage';
+import AssetCategoriesPage from './pages/AssetCategoriesPage';
+import OrganizationCatalogPage from './pages/OrganizationCatalogPage';
 import { homePathFor } from './homePath';
 
 /**
@@ -127,20 +130,36 @@ function useAssetNavigate() {
 }
 
 function OverviewWrapper() {
-  return <DashboardScreen onNavigate={useAssetNavigate()} />;
+  const { user } = useAuth();
+  const onNavigate = useAssetNavigate();
+  return (
+    <>
+      {/* BR-DASH-03: Manager thấy số liệu vận hành của khách sạn mình trước phần tài sản. */}
+      {user?.role === 'MANAGER' && <HotelOpsSummary />}
+      <DashboardScreen onNavigate={onNavigate} />
+    </>
+  );
 }
 function FixedAssetWrapper() {
   return <AssetManagementScreen onNavigate={useAssetNavigate()} />;
 }
+/** Chỉ Manager tạo tài sản trong khách sạn của mình (BR-ASSET-09) — vai trò khác về danh sách. */
 function BatchCreateWrapper() {
-  return <BatchCreateAssetsScreen onNavigate={useAssetNavigate()} />;
+  const { user } = useAuth();
+  const onNavigate = useAssetNavigate();
+  if (user?.role !== 'MANAGER') return <Navigate to="/tai-san" replace />;
+  return <BatchCreateAssetsScreen onNavigate={onNavigate} />;
 }
+/** Tồn kho tiêu hao chỉ mở cho Giám đốc (xem) và Manager (sửa) — Staff không đụng tới (BR-PERM). */
 function ConsumableWrapper() {
-  return <ConsumableInventoryScreen onNavigate={useAssetNavigate()} />;
+  const { user } = useAuth();
+  const onNavigate = useAssetNavigate();
+  if (user?.role !== 'DIRECTOR' && user?.role !== 'MANAGER') return <Navigate to={homePathFor(user)} replace />;
+  return <ConsumableInventoryScreen onNavigate={onNavigate} />;
 }
 function DetailWrapper() {
-  const { code } = useParams();
-  return <AssetDetailScreen assetCode={code} onNavigate={useAssetNavigate()} />;
+  const { ref } = useParams();
+  return <AssetDetailScreen key={ref} assetRef={ref} onNavigate={useAssetNavigate()} />;
 }
 function IncidentWrapper() {
   const { id } = useParams();
@@ -196,6 +215,10 @@ export default function App() {
           chặn vai trò vì backend tự ép nhân viên về việc của chính mình (BR-PERM-05). */}
       <Route path="/don-phong" element={inShell(<RequireBranchManager><HousekeepingPage /></RequireBranchManager>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
+      {/* Danh mục tài sản cấp Tenant — BR-ASSET-09: Giám đốc CRUD, Manager chỉ xem. */}
+      <Route path="/danh-muc-tai-san" element={inShell(<RequireManagementRole><AssetCategoriesPage /></RequireManagementRole>)} />
+      {/* Loại phòng, Phòng ban, Vị trí công việc — BR-ORG-06, BR-ORG-11: chỉ Giám đốc; Manager vào thấy thông báo. */}
+      <Route path="/danh-muc" element={inShell(<RequireManagementRole><OrganizationCatalogPage /></RequireManagementRole>)} />
       {/* Lịch làm việc — BR-SCH-*. Manager xếp ca cho khách sạn mình (BR-PERM-03); Giám đốc đặt quy
           định và mẫu ca dùng chung cả chuỗi (BR-PERM-02). */}
       <Route path="/xep-lich" element={inShell(<RequireBranchManager><SchedulePage /></RequireBranchManager>)} />
@@ -215,9 +238,11 @@ export default function App() {
         <Route path="/tong-quan" element={<OverviewWrapper />} />
         <Route path="/tai-san" element={<FixedAssetWrapper />} />
         <Route path="/tai-san/batch" element={<BatchCreateWrapper />} />
-        <Route path="/tai-san/:code" element={<DetailWrapper />} />
+        {/* :ref là id tài sản; mã tài sản (link cũ) vẫn được nhận. */}
+        <Route path="/tai-san/:ref" element={<DetailWrapper />} />
         <Route path="/vat-tu" element={<ConsumableWrapper />} />
         <Route path="/bao-hong" element={<IncidentWrapper />} />
+        <Route path="/bao-hong/:id" element={<IncidentWrapper />} />
       </Route>
 
       {/* Admin Platform Routes */}

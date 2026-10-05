@@ -1,80 +1,159 @@
 import { apiClient } from './apiClient';
 
-let localMockAssets = [];
-
 /**
  * Dạng UUID chuẩn 8-4-4-4-12. Mọi chỗ nhận diện "id thật của backend" phải dùng CHUNG
- * hằng số này: viết lại regex ở từng hàm đã từng làm rơi mất nhóm thứ tư, khiến id thật
- * bị coi là id giả nên tài sản mới chỉ nằm trong mock trong RAM, không xuống DB.
+ * hằng số này: viết lại regex ở từng hàm đã từng làm rơi mất nhóm thứ tư.
  */
 const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const isUUID = (id) => UUID_PATTERN.test(String(id ?? ''));
 
+/** Kích thước trang khi kéo trọn danh sách — dưới trần max-page-size 2000 của Spring. */
+const FETCH_ALL_PAGE_SIZE = 500;
 
-// --- CACHE FOR LOOKUPS ---
-let categoriesCache = null;
-let fixedAssetsCache = null;
+// --- CACHE ---
+// Tài sản, vật tư, báo hỏng KHÔNG cache: dữ liệu vận hành phải luôn mới (cache cũ từng làm
+// Dashboard hiện số liệu cũ, và lọt sang tài khoản đăng nhập sau trong cùng tab). Chỉ danh
+// mục được cache NGẮN để tra tên cho cả danh sách bằng một request; cache bị xóa khi đổi
+// tài khoản (clearAssetCaches, gọi từ AuthContext).
+const CATEGORY_CACHE_TTL_MS = 30_000;
+let categoriesCache = null; // { promise, at }
 
-const MOCK_CATEGORIES = [
-  { id: 'AC', name: 'Điều hòa nhiệt độ (AC)', prefix: 'TS-AC', purpose: 'GUEST_USE', assetKind: 'FIXED' },
-  { id: 'TV', name: 'Smart TV màn hình phẳng (TV)', prefix: 'TS-TV', purpose: 'GUEST_USE', assetKind: 'FIXED' },
-  { id: 'RF', name: 'Tủ lạnh mini quầy bar (RF)', prefix: 'TS-RF', purpose: 'GUEST_USE', assetKind: 'FIXED' },
-  { id: 'SF', name: 'Két sắt mini điện tử (SF)', prefix: 'TS-SF', purpose: 'GUEST_USE', assetKind: 'FIXED' },
-  { id: 'WH', name: 'Máy nước nóng gián tiếp (WH)', prefix: 'TS-WH', purpose: 'GUEST_USE', assetKind: 'FIXED' },
-  { id: 'HD', name: 'Máy sấy tóc ion cao cấp (HD)', prefix: 'TS-HD', purpose: 'GUEST_USE', assetKind: 'FIXED' },
-  { id: 'CS', name: 'Điều hòa âm trần Cassette', prefix: 'TS-CS', purpose: 'FACILITY_MAINTENANCE', assetKind: 'FIXED' },
-  { id: 'ST', name: 'Điều hòa tủ đứng công suất lớn', prefix: 'TS-ST', purpose: 'FACILITY_MAINTENANCE', assetKind: 'FIXED' },
-  { id: 'PC', name: 'Máy tính để bàn lễ tân', prefix: 'TS-PC', purpose: 'INTERNAL_OPS', assetKind: 'FIXED' }
-];
+/** Xóa mọi cache của module — gọi khi đăng nhập/đăng xuất để không lộ dữ liệu người trước. */
+export function clearAssetCaches() {
+  categoriesCache = null;
+}
 
-const getCategories = async () => {
-  if (!categoriesCache) {
-    try {
-      const res = await apiClient.get('/organization/asset-categories?size=1000');
-      categoriesCache = res.content || [];
-    } catch(e) { categoriesCache = []; }
-    
-    // Inject mock categories to ensure dropdowns have options
-    const existingIds = new Set(categoriesCache.map(c => c.id));
-    for (const mc of MOCK_CATEGORIES) {
-      if (!existingIds.has(mc.id)) {
-        categoriesCache.push(mc);
-      }
-    }
+/**
+ * Danh mục tài sản thật của Tenant (kể cả đang ẩn — tài sản cũ vẫn phải hiện đúng tên).
+ * Dùng chung một promise để N lần tra cứu song song chỉ gọi một request. Lỗi thì KHÔNG
+ * giữ lại, để lần sau còn thử lại.
+ */
+const getCategories = () => {
+  if (!categoriesCache || Date.now() - categoriesCache.at > CATEGORY_CACHE_TTL_MS) {
+    const promise = apiClient
+      .get('/organization/asset-categories?size=1000')
+      .then((res) => res?.content || []);
+    categoriesCache = { promise, at: Date.now() };
+    promise.catch(() => {
+      if (categoriesCache?.promise === promise) categoriesCache = null;
+    });
   }
-  return categoriesCache;
+  return categoriesCache.promise;
 };
+
+const UNKNOWN_CATEGORY = { name: 'Không rõ danh mục', purpose: null };
 
 const resolveCategory = async (categoryId) => {
-  const cats = await getCategories();
-  const cat = cats.find(c => c.id === categoryId);
-  return cat || { name: 'Unknown', purpose: 'Unknown' };
+  const find = (cats) => cats.find((c) => c.id === categoryId);
+  try {
+    const first = getCategories();
+    const found = find(await first);
+    if (found) return found;
+    // Danh mục Giám đốc vừa tạo sau lần nạp cache — nạp lại MỘT lần. Chỉ bỏ đúng bản cache
+    // vừa dùng (và không quá mới), để N lần tra cứu song song không nạp lại N lần.
+    if (categoriesCache?.promise === first && Date.now() - categoriesCache.at > 1000) {
+      categoriesCache = null;
+    }
+    return find(await getCategories()) || UNKNOWN_CATEGORY;
+  } catch {
+    // Tên danh mục chỉ để hiển thị — không làm hỏng cả danh sách tài sản.
+    return UNKNOWN_CATEGORY;
+  }
 };
 
-const getFixedAssetsMap = async () => {
-  if (!fixedAssetsCache) {
-    try {
-      const res = await apiClient.get('/assets/fixed-assets?size=1000&includeDisposed=true');
-      fixedAssetsCache = res.content || [];
-    } catch(e) { fixedAssetsCache = []; }
-  }
-  return [...localMockAssets, ...fixedAssetsCache];
-}
+/** Enum AssetPurpose của backend → khóa tab và nhãn trên màn hình vật tư. */
+const mapPurpose = (purpose) => {
+  if (purpose === 'GUEST_USE') return { purpose: 'guest', purposeLabel: 'Dùng cho khách' };
+  if (purpose === 'FACILITY_MAINTENANCE') return { purpose: 'facility', purposeLabel: 'Đồ dùng để duy trì cơ sở' };
+  return { purpose: 'internal', purposeLabel: 'Nội bộ' };
+};
 
-const resolveFixedAsset = async (assetId) => {
-  const assets = await getFixedAssetsMap();
-  const asset = assets.find(a => a.id === assetId);
-  return asset || null;
-}
+/** Kéo trọn một danh sách phân trang qua mọi trang. `query` không kèm page/size. */
+const fetchAllPages = async (path, query) => {
+  const all = [];
+  let page = 0;
+  let totalPages = 1;
+  while (page < totalPages) {
+    const res = await apiClient.get(`${path}?${query}&page=${page}&size=${FETCH_ALL_PAGE_SIZE}`);
+    all.push(...(res?.content || []));
+    totalPages = res?.totalPages || 0;
+    page += 1;
+  }
+  return all;
+};
+
+/** Toàn bộ tài sản cố định (cả đã thanh lý) trong phạm vi người dùng — luôn đọc mới. */
+const fetchAllFixedAssetsRaw = () =>
+  fetchAllPages('/assets/fixed-assets', 'includeDisposed=true&sort=assetCode,asc');
+
+/** Toàn bộ báo hỏng, cả NEW lẫn RESOLVED (`status=` rỗng = bỏ lọc, DM-16). */
+const fetchAllDamageReportsRaw = () =>
+  fetchAllPages('/assets/damage-reports', 'status=&sort=reportedAt,desc');
+
+const fetchAllConsumablesRaw = () => fetchAllPages('/assets/consumables', 'sort=categoryId,asc');
+
+const indexById = (items) => new Map(items.map((i) => [i.id, i]));
+
+/** Thông điệp tiếng Việt cho lỗi tải — backend chỉ trả "Forbidden"/rỗng với 401/403. */
+const friendlyError = (err) => {
+  if (err?.status === 401) return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+  if (err?.status === 403) return 'Bạn không có quyền xem phần này.';
+  if (err?.status === 0) return 'Không kết nối được máy chủ.';
+  return err?.message || 'Không tải được dữ liệu.';
+};
+
+/** Phiếu báo hỏng cho UI. `assetsById` tra mã/tên/vị trí tài sản. */
+const mapDamageReport = (inc, assetsById) => {
+  const asset = assetsById.get(inc.fixedAssetId);
+  return {
+    id: inc.id,
+    shortId: String(inc.id).slice(0, 8).toUpperCase(),
+    assetId: inc.fixedAssetId,
+    assetCode: asset?.assetCode || 'Không rõ',
+    assetName: asset?.name || 'Không rõ',
+    room: asset ? asset.roomName || asset.areaName || 'Chưa xếp vị trí' : 'Chưa rõ',
+    description: inc.description,
+    reportedBy: inc.reporterName || inc.reporterEmail || 'Không rõ',
+    reporterEmail: inc.reporterEmail,
+    reportedTime: inc.reportedAt ? new Date(inc.reportedAt).toLocaleString('vi-VN') : 'N/A',
+    ticketStatus: inc.status === 'NEW' ? 'New' : 'Processed',
+    ticketStatusLabel: inc.status === 'NEW' ? 'Mới' : 'Đã xử lý',
+  };
+};
+
+/**
+ * Bản ghi backend mới nhất của một tài sản. Nhận id (đường chuẩn) hoặc mã tài sản (đường
+ * cũ từ link/phiếu báo hỏng). Mã chỉ duy nhất trong một khách sạn, nên Giám đốc xem nhiều
+ * khách sạn phải đi bằng id.
+ */
+const resolveAssetRef = async (ref) => {
+  if (isUUID(ref)) {
+    return apiClient.get(`/assets/fixed-assets/${ref}`);
+  }
+  const assets = await fetchAllFixedAssetsRaw();
+  const asset = assets.find((a) => a.assetCode === ref);
+  if (!asset) throw new Error(`Không tìm thấy tài sản có mã "${ref}".`);
+  return asset;
+};
+
+/** Nhãn trạng thái phía UI ↔ enum FixedAssetStatus của backend. */
+const STATUS_TO_BACKEND = {
+  Good: 'GOOD',
+  Damaged: 'BROKEN',
+  Repairing: 'UNDER_REPAIR',
+  Disposed: 'DISPOSED',
+};
 
 const mapAssetStatus = (status) => {
-  switch (status) {
-    case 'GOOD': case 'Good': return 'Good';
-    case 'BROKEN': case 'Damaged': return 'Damaged';
-    case 'UNDER_REPAIR': case 'Repairing': return 'Repairing';
-    case 'DISPOSED': case 'Disposed': return 'Disposed';
-    default: return 'Good';
-  }
+  const found = Object.entries(STATUS_TO_BACKEND).find(([ui, be]) => ui === status || be === status);
+  return found ? found[0] : status;
+};
+
+/** Nhận cả nhãn UI lẫn enum backend; giá trị lạ thì báo lỗi thay vì lặng lẽ về GOOD. */
+const toBackendStatus = (status) => {
+  if (STATUS_TO_BACKEND[status]) return STATUS_TO_BACKEND[status];
+  if (Object.values(STATUS_TO_BACKEND).includes(status)) return status;
+  throw new Error(`Trạng thái tài sản không hợp lệ: ${status}`);
 };
 
 const mapFixedAsset = async (backendAsset) => {
@@ -87,30 +166,42 @@ const mapFixedAsset = async (backendAsset) => {
     category: cat.name,
     categoryFullName: cat.name,
     purpose: cat.purpose,
+    locationId: backendAsset.locationId,
+    roomId: backendAsset.roomId,
+    areaId: backendAsset.areaId,
     locationType: backendAsset.roomId ? 'room' : 'area',
-    location: backendAsset.roomName || backendAsset.areaName || backendAsset.roomId || backendAsset.areaId || 'Chưa xếp vị trí',
+    location: backendAsset.roomName || backendAsset.areaName || 'Chưa xếp vị trí',
     status: mapAssetStatus(backendAsset.status),
-    note: backendAsset.note
+    note: backendAsset.note,
   };
 };
+
+/** Body PUT đầy đủ từ bản ghi backend — PUT thay toàn bộ nên thiếu trường là mất dữ liệu. */
+const toUpdateRequest = (asset, overrides = {}) => ({
+  categoryId: asset.categoryId,
+  name: asset.name,
+  note: asset.note,
+  roomId: asset.roomId || null,
+  areaId: asset.areaId || null,
+  ...overrides,
+});
 
 const mapConsumable = async (backendConsumable) => {
   const cat = await resolveCategory(backendConsumable.categoryId);
   return {
     id: backendConsumable.id,
     categoryId: backendConsumable.categoryId,
-    categoryCode: cat.name, 
-    name: cat.name,
-    description: cat.name, // Fallback since backend category doesn't have description
+    categoryCode: backendConsumable.categoryName || cat.name,
+    name: backendConsumable.categoryName || cat.name,
+    description: backendConsumable.categoryName || cat.name, // Danh mục backend không có mô tả
     icon: 'inventory_2',
-    unit: cat.unit || 'Lít',
-    quantity: backendConsumable.quantity || 0,
+    unit: backendConsumable.unit || cat.unit || '',
+    quantity: Number(backendConsumable.quantity) || 0,
     lastAuditDate: backendConsumable.lastCountedAt ? new Date(backendConsumable.lastCountedAt).toLocaleString('vi-VN') : 'Chưa kiểm kê',
     lastAuditUser: backendConsumable.lastCountedByEmail || backendConsumable.lastCountedBy || 'N/A',
     status: (backendConsumable.quantity > 0) ? 'In Stock' : 'Out of Stock',
     statusLabel: (backendConsumable.quantity > 0) ? 'Còn hàng' : 'Hết hàng',
-    purpose: cat.purpose === 'GUEST_USE' ? 'guest' : (cat.purpose === 'FACILITY_OPS' ? 'facility' : 'internal'),
-    purposeLabel: cat.purpose === 'GUEST_USE' ? 'Dùng cho khách' : (cat.purpose === 'FACILITY_OPS' ? 'Đồ dùng để duy trì cơ sở' : 'Nội bộ')
+    ...mapPurpose(cat.purpose),
   };
 };
 
@@ -118,293 +209,169 @@ export const assetService = {
   // ---------------------------------
   // FIXED ASSETS
   // ---------------------------------
-  getFixedAssets: async (options = {}) => {
-      try {
-        const { includeDisposed = false, hideDisposed, page = 1, limit = 10, search, category, purpose, status, location } = options;
-        const actualIncludeDisposed = hideDisposed !== undefined ? !hideDisposed : includeDisposed;
-        
-        const query = new URLSearchParams({
-          includeDisposed: actualIncludeDisposed.toString(),
-          page: (page - 1).toString(), 
-          size: limit.toString(),
-          sort: 'createdAt,desc'
-        }).toString();
-    
-        const response = await apiClient.get(`/assets/fixed-assets?${query}`);
-        let mappedItems = await Promise.all((response.content || []).map(mapFixedAsset));
-  
-        if (search) {
-          const s = search.toLowerCase();
-          mappedItems = mappedItems.filter(a => (a.code || '').toLowerCase().includes(s) || (a.name || '').toLowerCase().includes(s));
-        }
-        if (status) {
-          mappedItems = mappedItems.filter(a => (a.status || '').toLowerCase() === status.toLowerCase());
-        }
 
-        // INTERCEPT MOCK
-        let filteredMock = localMockAssets.filter(a => {
-          if (!actualIncludeDisposed && a.status === 'DISPOSED') return false;
-          if (search && !(a.assetCode || a.code || '').toLowerCase().includes(search.toLowerCase()) && 
-!(a.name || '').toLowerCase().includes(search.toLowerCase())) return false;
-          if (status && (a.status || '').toLowerCase() !== status.toLowerCase()) return false;
-          return true;
-        });
-    
-        return {
-          items: [...filteredMock, ...mappedItems],
-          total: (response.totalElements || 0) + filteredMock.length,
-          totalPages: Math.max(response.totalPages || 1, Math.ceil(((response.totalElements || 0) + 
-filteredMock.length) / limit))
-        };
-      } catch (err) {
-        console.error("GET_FIXED_ASSETS_ERROR", err);
-        throw err;
-      }
-    },
-
-  getAssetDetail: async (id) => {
-    return assetService.getFixedAssetById(id);
+  /**
+   * Toàn bộ tài sản cố định trong phạm vi người dùng (cả đã thanh lý). Backend chưa hỗ trợ
+   * tìm kiếm/lọc theo trạng thái, nên màn danh sách lọc và phân trang ở client — lọc trên
+   * từng trang server sẽ bỏ sót tài sản ở các trang khác.
+   */
+  getAllFixedAssets: async () => {
+    const raw = await fetchAllFixedAssetsRaw();
+    return Promise.all(raw.map(mapFixedAsset));
   },
 
-  getFixedAssetById: async (id) => {
-    const looksLikeBackendId = isUUID(id);
-    let backendAsset;
-
-    // Check local mocks first if not UUID
-    if (!looksLikeBackendId) {
-      const mockAsset = localMockAssets.find(a => a.code === id || a.assetCode === id);
-      if (mockAsset) return mockAsset;
-    }
-
-    if (looksLikeBackendId) {
-      backendAsset = await apiClient.get(`/assets/fixed-assets/${id}`);
-    } else {
-      const assets = await getFixedAssetsMap();
-      backendAsset = assets.find(a => a.assetCode === id || a.code === id);
-      if (!backendAsset) throw new Error("Asset not found by code: " + id);
-    }
-    
-    // If it's a mock asset that leaked in here, return it directly
-    if (backendAsset.id && backendAsset.id.toString().startsWith('mock-')) {
-      return backendAsset;
-    }
-    
-    return mapFixedAsset(backendAsset);
+  getAssetDetail: async (ref) => {
+    return assetService.getFixedAssetById(ref);
   },
 
-  
+  getFixedAssetById: async (ref) => {
+    return mapFixedAsset(await resolveAssetRef(ref));
+  },
+
+  /**
+   * STT kế tiếp cho các mã dạng `${base}NNN` trong phạm vi người dùng, tính từ số LỚN NHẤT
+   * đang dùng (cả tài sản đã thanh lý — mã của chúng vẫn chiếm chỗ trong ràng buộc unique).
+   */
+  getNextBatchSequence: async (base) => {
+    const assets = await fetchAllFixedAssetsRaw();
+    let max = 0;
+    for (const a of assets) {
+      const code = a.assetCode || '';
+      if (!code.startsWith(base)) continue;
+      const rest = code.slice(base.length);
+      if (/^\d+$/.test(rest)) max = Math.max(max, parseInt(rest, 10));
+    }
+    return max + 1;
+  },
+
+  /**
+   * Tạo lần lượt từng tài sản. Gặp lỗi thì DỪNG và báo rõ đã tạo được bao nhiêu — không bỏ
+   * qua lỗi rồi báo thành công một con số sai.
+   *
+   * @param data { categoryId, name, codeBase, positionType: 'ROOM'|'AREA', positionId, quantity }
+   * @returns { count, codes }
+   */
   createBatchAssets: async (data) => {
-    let count = 0;
-    const catId = data.category.id || data.category.value;
-    const posId = data.position?.id;
-    const hasValidUUIDs = isUUID(catId) && (!posId || isUUID(posId));
+    if (!isUUID(data.categoryId)) throw new Error('Vui lòng chọn danh mục tài sản hợp lệ.');
+    if (!isUUID(data.positionId)) throw new Error('Vui lòng chọn Phòng hoặc Khu vực hợp lệ.');
+    if (data.positionType !== 'ROOM' && data.positionType !== 'AREA') {
+      throw new Error('Loại vị trí không hợp lệ.');
+    }
 
-    for (let i = 1; i <= data.quantity; i++) {
-      const seq = String(i).padStart(3, '0');
-      const fullCode = `${data.category.prefix || 'TS'}-${data.position.code}-${seq}`;
-      
-      if (!hasValidUUIDs) {
-        // Fallback to mock
-        localMockAssets.unshift({
-           id: `mock-${Date.now()}-${i}`,
-           assetCode: fullCode,
-           code: fullCode,
-           name: data.category.name,
-           categoryId: catId,
-           category: data.category.name,
-           purpose: data.category.purpose || 'Internal',
-           location: data.position.label || data.position.code,
-           status: 'Good',
-           createdAt: new Date().toISOString()
+    const start = await assetService.getNextBatchSequence(data.codeBase);
+    const codes = [];
+    try {
+      for (let i = 0; i < data.quantity; i++) {
+        const assetCode = `${data.codeBase}${String(start + i).padStart(3, '0')}`;
+        await apiClient.post('/assets/fixed-assets', {
+          categoryId: data.categoryId,
+          name: data.name,
+          note: 'Thêm tự động hàng loạt',
+          roomId: data.positionType === 'ROOM' ? data.positionId : null,
+          areaId: data.positionType === 'AREA' ? data.positionId : null,
+          assetCode,
         });
-        count++;
-        continue;
+        codes.push(assetCode);
       }
-
-      const req = {
-        categoryId: catId,
-        name: data.category.name,
-        note: "Thêm tự động hàng loạt",
-        roomId: data.positionType === 'ROOM' ? posId : null,
-        areaId: data.positionType === 'AREA' ? posId : null,
-        assetCode: fullCode
-      };
-      try {
-        await apiClient.post('/assets/fixed-assets', req);
-        count++;
-      } catch (e) {
-        console.error('Failed to create asset in batch:', e);
-        // If it fails on the first one, throw an error to the UI
-        if (i === 1) throw new Error('Lỗi khi tạo tài sản: ' + (e.response?.data?.message || e.message));
-      }
+    } catch (e) {
+      const done = codes.length > 0
+        ? `Đã tạo ${codes.length}/${data.quantity} tài sản (${codes[0]} → ${codes[codes.length - 1]}) rồi dừng. `
+        : '';
+      throw new Error(`${done}Lỗi khi tạo tài sản: ${e.message}`);
     }
-    fixedAssetsCache = null;
-    return { count };
+    return { count: codes.length, codes };
   },
+
   createFixedAsset: async (data) => {
-    const hasValidUUIDs = isUUID(data.categoryId) && (!data.locationId || isUUID(data.locationId));
-
-    if (!hasValidUUIDs) {
-        const mock = {
-           id: `mock-${Date.now()}`,
-           assetCode: `TS-${data.categoryId}-${Date.now().toString().slice(-4)}`,
-           code: `TS-${data.categoryId}-${Date.now().toString().slice(-4)}`,
-           name: data.name,
-           categoryId: data.categoryId,
-           category: 'Mock Category',
-           purpose: 'Internal',
-           location: data.locationId || 'Chưa rõ',
-           status: 'Good',
-           note: data.note,
-           createdAt: new Date().toISOString()
-        };
-        localMockAssets.unshift(mock);
-        return mock;
+    if (!isUUID(data.categoryId) || !isUUID(data.locationId)) {
+      throw new Error('Danh mục hoặc vị trí không hợp lệ.');
     }
-
-    const req = {
+    const response = await apiClient.post('/assets/fixed-assets', {
       categoryId: data.categoryId,
       name: data.name,
       note: data.note,
       roomId: data.locationType === 'room' ? data.locationId : null,
       areaId: data.locationType === 'area' ? data.locationId : null,
-    };
-    const response = await apiClient.post('/assets/fixed-assets', req);
-    fixedAssetsCache = null;
+    });
     return mapFixedAsset(response);
   },
 
-  updateFixedAssetInfo: async (code, data) => {
-    const assets = await getFixedAssetsMap();
-    const asset = assets.find(a => a.assetCode === code || a.code === code);
-    if (!asset) throw new Error("Not found");
-    
-    if (asset.id && asset.id.toString().startsWith('mock-')) {
-       asset.name = data.name;
-       asset.note = data.note;
-       if (data.categoryId) {
-         asset.categoryId = data.categoryId;
-         const cats = await getCategories();
-         const cat = cats.find(c => c.id === data.categoryId);
-         if (cat) {
-           asset.category = cat.name;
-           asset.categoryFullName = cat.name;
-           asset.purpose = cat.purpose;
-         }
-       }
-       return asset;
-    }
-
-    const req = {
-      categoryId: data.categoryId || asset.categoryId,
-      name: data.name,
-      note: data.note,
-      roomId: asset.roomId || null,
-      areaId: asset.areaId || null,
-    };
-    
-    const updated = await apiClient.put(`/assets/fixed-assets/${asset.id}`, req);
-    fixedAssetsCache = null;
+  updateFixedAssetInfo: async (ref, data) => {
+    const asset = await resolveAssetRef(ref);
+    const updated = await apiClient.put(
+      `/assets/fixed-assets/${asset.id}`,
+      toUpdateRequest(asset, {
+        categoryId: data.categoryId || asset.categoryId,
+        name: data.name,
+        note: data.note,
+      })
+    );
     return mapFixedAsset(updated);
   },
 
-  deleteFixedAsset: async (code) => {
-    const assets = await getFixedAssetsMap();
-    const assetIndex = assets.findIndex(a => a.assetCode === code || a.code === code);
-    if (assetIndex === -1) throw new Error("Not found");
-    const asset = assets[assetIndex];
-
-    if (asset.id && asset.id.toString().startsWith('mock-')) {
-       localMockAssets = localMockAssets.filter(a => a.id !== asset.id);
-       return true;
-    }
-
+  deleteFixedAsset: async (ref) => {
+    const asset = await resolveAssetRef(ref);
     await apiClient.delete(`/assets/fixed-assets/${asset.id}`);
-    fixedAssetsCache = null;
     return true;
   },
 
-  updateAssetLocation: async (code, newLocationId, newLocationType, newLocationName) => {
-    const assets = await getFixedAssetsMap();
-    const asset = assets.find(a => a.assetCode === code || a.code === code);
-    if (!asset) throw new Error("Not found");
-    
-    // Mock handling
-    if (asset.id && asset.id.toString().startsWith('mock-')) {
-       asset.location = newLocationName || newLocationId;
-       return asset;
+  /** Đổi vị trí trong cùng khách sạn — BR-ASSET-13. Lỗi backend được ném ra nguyên văn. */
+  updateAssetLocation: async (ref, newLocationId, newLocationType) => {
+    if (newLocationType !== 'ROOM' && newLocationType !== 'AREA') {
+      throw new Error('Loại vị trí không hợp lệ.');
     }
-    
-    try {
-      const req = { 
-        categoryId: asset.categoryId,
-        name: asset.name,
-        note: asset.note,
-        roomId: newLocationType === 'ROOM' ? newLocationId : null, 
+    if (!isUUID(newLocationId)) throw new Error('Vui lòng chọn Phòng hoặc Khu vực hợp lệ.');
+
+    const asset = await resolveAssetRef(ref);
+    const updated = await apiClient.put(
+      `/assets/fixed-assets/${asset.id}`,
+      toUpdateRequest(asset, {
+        roomId: newLocationType === 'ROOM' ? newLocationId : null,
         areaId: newLocationType === 'AREA' ? newLocationId : null,
-        assetCode: asset.assetCode
-      };
-      const updated = await apiClient.put(`/assets/fixed-assets/${asset.id}`, req);
-      fixedAssetsCache = null;
-      return mapFixedAsset(updated);
-    } catch (e) {
-      console.warn('Backend update failed for location (likely due to mock string UUID). Updating local cache instead.');
-      asset.location = newLocationName || `Mock-${newLocationType}-${newLocationId}`;
-      return asset;
-    }
+      })
+    );
+    return mapFixedAsset(updated);
   },
 
-  updateAssetStatus: async (code, newStatus) => {
-    const assets = await getFixedAssetsMap();
-    const asset = assets.find(a => a.assetCode === code || a.code === code);
-    if (!asset) throw new Error("Not found");
-
-    // Mock handling
-    if (asset.id && asset.id.toString().startsWith('mock-')) {
-       asset.status = newStatus;
-       return asset;
-    }
-
-    let backStatus = 'GOOD';
-    if (newStatus === 'Repairing') backStatus = 'UNDER_REPAIR';
-    if (newStatus === 'Good') backStatus = 'GOOD';
-    if (newStatus === 'Damaged') backStatus = 'BROKEN';
-    if (newStatus === 'Disposed') backStatus = 'DISPOSED';
-    const req = { status: backStatus };
-    const updated = await apiClient.patch(`/assets/fixed-assets/${asset.id}/status`, req);
-    fixedAssetsCache = null;
+  /** `newStatus` nhận cả nhãn UI (Good/Damaged/Repairing/Disposed) lẫn enum backend. */
+  updateAssetStatus: async (ref, newStatus) => {
+    const status = toBackendStatus(newStatus);
+    const asset = await resolveAssetRef(ref);
+    const updated = await apiClient.patch(`/assets/fixed-assets/${asset.id}/status`, { status });
     return mapFixedAsset(updated);
   },
 
   // ---------------------------------
   // CONSUMABLES
   // ---------------------------------
-  getConsumables: async (options = {}) => {
-    const { page = 1, limit = 10, search, purpose } = options;
-    const params = new URLSearchParams();
-    params.append('page', (page - 1).toString());
-    params.append('size', limit.toString());
-
-    const response = await apiClient.get(`/assets/consumables?${params.toString()}`);
-    let mappedItems = await Promise.all((response.content || []).map(mapConsumable));
-    
-    if (purpose && purpose !== 'all') {
-      mappedItems = mappedItems.filter(i => i.purpose === purpose);
-    }
-    if (search) {
-      const lowerSearch = search.toLowerCase();
-      mappedItems = mappedItems.filter(i => (i.name || '').toLowerCase().includes(lowerSearch));
-    }
-    
-    return {
-      items: mappedItems,
-      total: response.totalElements || 0,
-      totalPages: response.totalPages || 0
-    };
+  /**
+   * Toàn bộ tồn kho trong phạm vi người dùng. Backend chưa hỗ trợ tìm theo tên/mục đích,
+   * nên màn hình lọc ở client — lọc trên một trang server sẽ bỏ sót mặt hàng ở trang khác.
+   */
+  getAllConsumables: async () => {
+    const raw = await fetchAllConsumablesRaw();
+    return Promise.all(raw.map(mapConsumable));
   },
 
+  /**
+   * Danh mục tiêu hao đang hoạt động của Tenant (do Giám đốc tạo) — kèm `purpose`/`purposeLabel`
+   * đã đổi sang khóa của màn hình vật tư; enum gốc giữ ở `purposeCode`.
+   */
+  getActiveConsumableCategories: async () => {
+    const res = await apiClient.get(
+      '/organization/asset-categories?assetKind=CONSUMABLE&active=true&size=1000&sort=name,asc'
+    );
+    return (res?.content || []).map((c) => ({ ...c, purposeCode: c.purpose, ...mapPurpose(c.purpose) }));
+  },
+
+  /** body: { categoryId, quantity } — Location lấy từ phiên đăng nhập (BR-ASSET-13). */
   addConsumableItem: async (data) => {
     return apiClient.post('/assets/consumables', data);
+  },
+
+  /** Backend chỉ cho xóa khi tồn kho bằng 0. */
+  deleteConsumableItem: async (id) => {
+    return apiClient.delete(`/assets/consumables/${id}`);
   },
 
   stockCount: async (items) => {
@@ -421,40 +388,20 @@ filteredMock.length) / limit))
   getDamageReports: async (options = {}) => {
     const { status, page = 1, limit = 10 } = options;
     const params = new URLSearchParams();
-    if (status) params.append('status', status.toUpperCase());
+    // Không truyền `status` → backend mặc định chỉ trả NEW; `status=''` (gửi rỗng) mới là
+    // bỏ lọc, lấy cả RESOLVED (DM-16). Bỏ mất tham số rỗng thì phiếu vừa đóng "biến mất".
+    if (status !== undefined && status !== null) params.append('status', status.toUpperCase());
     params.append('page', (page - 1).toString());
     params.append('size', limit.toString());
 
-    const response = await apiClient.get(`/assets/damage-reports?${params.toString()}`);
-    
-    const mappedItems = await Promise.all((response.content || []).map(async inc => {
-      let assetCode = 'Unknown';
-      let assetName = 'Unknown';
-      let room = 'Chưa rõ';
-      
-      const assetRes = await resolveFixedAsset(inc.fixedAssetId);
-      if (assetRes) {
-         assetCode = assetRes.assetCode;
-         assetName = assetRes.name;
-         room = assetRes.roomId || assetRes.areaId || 'Chưa rõ';
-      }
-
-      return {
-        id: inc.id,
-        assetCode,
-        assetName,
-        room,
-        description: inc.description,
-        reportedBy: inc.reporterId,
-        reportedRole: 'Nhân viên',
-        reportedTime: inc.reportedAt ? new Date(inc.reportedAt).toLocaleString('vi-VN') : 'N/A',
-        ticketStatus: inc.status === 'NEW' ? 'New' : 'Processed',
-        ticketStatusLabel: inc.status === 'NEW' ? 'Mới' : 'Đã xử lý'
-      };
-    }));
+    const [response, assets] = await Promise.all([
+      apiClient.get(`/assets/damage-reports?${params.toString()}`),
+      fetchAllFixedAssetsRaw(),
+    ]);
+    const assetsById = indexById(assets);
 
     return {
-      items: mappedItems,
+      items: (response.content || []).map((inc) => mapDamageReport(inc, assetsById)),
       total: response.totalElements || 0,
       totalPages: response.totalPages || 0
     };
@@ -464,7 +411,7 @@ filteredMock.length) / limit))
      const res = await assetService.getDamageReports({ limit: 1000, status: '' });
      return res.items.find(i => i.id === id);
   },
-  
+
   getDamageReportById: async (id) => {
      return assetService.getIncident(id);
   },
@@ -473,16 +420,15 @@ filteredMock.length) / limit))
     return apiClient.patch(`/assets/damage-reports/${id}/resolve`);
   },
 
+  /**
+   * Cập nhật trạng thái tài sản TRƯỚC rồi mới đóng phiếu: nếu bước đầu lỗi thì phiếu vẫn
+   * mở, người dùng thấy lỗi và làm lại — thay vì phiếu đã đóng mà tài sản sai trạng thái.
+   */
   resolveIncident: async (id, data) => {
     const inc = await assetService.getIncident(id);
+    if (!inc) throw new Error('Không tìm thấy phiếu báo hỏng.');
     if (data?.newAssetStatus) {
-       let backStatus = 'GOOD';
-       if (data.newAssetStatus === 'Repairing') backStatus = 'UNDER_REPAIR';
-       if (data.newAssetStatus === 'Good') backStatus = 'GOOD';
-       if (data.newAssetStatus === 'Disposed') backStatus = 'DISPOSED';
-       try {
-           await assetService.updateAssetStatus(inc.assetCode, backStatus);
-       } catch(e) { console.error('Failed to update asset status', e); }
+      await assetService.updateAssetStatus(inc.assetId || inc.assetCode, data.newAssetStatus);
     }
     await assetService.resolveDamageReport(id);
     const updated = await assetService.getIncident(id);
@@ -498,70 +444,84 @@ filteredMock.length) / limit))
   // ---------------------------------
   // OVERVIEW STATS
   // ---------------------------------
-  getOverviewStats: async () => {
-    const fixedAssetsData = await getFixedAssetsMap();
-    
-    // Consumables limit 1000
-    let consumablesData = [];
-    try {
-      const coRes = await apiClient.get('/assets/consumables?size=1000');
-      consumablesData = coRes.content || [];
-    } catch(e) {}
-    
-    let incidentsData = [];
-    try {
-      const inRes = await assetService.getDamageReports({ limit: 1000, status: '' });
-      incidentsData = inRes.items || [];
-    } catch(e) {}
-    
-    const goodCount = fixedAssetsData.filter((a) => mapAssetStatus(a.status) === 'Good').length;
-    const damagedCount = fixedAssetsData.filter((a) => mapAssetStatus(a.status) === 'Damaged').length;
-    const repairingCount = fixedAssetsData.filter((a) => mapAssetStatus(a.status) === 'Repairing').length;
-    const disposedCount = fixedAssetsData.filter((a) => mapAssetStatus(a.status) === 'Disposed').length;
 
-    let maxAudit = null;
-    let totalStock = 0;
-    let guestCategories = new Set();
-    let facilityCategories = new Set();
-    
-    for (const c of consumablesData) {
-       totalStock += (c.quantity || 0);
-       if (c.lastCountedAt) {
+  /**
+   * Số liệu Dashboard — luôn đọc mới từ backend. Ba phần tải độc lập: phần nào lỗi thì
+   * trả `null` kèm thông điệp trong `errors`, KHÔNG thay bằng số 0 (0 trông như số liệu
+   * thật). Cả ba cùng lỗi thì ném lỗi để màn hình hiện thông báo tải thất bại.
+   *
+   * @param includeConsumables false cho Staff — API vật tư chỉ mở cho Giám đốc/Manager.
+   */
+  getOverviewStats: async ({ includeConsumables = true } = {}) => {
+    const [assetsRes, consumablesRes, reportsRes] = await Promise.allSettled([
+      fetchAllFixedAssetsRaw(),
+      includeConsumables ? fetchAllConsumablesRaw() : Promise.resolve(null),
+      fetchAllDamageReportsRaw(),
+    ]);
+
+    const errors = {};
+    const failed = (res, key) => {
+      if (res.status === 'rejected') errors[key] = friendlyError(res.reason);
+      return res.status === 'rejected';
+    };
+
+    let fixedAssets = null;
+    if (!failed(assetsRes, 'fixedAssets')) {
+      const count = (st) => assetsRes.value.filter((a) => a.status === st).length;
+      fixedAssets = {
+        total: assetsRes.value.length,
+        good: count('GOOD'),
+        damaged: count('BROKEN'),
+        repairing: count('UNDER_REPAIR'),
+        disposed: count('DISPOSED'),
+      };
+    }
+
+    let consumables = null;
+    if (!failed(consumablesRes, 'consumables') && consumablesRes.value) {
+      const items = consumablesRes.value;
+      let maxAudit = null;
+      let totalStock = 0;
+      const guestCategories = new Set();
+      const facilityCategories = new Set();
+      for (const c of items) {
+        totalStock += Number(c.quantity) || 0;
+        if (c.lastCountedAt) {
           const d = new Date(c.lastCountedAt);
           if (!maxAudit || d > maxAudit) maxAudit = d;
-       }
-       try {
-         const category = await resolveCategory(c.categoryId);
-         if (category.purpose === 'GUEST_USE') guestCategories.add(category.id);
-         if (category.purpose === 'FACILITY_OPS') facilityCategories.add(category.id);
-       } catch(e) {}
+        }
+        const category = await resolveCategory(c.categoryId);
+        if (category.purpose === 'GUEST_USE') guestCategories.add(c.categoryId);
+        if (category.purpose === 'FACILITY_MAINTENANCE') facilityCategories.add(c.categoryId);
+      }
+      consumables = {
+        totalStock,
+        categoriesCount: new Set(items.map((c) => c.categoryId)).size,
+        outOfStockCount: items.filter((c) => c.outOfStock || !(Number(c.quantity) > 0)).length,
+        guestCount: guestCategories.size,
+        facilityCount: facilityCategories.size,
+        lastAudit: maxAudit ? maxAudit.toLocaleString('vi-VN') : 'Chưa kiểm kê',
+      };
     }
-    const lastAuditStr = maxAudit ? maxAudit.toLocaleString('vi-VN') : 'Chưa kiểm kê';
-    
-    const pendingIncidents = incidentsData.filter((i) => i.ticketStatus === 'New').length;
-    
-    return {
-       fixedAssets: {
-          total: fixedAssetsData.length,
-          good: goodCount,
-          damaged: damagedCount,
-          repairing: repairingCount,
-          disposed: disposedCount
-       },
-       consumables: {
-          totalStock: totalStock,
-          categoriesCount: new Set(consumablesData.map(c => c.categoryId)).size,
-          guestCount: guestCategories.size,
-          facilityCount: facilityCategories.size,
-          lastAudit: lastAuditStr
-       },
-       incidents: {
-          pending: pendingIncidents,
-          resolved: incidentsData.length - pendingIncidents,
-          damageTotal: incidentsData.length,
-          lostTotal: 0,
-          top5: incidentsData.filter((i) => i.ticketStatus === 'New').slice(0, 5)
-       }
-    };
+
+    let incidents = null;
+    if (!failed(reportsRes, 'incidents')) {
+      // Tài sản chỉ để tra tên/vị trí — thiếu thì phiếu vẫn hiện, ghi "Không rõ".
+      const assetsById = indexById(assetsRes.status === 'fulfilled' ? assetsRes.value : []);
+      const reports = reportsRes.value.map((r) => mapDamageReport(r, assetsById));
+      const pendingList = reports.filter((i) => i.ticketStatus === 'New');
+      incidents = {
+        pending: pendingList.length,
+        resolved: reports.length - pendingList.length,
+        total: reports.length,
+        top5: pendingList.slice(0, 5),
+      };
+    }
+
+    if (!fixedAssets && !incidents && (!includeConsumables || !consumables)) {
+      throw new Error(Object.values(errors)[0] || 'Không tải được dữ liệu tổng quan.');
+    }
+
+    return { fixedAssets, consumables, incidents, errors, loadedAt: new Date() };
   }
 };

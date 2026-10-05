@@ -42,10 +42,11 @@ import java.util.List;
  *   STAFF          : quyền chung của người lao động
  * </pre>
  *
- * <p>Trục 2 — {@code POSITION_*}: Lễ tân và Dọn dẹp KHÔNG phải role mà là Loại Position
- * (BR-ORG-08). Quyền nghiệp vụ đặc thù của hai nhóm này gắn vào authority
- * {@code POSITION_RECEPTION} / {@code POSITION_HOUSEKEEPING}. Position loại OTHER chỉ có
- * quyền chung, không nhận authority đặc thù nào (BR-ORG-09, BR-PERM-06).
+ * <p>Trục 2 — {@code POSITION_*}: Lễ tân và Dọn dẹp KHÔNG phải role mà là quyền nghiệp vụ Manager
+ * tick cho từng nhân viên ({@code StaffPermission}, BR-ORG-08 bản sửa). Mỗi quyền đã tick là một
+ * authority {@code POSITION_RECEPTION} / {@code POSITION_HOUSEKEEPING} (giữ tiền tố cũ để các rule
+ * không phải đổi); một người có thể có cả hai. Nhân viên không được tick quyền nào chỉ có quyền
+ * chung, không nhận authority đặc thù nào (BR-ORG-09, BR-PERM-06).
  *
  * <p>Rule ở đây là lớp chặn thô theo URL; kiểm tra quyền sở hữu (Staff chỉ xem ca của
  * mình, Manager chỉ thao tác trong Location của mình) nằm ở tầng service.

@@ -6,6 +6,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.CreateStayoverTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.StayoverBatchResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.service.HousekeepingService;
@@ -56,7 +57,7 @@ public class HousekeepingTaskController {
 
     /**
      * S-10 — nhân viên dọn phòng gán được việc trong ngày {@code date}: đang làm việc, thuộc
-     * Location của Manager, Position loại Dọn dẹp, và CÓ CA ngày đó (BR-HK-03).
+     * Location của Manager, có quyền Dọn dẹp, và CÓ CA ngày đó (BR-HK-03).
      *
      * <p>Không nhận {@code locationId}: phạm vi luôn là Location của người đang đăng nhập.
      * Khai báo trước {@code /{id}} cho dễ đọc — Spring vẫn ưu tiên path cố định hơn path có biến.
@@ -80,6 +81,16 @@ public class HousekeepingTaskController {
     public ResponseEntity<HousekeepingTaskResponse> createStayoverTask(
             @Valid @RequestBody CreateStayoverTaskRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(housekeepingService.createStayoverTask(request));
+    }
+
+    /**
+     * Tạo việc dọn hằng ngày cho mọi phòng đang có khách của khách sạn mình — BR-HK-05. Chỉ
+     * Manager: cần một khách sạn cụ thể, Admin nền tảng không có.
+     */
+    @PostMapping("/stayover-batch")
+    @PreAuthorize("hasRole('MANAGER')")
+    public ResponseEntity<StayoverBatchResponse> createStayoverBatch() {
+        return ResponseEntity.ok(housekeepingService.createStayoverTasksForOccupiedRooms());
     }
 
     @PatchMapping("/{id}/assign")

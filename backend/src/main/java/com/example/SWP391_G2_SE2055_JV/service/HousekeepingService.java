@@ -6,6 +6,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.CreateStayoverTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.StayoverBatchResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
@@ -42,9 +43,13 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -79,6 +84,10 @@ import java.util.stream.Collectors;
 public class HousekeepingService {
 
     private static final Set<HousekeepingTaskStatus> OPEN = HousekeepingTaskStatus.OPEN_STATUSES;
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    /** Số phòng theo thứ tự tự nhiên: 2 trước 10, "G01" cạnh "G02". */
+    private static final Comparator<String> ROOM_NUMBER_ORDER =
+        Comparator.comparingInt(String::length).thenComparing(Comparator.naturalOrder());
 
     private final HousekeepingTaskRepository taskRepository;
     private final UserRepository             userRepository;
@@ -141,17 +150,46 @@ public class HousekeepingService {
             throw new BusinessException("Phòng này đã có task dọn hằng ngày đang mở.");
         }
 
-        HousekeepingTask saved = taskRepository.save(HousekeepingTask.builder()
-            .tenantId(tenantId)
-            .locationId(room.getLocationId())
-            .roomId(room.getId())
-            .taskType(HousekeepingTaskType.STAYOVER)
-            .status(HousekeepingTaskStatus.UNASSIGNED)
-            .createdSource(TaskCreatedSource.MANAGER_STAYOVER)
-            .build());
+        HousekeepingTask saved = taskRepository.save(newStayoverTask(room));
 
         log.info("Tạo task STAYOVER {} cho phòng {}", saved.getId(), room.getRoomNumber());
         return HousekeepingTaskResponse.fromEntity(saved, room);
+    }
+
+    /**
+     * Tạo việc dọn hằng ngày cho MỌI phòng đang có khách trong khách sạn của Manager — vẫn là
+     * Manager chủ động bấm (BR-HK-05), chỉ đỡ phải tạo từng phòng. Phòng đã có việc dọn hằng
+     * ngày đang mở thì bỏ qua (BR-HK-11), nên bấm lại nhiều lần cũng không sinh trùng.
+     */
+    @Transactional
+    public StayoverBatchResponse createStayoverTasksForOccupiedRooms() {
+        UUID tenantId = SecurityUtils.getCurrentTenantId();
+        // Người không gắn khách sạn bị chặn ngay tại đây (403) — cần một khách sạn cụ thể.
+        UUID locationId = SecurityUtils.getCurrentLocationId();
+
+        List<Room> occupied = new ArrayList<>(roomRepository
+            .search(tenantId, locationId, RoomStatus.OCCUPIED, null, null, Pageable.unpaged())
+            .getContent());
+        occupied.sort(Comparator.comparing(Room::getRoomNumber, ROOM_NUMBER_ORDER));
+
+        List<HousekeepingTaskResponse> created = new ArrayList<>();
+        int skipped = 0;
+        for (Room room : occupied) {
+            if (taskRepository.existsByRoomIdAndTaskTypeAndStatusIn(
+                    room.getId(), HousekeepingTaskType.STAYOVER, OPEN)) {
+                skipped++;
+                continue;
+            }
+            created.add(HousekeepingTaskResponse.fromEntity(taskRepository.save(newStayoverTask(room)), room));
+        }
+
+        log.info("Tạo hàng loạt {} task STAYOVER tại Location {} (bỏ qua {} phòng đã có việc)",
+            created.size(), locationId, skipped);
+        return StayoverBatchResponse.builder()
+            .created(created.size())
+            .skipped(skipped)
+            .tasks(created)
+            .build();
     }
 
     /** BR-HK-02: Manager gán thủ công, không có gợi ý tự động phân bổ. */
@@ -260,6 +298,54 @@ public class HousekeepingService {
         }
         taskRepository.saveAll(tasks);
         return tasks.size();
+    }
+
+    /**
+     * BR-HK-03 từ phía lịch làm việc: gỡ người khỏi ca, xóa ca hay dời ca sang ngày khác không
+     * được làm một người MẤT ngày làm việc trong khi họ còn việc dọn đang làm hôm đó — nếu không,
+     * việc sẽ nằm trên tên một người không có ca. Nhóm đã chốt: CHẶN và chỉ rõ phòng để Manager
+     * gỡ người khỏi các việc đó trước, không tự gỡ (khác BR-HK-07 vốn chỉ áp cho gỡ ca tự động).
+     *
+     * <p>Việc «Chờ kiểm tra» không tính: người dọn đã xong phần mình, phần còn lại là của
+     * Manager. {@code ShiftService} gọi hàm này TRƯỚC khi đổi ca.
+     *
+     * @param leavingShiftId ca đang bị gỡ / xóa / dời — ca khác cùng ngày vẫn giữ ngày làm việc
+     */
+    @Transactional(readOnly = true)
+    public void assertCanLeaveShiftDay(UUID staffId, LocalDate date, UUID leavingShiftId) {
+        if (shiftRepository.existsByStaffIdAndShiftDateAndIdNot(staffId, date, leavingShiftId)) {
+            return;
+        }
+        List<HousekeepingTask> tasks = taskRepository.findByAssignedStaffIdAndAssignedDateAndStatus(
+            staffId, date, HousekeepingTaskStatus.IN_PROGRESS);
+        if (tasks.isEmpty()) {
+            return;
+        }
+
+        Map<UUID, Room> rooms = loadRooms(tasks);
+        String roomNumbers = tasks.stream()
+            .map(task -> rooms.get(task.getRoomId()))
+            .filter(Objects::nonNull)
+            .map(Room::getRoomNumber)
+            .sorted(ROOM_NUMBER_ORDER)
+            .collect(Collectors.joining(", "));
+        String staffName = userRepository.findByIdAndTenantId(staffId, tasks.get(0).getTenantId())
+            .map(User::getFullName)
+            .orElse("Nhân viên này");
+        throw new BusinessException(String.format(
+            "%s đang giữ %d việc dọn ngày %s (phòng %s). Gỡ người khỏi các việc đó ở màn "
+                + "«Công việc dọn phòng» trước khi gỡ, xóa hoặc dời ca này.",
+            staffName, tasks.size(), date.format(DAY), roomNumbers));
+    }
+
+    /**
+     * Số việc dọn nhân viên đang làm dở (đã được gán, chưa bấm hoàn thành) — ở mọi ngày. Chỉ
+     * đếm «Đang thực hiện»: việc «Chờ kiểm tra» người dọn đã làm xong phần mình, còn lại là
+     * việc của Manager.
+     */
+    @Transactional(readOnly = true)
+    public long countInProgressTasksOf(UUID staffId) {
+        return taskRepository.countByAssignedStaffIdAndStatus(staffId, HousekeepingTaskStatus.IN_PROGRESS);
     }
 
     /**
@@ -450,6 +536,18 @@ public class HousekeepingService {
             .createdSource(TaskCreatedSource.INSPECTION_FAILED)
             .parentTaskId(origin.getId())
             .build());
+    }
+
+    /** Việc dọn hằng ngày mới, chưa phân công — BR-HK-05, nguồn "Manager tạo" (BR-HK-12). */
+    private static HousekeepingTask newStayoverTask(Room room) {
+        return HousekeepingTask.builder()
+            .tenantId(room.getTenantId())
+            .locationId(room.getLocationId())
+            .roomId(room.getId())
+            .taskType(HousekeepingTaskType.STAYOVER)
+            .status(HousekeepingTaskStatus.UNASSIGNED)
+            .createdSource(TaskCreatedSource.MANAGER_STAYOVER)
+            .build();
     }
 
     /** Biên bản nghiệm thu — người kiểm tra luôn là người đang đăng nhập (BR-ROOM-02). */

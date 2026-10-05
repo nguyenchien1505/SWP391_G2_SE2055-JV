@@ -113,6 +113,8 @@ p {
   font-weight: 600;
   color: var(--accent);
   cursor: pointer;
+  /* Tên dài xuống dòng trong ô hẹp (điện thoại) vẫn thẳng lề trái như chữ thường. */
+  text-align: left;
 }
 
 /* ── Ô nhập ────────────────────────────────────────────────────────── */
@@ -447,14 +449,29 @@ a.nav-item {
   align-items: center;
   gap: 12px;
   text-align: right;
+  /* Cho phép co lại: email là MỘT từ dài không ngắt được, nếu không co thì thanh trên rộng hơn
+     màn điện thoại và kéo cả trang phình ngang theo (bảng thao tác, thẻ phòng bị cắt mép phải). */
+  min-width: 0;
+}
+.topbar__user > div {
+  min-width: 0;
+}
+.topbar__user b,
+.topbar__user small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .topbar__user b {
-  display: block;
   font-size: 14px;
 }
 .topbar__user small {
   color: var(--muted);
   font-size: 12px;
+}
+.topbar__user .btn {
+  flex-shrink: 0;
 }
 .shell__content {
   padding: 22px;
@@ -757,6 +774,10 @@ a.nav-item {
   max-width: 460px;
   width: 100%;
   box-shadow: 0 16px 48px rgba(28, 35, 48, 0.2);
+  /* Màn thấp (điện thoại xoay ngang) hoặc hộp thoại nhiều chữ: cắt theo chiều cao màn và cuộn
+     BÊN TRONG hộp — nếu không, nút xác nhận nằm ngoài màn và không cuộn tới được. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
 }
 .modal__body {
   margin: 12px 0 20px;
@@ -799,10 +820,49 @@ a.nav-item {
     box-shadow: 0 0 40px rgba(28, 35, 48, 0.25);
   }
   .topbar__burger {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Vùng bấm ≥ 48px — design.md mục 3. Đây là nút DUY NHẤT mở menu trái trên điện thoại. */
+    min-width: 48px;
+    min-height: 48px;
+    margin-left: -12px; /* bù phần đệm mới thêm, giữ nguyên lề trái của thanh trên */
   }
   .topbar__clock {
     display: none;
+  }
+  /* Thanh trên chật trên điện thoại: bớt đệm và khoảng cách để email hiện được nhiều chữ nhất. */
+  .topbar {
+    padding: 8px 16px;
+    gap: 8px;
+  }
+  .topbar__user {
+    gap: 8px;
+  }
+  .topbar__user .btn {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  /* Mọi nút bấm trên điện thoại đều phải cao ≥ 48px; nút mũi tên phân trang thêm bề ngang. */
+  .btn {
+    min-height: 48px;
+  }
+  .btn--sm {
+    min-width: 48px;
+  }
+  /* Ô nhập và ô chọn cũng là vùng bấm; mặc định chỉ cao 46px. */
+  .field input,
+  .field select,
+  .field textarea,
+  .toolbar select,
+  .toolbar__search {
+    min-height: 48px;
+  }
+  /* Mục menu trong ngăn kéo: 42px là hụt so với mức 48px của design.md mục 3. */
+  .nav-item {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
   }
   .field-row {
     grid-template-columns: 1fr;
@@ -1092,6 +1152,24 @@ a.nav-item {
   padding-right: 36px;
 }
 
+/* Pop-up rộng cho nội dung dạng bảng — danh sách "đang dùng" của màn Danh mục. */
+.modal--form.modal--form-wide {
+  max-width: 820px;
+}
+.form__actions .form__back {
+  margin-right: auto;
+}
+a.link-button {
+  text-decoration: none;
+}
+a.link-button:hover,
+button.link-button:hover {
+  text-decoration: underline;
+}
+.alert .link-button {
+  margin-left: 6px;
+}
+
 /* ── Quản lý dự bị & bàn giao khi cho nghỉ việc ───────────────────── */
 .alert--warn {
   background: #fdf0dc;
@@ -1207,4 +1285,60 @@ a.nav-item {
 .multi-select__option small {
   color: var(--muted);
   margin-top: 2px;
+}
+
+/* ── Tab chọn loại danh mục (OrganizationCatalogPage) ───────────────── */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.tab {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tab small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.tab:hover {
+  border-color: var(--primary);
+}
+.tab--active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.tab--active small {
+  color: rgba(255, 255, 255, 0.8);
+}
+.tab__count {
+  display: inline-block;
+  min-width: 22px;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e7eff8;
+  color: var(--primary);
+  font-size: 12px;
+  text-align: center;
+}
+.tab--active .tab__count {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.tab--link {
+  border-style: dashed;
 }
