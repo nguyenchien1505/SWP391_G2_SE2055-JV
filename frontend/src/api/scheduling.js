@@ -61,12 +61,15 @@ export async function fetchShifts({ from, to }) {
 }
 
 /**
- * Tạo ca — BR-SCH-04, chọn ĐÚNG MỘT trong hai cách: `sourceTemplateId` (giờ lấy theo mẫu) hoặc
- * `startTime` + `endTime` (ca tự do). `staffId` để trống = ca chưa phân công (DM-03). Vi phạm quy định
- * xếp ca thì backend trả 400 kèm câu nêu rõ vi phạm điều nào (BR-SCH-02).
+ * POST /scheduling/shifts/batch — giao CÙNG MỘT ca cho một hoặc nhiều người: mỗi người một ca riêng
+ * (DM-03), kiểm tra quy định từng người (BR-SCH-02). Giờ chọn ĐÚNG MỘT trong hai cách (BR-SCH-04):
+ * `sourceTemplateId` hoặc `startTime` + `endTime`. `openSlots` = số chỗ trống chưa giao người mở thêm.
+ *
+ * Có người vi phạm thì KHÔNG lưu ca nào: 400 với `violations: [{ staffId, fullName, message }]`.
+ * Trả về mảng các ca vừa tạo.
  */
-export async function createShift(payload) {
-  const { data } = await api.post('/scheduling/shifts', payload);
+export async function createShifts(payload) {
+  const { data } = await api.post('/scheduling/shifts/batch', payload);
   return data;
 }
 

@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftBatchRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.ShiftResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateShiftRequest;
@@ -8,8 +9,10 @@ import com.example.SWP391_G2_SE2055_JV.entity.ShiftTemplate;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
+import com.example.SWP391_G2_SE2055_JV.exception.ApiError;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.exception.ShiftBatchRejectedException;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftTemplateRepository;
@@ -26,6 +29,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -113,34 +120,10 @@ public class ShiftService {
         assertManagesLocation(request.getLocationId());
         assertLocationInTenant(request.getLocationId(), tenantId);
 
-        // BR-SCH-04: hai cách tạo ca — theo mẫu hoặc tự nhập giờ.
-        LocalTime startTime = request.getStartTime();
-        LocalTime endTime   = request.getEndTime();
-
-        if (request.getSourceTemplateId() != null) {
-            if (startTime != null || endTime != null) {
-                throw new BusinessException(
-                    "Đã chọn mẫu ca thì không gửi kèm giờ: giờ lấy theo mẫu.");
-            }
-            ShiftTemplate template = requireUsableTemplate(request.getSourceTemplateId(), tenantId);
-            startTime = template.getStartTime();
-            endTime   = template.getEndTime();
-        } else if (startTime == null || endTime == null) {
-            throw new BusinessException(
-                "Ca tự do phải có cả giờ bắt đầu và giờ kết thúc, hoặc chọn một mẫu ca.");
-        }
-
-        Shift shift = Shift.builder()
-            .tenantId(tenantId)
-            .locationId(request.getLocationId())
-            .staffId(request.getStaffId())
-            .shiftDate(request.getShiftDate())
-            .startTime(startTime)
-            .endTime(endTime)
-            .overnight(ShiftTimeUtils.isOvernight(startTime, endTime))
-            .durationHours(ShiftTimeUtils.durationHours(startTime, endTime))
-            .sourceTemplateId(request.getSourceTemplateId())
-            .build();
+        ShiftHours hours = resolveHours(
+            request.getSourceTemplateId(), request.getStartTime(), request.getEndTime(), tenantId);
+        Shift shift = newShift(tenantId, request.getLocationId(), request.getShiftDate(), hours,
+            request.getStaffId());
 
         if (request.getStaffId() != null) {
             assertStaffBelongsToLocation(request.getStaffId(), tenantId, request.getLocationId());
@@ -151,6 +134,67 @@ public class ShiftService {
         log.info("Tạo ca {} ngày {} tại Location {} cho staff {}",
             saved.getId(), saved.getShiftDate(), saved.getLocationId(), saved.getStaffId());
         return ShiftResponse.fromEntity(saved);
+    }
+
+    /**
+     * Giao CÙNG MỘT ca cho nhiều người — mỗi người một bản ghi ca riêng (DM-03), mỗi người qua kiểm
+     * tra Schedule Policy riêng (BR-SCH-02). Nhiều người khác nhau làm chung một khung giờ là bình
+     * thường; kiểm tra trùng giờ chỉ so các ca của CHÍNH người đó (BR-SCH-05).
+     *
+     * <p>Tất cả hoặc không: kiểm tra hết mọi người trước, có người vi phạm thì không lưu ca nào và
+     * trả lý do của từng người ({@link ShiftBatchRejectedException}). Không lưu một nửa, nên Manager
+     * không phải đoán ca nào đã vào lịch.
+     *
+     * @return các ca vừa tạo: ca của từng người theo thứ tự gửi lên, rồi tới các chỗ trống
+     */
+    @Transactional
+    public List<ShiftResponse> createShifts(CreateShiftBatchRequest request) {
+        UUID tenantId = SecurityUtils.getCurrentTenantId();
+        UUID locationId = request.getLocationId();
+        assertManagesLocation(locationId);
+        assertLocationInTenant(locationId, tenantId);
+
+        // Gửi trùng một người hai lần thì chỉ tạo một ca — ca thứ hai đằng nào cũng bị chặn vì trùng giờ.
+        Set<UUID> staffIds = new LinkedHashSet<>(
+            request.getStaffIds() == null ? List.of() : request.getStaffIds());
+        if (staffIds.isEmpty() && request.getOpenSlots() == 0) {
+            throw new BusinessException("Chọn ít nhất một nhân viên hoặc mở ít nhất một chỗ trống.");
+        }
+
+        ShiftHours hours = resolveHours(
+            request.getSourceTemplateId(), request.getStartTime(), request.getEndTime(), tenantId);
+
+        List<Shift> toSave = new ArrayList<>();
+        List<ApiError.StaffViolation> violations = new ArrayList<>();
+        for (UUID staffId : staffIds) {
+            User staff = userRepository.findByIdAndTenantId(staffId, tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", staffId));
+            Shift shift = newShift(tenantId, locationId, request.getShiftDate(), hours, staffId);
+            try {
+                assertSchedulableAt(staff, locationId);
+                policyValidator.validate(tenantId, staffId, shift, null);
+                toSave.add(shift);
+            } catch (BusinessException ex) {
+                violations.add(ApiError.StaffViolation.builder()
+                    .staffId(staffId)
+                    .fullName(staff.getFullName())
+                    .message(ex.getMessage())
+                    .build());
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new ShiftBatchRejectedException(violations, staffIds.size());
+        }
+
+        for (int i = 0; i < request.getOpenSlots(); i++) {
+            toSave.add(newShift(tenantId, locationId, request.getShiftDate(), hours, null));
+        }
+
+        List<Shift> saved = shiftRepository.saveAll(toSave);
+        log.info("Tạo {} ca ngày {} {}–{} tại Location {} ({} người, {} chỗ trống)",
+            saved.size(), request.getShiftDate(), hours.start(), hours.end(), locationId,
+            staffIds.size(), request.getOpenSlots());
+        return saved.stream().map(ShiftResponse::fromEntity).toList();
     }
 
     @Transactional
@@ -334,7 +378,10 @@ public class ShiftService {
     private void assertStaffBelongsToLocation(UUID staffId, UUID tenantId, UUID locationId) {
         User staff = userRepository.findByIdAndTenantId(staffId, tenantId)
             .orElseThrow(() -> new ResourceNotFoundException("User", "id", staffId));
+        assertSchedulableAt(staff, locationId);
+    }
 
+    private static void assertSchedulableAt(User staff, UUID locationId) {
         if (staff.isTerminated()) {
             throw new BusinessException("Không xếp ca cho nhân viên đã nghỉ việc.");
         }
@@ -342,5 +389,43 @@ public class ShiftService {
             throw new BusinessException(
                 "Nhân viên không thuộc Location của ca này.");
         }
+    }
+
+    // ── Dựng ca ──────────────────────────────────────────────────────────────
+
+    /** Giờ của một ca và mẫu sinh ra nó ({@code templateId = null} là ca tự do). */
+    private record ShiftHours(LocalTime start, LocalTime end, UUID templateId) {}
+
+    /** BR-SCH-04: hai cách tạo ca, chọn đúng một — theo mẫu (giờ lấy từ mẫu) hoặc tự nhập giờ. */
+    private ShiftHours resolveHours(UUID templateId, LocalTime start, LocalTime end, UUID tenantId) {
+        if (templateId != null) {
+            if (start != null || end != null) {
+                throw new BusinessException(
+                    "Đã chọn mẫu ca thì không gửi kèm giờ: giờ lấy theo mẫu.");
+            }
+            ShiftTemplate template = requireUsableTemplate(templateId, tenantId);
+            return new ShiftHours(template.getStartTime(), template.getEndTime(), template.getId());
+        }
+        if (start == null || end == null) {
+            throw new BusinessException(
+                "Ca tự do phải có cả giờ bắt đầu và giờ kết thúc, hoặc chọn một mẫu ca.");
+        }
+        return new ShiftHours(start, end, null);
+    }
+
+    /** Cờ qua đêm và số giờ suy ra từ giờ bắt đầu/kết thúc — BR-SCH-03. */
+    private static Shift newShift(UUID tenantId, UUID locationId, LocalDate date, ShiftHours hours,
+                                  UUID staffId) {
+        return Shift.builder()
+            .tenantId(tenantId)
+            .locationId(locationId)
+            .staffId(staffId)
+            .shiftDate(date)
+            .startTime(hours.start())
+            .endTime(hours.end())
+            .overnight(ShiftTimeUtils.isOvernight(hours.start(), hours.end()))
+            .durationHours(ShiftTimeUtils.durationHours(hours.start(), hours.end()))
+            .sourceTemplateId(hours.templateId())
+            .build();
     }
 }

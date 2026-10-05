@@ -1,6 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignShiftRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftBatchRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.ShiftResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateShiftRequest;
@@ -19,6 +20,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -57,6 +59,17 @@ public class ShiftController {
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
     public ResponseEntity<ShiftResponse> createShift(@Valid @RequestBody CreateShiftRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(shiftService.createShift(request));
+    }
+
+    /**
+     * Giao cùng một ca cho nhiều người: mỗi người một ca riêng (DM-03), kiểm tra Schedule Policy
+     * từng người. Có người vi phạm thì không lưu ca nào, response 400 có {@code violations} nêu lý
+     * do của từng người.
+     */
+    @PostMapping("/batch")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
+    public ResponseEntity<List<ShiftResponse>> createShifts(@Valid @RequestBody CreateShiftBatchRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(shiftService.createShifts(request));
     }
 
     @PutMapping("/{id}")

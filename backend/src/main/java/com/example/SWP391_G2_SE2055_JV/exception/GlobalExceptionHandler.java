@@ -35,6 +35,22 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI(), null);
     }
 
+    /** Lớp con của BusinessException — Spring chọn handler khớp gần nhất nên handler này thắng. */
+    @ExceptionHandler(ShiftBatchRejectedException.class)
+    public ResponseEntity<ApiError> handleShiftBatchRejected(ShiftBatchRejectedException ex,
+                                                             HttpServletRequest request) {
+        log.warn("Shift batch rejected: {}", ex.getMessage());
+        ApiError error = ApiError.builder()
+            .timestamp(LocalDateTime.now())
+            .status(HttpStatus.BAD_REQUEST.value())
+            .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
+            .message(ex.getMessage())
+            .path(request.getRequestURI())
+            .violations(ex.getViolations())
+            .build();
+        return ResponseEntity.badRequest().body(error);
+    }
+
     @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<ApiError> handleUnauthorized(UnauthorizedException ex, HttpServletRequest request) {
         return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI(), null);

@@ -1,9 +1,12 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftBatchRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.ShiftResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
+import com.example.SWP391_G2_SE2055_JV.exception.ApiError;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
+import com.example.SWP391_G2_SE2055_JV.exception.ShiftBatchRejectedException;
 import com.example.SWP391_G2_SE2055_JV.service.ShiftService;
 import com.example.SWP391_G2_SE2055_JV.support.SecuredWebMvcTest;
 import org.junit.jupiter.api.Nested;
@@ -167,6 +170,88 @@ class ShiftControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(
                     "Vượt giờ làm tối đa/ngày: ngày 05/10/2026 sẽ có tổng 10 giờ, giới hạn 8 giờ."));
+        }
+    }
+
+    // ── Giao một ca cho nhiều người ─────────────────────────────────────────
+
+    @Nested
+    class CreateShiftsBatch {
+
+        private static final UUID OTHER_STAFF_ID = UUID.randomUUID();
+
+        private static final String BODY = """
+            {"locationId": "%s", "shiftDate": "2026-10-05", "startTime": "06:00", "endTime": "14:00",
+             "staffIds": ["%s", "%s"], "openSlots": 1}
+            """;
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldCreateShiftsForManager() throws Exception {
+            when(shiftService.createShifts(any())).thenReturn(List.of(sampleShift(), sampleShift()));
+
+            mockMvc.perform(post("/scheduling/shifts/batch")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(BODY.formatted(LOCATION_ID, STAFF_ID, OTHER_STAFF_ID)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.length()").value(2));
+
+            ArgumentCaptor<CreateShiftBatchRequest> request = ArgumentCaptor.forClass(CreateShiftBatchRequest.class);
+            verify(shiftService).createShifts(request.capture());
+            assertThat(request.getValue().getStaffIds()).containsExactly(STAFF_ID, OTHER_STAFF_ID);
+            assertThat(request.getValue().getOpenSlots()).isEqualTo(1);
+            assertThat(request.getValue().getStartTime()).isEqualTo(LocalTime.of(6, 0));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_DIRECTOR", "ROLE_STAFF,POSITION_RECEPTION"})
+        void shouldForbidNonManager(String authorities) throws Exception {
+            mockMvc.perform(post("/scheduling/shifts/batch").with(authorities(authorities))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(BODY.formatted(LOCATION_ID, STAFF_ID, OTHER_STAFF_ID)))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(shiftService);
+        }
+
+        /** Hộp thoại cần lý do của TỪNG người để đánh dấu đúng dòng — nên phải có mảng violations. */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnViolationOfEachPerson() throws Exception {
+            when(shiftService.createShifts(any())).thenThrow(new ShiftBatchRejectedException(List.of(
+                ApiError.StaffViolation.builder()
+                    .staffId(OTHER_STAFF_ID)
+                    .fullName("Trần Văn Hùng")
+                    .message("Trùng ca: nhân viên đã có ca 05/10/2026 06:00–14:00 tại khách sạn này.")
+                    .build()), 2));
+
+            mockMvc.perform(post("/scheduling/shifts/batch")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(BODY.formatted(LOCATION_ID, STAFF_ID, OTHER_STAFF_ID)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(
+                    "Chưa lưu ca nào: 1/2 nhân viên vi phạm quy định xếp ca. Bỏ chọn những người này rồi lưu lại."))
+                .andExpect(jsonPath("$.violations.length()").value(1))
+                .andExpect(jsonPath("$.violations[0].staffId").value(OTHER_STAFF_ID.toString()))
+                .andExpect(jsonPath("$.violations[0].fullName").value("Trần Văn Hùng"))
+                .andExpect(jsonPath("$.violations[0].message").value(
+                    "Trùng ca: nhân viên đã có ca 05/10/2026 06:00–14:00 tại khách sạn này."));
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldValidateLimits() throws Exception {
+            String tooManySlots = BODY.formatted(LOCATION_ID, STAFF_ID, OTHER_STAFF_ID)
+                .replace("\"openSlots\": 1", "\"openSlots\": 21");
+            mockMvc.perform(post("/scheduling/shifts/batch")
+                    .contentType(MediaType.APPLICATION_JSON).content(tooManySlots))
+                .andExpect(status().isUnprocessableEntity());
+
+            String nullPerson = BODY.formatted(LOCATION_ID, STAFF_ID, OTHER_STAFF_ID)
+                .replace("\"" + OTHER_STAFF_ID + "\"", "null");
+            mockMvc.perform(post("/scheduling/shifts/batch")
+                    .contentType(MediaType.APPLICATION_JSON).content(nullPerson))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(shiftService);
         }
     }
 

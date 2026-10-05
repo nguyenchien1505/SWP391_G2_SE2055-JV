@@ -49,6 +49,12 @@ export function isoWeekNumber(iso) {
   return Math.ceil(((thursday - yearStart) / 86400000 + 1) / 7);
 }
 
+/** Lớp CSS của một cột ngày trên lưới tuần: hôm nay nổi bật, ngày đã qua nhạt đi. */
+export function dayClass(day, today) {
+  if (day === today) return 'is-today';
+  return day < today ? 'is-past' : '';
+}
+
 /** "05/10" */
 export function formatDayMonth(iso) {
   const [, month, day] = iso.split('-');

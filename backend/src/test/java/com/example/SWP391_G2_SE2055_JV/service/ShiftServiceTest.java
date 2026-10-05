@@ -1,6 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.config.CustomUserDetails;
+import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftBatchRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.ShiftResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateShiftRequest;
@@ -13,8 +14,10 @@ import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
+import com.example.SWP391_G2_SE2055_JV.exception.ApiError;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.exception.ShiftBatchRejectedException;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftTemplateRepository;
@@ -44,9 +47,11 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -314,6 +319,166 @@ class ShiftServiceTest {
         }
     }
 
+    // ── Giao một ca cho nhiều người — DM-03, BR-SCH-02, BR-SCH-05 ────────────
+
+    @Nested
+    class CreateShifts {
+
+        private static final UUID OTHER_STAFF_ID = UUID.randomUUID();
+
+        @BeforeEach
+        void loginAsManager() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+        }
+
+        /**
+         * Nhiều người KHÁC NHAU làm cùng một khung giờ là bình thường (lễ tân + dọn dẹp cùng ca sáng):
+         * mỗi người một bản ghi ca, mỗi người qua kiểm tra Policy của chính mình.
+         */
+        @Test
+        void shouldCreateOneShiftPerPersonPlusOpenSlots() {
+            givenLocationInTenant();
+            givenTemplate(nightTemplate());
+            givenUser(staff(STAFF_ID, "Nguyễn Thị Lan"));
+            givenUser(staff(OTHER_STAFF_ID, "Trần Văn Hùng"));
+            givenSaveAllReturnsArgument();
+
+            List<ShiftResponse> created =
+                service.createShifts(batch(List.of(STAFF_ID, OTHER_STAFF_ID), TEMPLATE_ID, null, null, 1));
+
+            assertThat(created).extracting(ShiftResponse::getStaffId).containsExactly(STAFF_ID, OTHER_STAFF_ID, null);
+            assertThat(created).allSatisfy(shift -> {
+                assertThat(shift.getStartTime()).isEqualTo(LocalTime.of(22, 0));
+                assertThat(shift.getEndTime()).isEqualTo(LocalTime.of(6, 0));
+                assertThat(shift.isOvernight()).isTrue();
+                assertThat(shift.getSourceTemplateId()).isEqualTo(TEMPLATE_ID);
+            });
+            verify(policyValidator).validate(eq(TENANT_ID), eq(STAFF_ID), any(Shift.class), isNull());
+            verify(policyValidator).validate(eq(TENANT_ID), eq(OTHER_STAFF_ID), any(Shift.class), isNull());
+        }
+
+        /** Tất cả hoặc không: một người vi phạm thì không lưu ai, và nêu đúng người đó cùng lý do. */
+        @Test
+        void shouldSaveNothingAndNameTheViolatingPerson() {
+            givenLocationInTenant();
+            givenUser(staff(STAFF_ID, "Nguyễn Thị Lan"));
+            givenUser(staff(OTHER_STAFF_ID, "Trần Văn Hùng"));
+            // Lan hợp lệ, Hùng vi phạm — Lan vẫn không được lưu.
+            doNothing()
+                .when(policyValidator).validate(eq(TENANT_ID), eq(STAFF_ID), any(Shift.class), isNull());
+            doThrow(new BusinessException("Trùng ca: nhân viên đã có ca 05/10/2026 06:00–14:00 tại khách sạn này."))
+                .when(policyValidator).validate(eq(TENANT_ID), eq(OTHER_STAFF_ID), any(Shift.class), isNull());
+
+            assertThatThrownBy(() ->
+                    service.createShifts(batch(List.of(STAFF_ID, OTHER_STAFF_ID), null, "06:00", "14:00", 0)))
+                .isInstanceOfSatisfying(ShiftBatchRejectedException.class, ex -> {
+                    assertThat(ex.getMessage()).contains("Chưa lưu ca nào").contains("1/2");
+                    assertThat(ex.getViolations()).singleElement().satisfies(violation -> {
+                        assertThat(violation.getStaffId()).isEqualTo(OTHER_STAFF_ID);
+                        assertThat(violation.getFullName()).isEqualTo("Trần Văn Hùng");
+                        assertThat(violation.getMessage()).contains("Trùng ca").contains("05/10/2026 06:00–14:00");
+                    });
+                });
+            verify(shiftRepository, never()).saveAll(any());
+            verify(shiftRepository, never()).save(any());
+        }
+
+        /** Kiểm tra HẾT mọi người rồi mới quyết định — báo đủ lý do một lần, không dừng ở người đầu tiên. */
+        @Test
+        void shouldReportEveryViolationInOrder() {
+            givenLocationInTenant();
+            User terminated = staff(STAFF_ID, "Nguyễn Thị Lan");
+            terminated.setStatus(UserStatus.TERMINATED);
+            givenUser(terminated);
+            givenUser(staff(OTHER_STAFF_ID, "Trần Văn Hùng"));
+            doThrow(new BusinessException("Vượt giờ làm tối đa/ngày"))
+                .when(policyValidator).validate(eq(TENANT_ID), eq(OTHER_STAFF_ID), any(Shift.class), isNull());
+
+            assertThatThrownBy(() ->
+                    service.createShifts(batch(List.of(STAFF_ID, OTHER_STAFF_ID), null, "06:00", "14:00", 0)))
+                .isInstanceOfSatisfying(ShiftBatchRejectedException.class, ex ->
+                    assertThat(ex.getViolations())
+                        .extracting(ApiError.StaffViolation::getFullName, ApiError.StaffViolation::getMessage)
+                        .containsExactly(
+                            tuple("Nguyễn Thị Lan", "Không xếp ca cho nhân viên đã nghỉ việc."),
+                            tuple("Trần Văn Hùng", "Vượt giờ làm tối đa/ngày")));
+            verify(shiftRepository, never()).saveAll(any());
+        }
+
+        @Test
+        void shouldCountDuplicatedPersonOnce() {
+            givenLocationInTenant();
+            givenUser(staff(STAFF_ID, "Nguyễn Thị Lan"));
+            givenSaveAllReturnsArgument();
+
+            List<ShiftResponse> created =
+                service.createShifts(batch(List.of(STAFF_ID, STAFF_ID), null, "06:00", "14:00", 0));
+
+            assertThat(created).hasSize(1);
+            verify(policyValidator).validate(eq(TENANT_ID), eq(STAFF_ID), any(Shift.class), isNull());
+        }
+
+        /** Chỗ trống chưa giao người không ràng buộc ai nên không qua kiểm tra Policy (DM-03). */
+        @Test
+        void shouldOpenEmptySlotsWithoutPolicyCheck() {
+            givenLocationInTenant();
+            givenSaveAllReturnsArgument();
+
+            List<ShiftResponse> created = service.createShifts(batch(List.of(), null, "07:30", "12:00", 2));
+
+            assertThat(created).hasSize(2).allSatisfy(shift -> {
+                assertThat(shift.getStaffId()).isNull();
+                assertThat(shift.getDurationHours()).isEqualByComparingTo("4.5");
+            });
+            verifyNoInteractions(policyValidator, userRepository);
+        }
+
+        @Test
+        void shouldRequireSomeoneOrAnOpenSlot() {
+            givenLocationInTenant();
+
+            assertThatThrownBy(() -> service.createShifts(batch(List.of(), null, "06:00", "14:00", 0)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("ít nhất một nhân viên");
+            verifyNoInteractions(shiftRepository, policyValidator);
+        }
+
+        @Test
+        void shouldRejectBatchAtAnotherLocation() {
+            CreateShiftBatchRequest request = batch(List.of(STAFF_ID), null, "06:00", "14:00", 0);
+            request.setLocationId(OTHER_LOCATION_ID);
+
+            assertThatThrownBy(() -> service.createShifts(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Location khác");
+            verifyNoInteractions(shiftRepository, policyValidator, userRepository);
+        }
+
+        /** Id lạ / của Tenant khác là lỗi của client — báo 404 cho cả lô, không coi là "vi phạm quy định". */
+        @Test
+        void shouldFailWholeBatchForUnknownPerson() {
+            givenLocationInTenant();
+            when(userRepository.findByIdAndTenantId(STAFF_ID, TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.createShifts(batch(List.of(STAFF_ID), null, "06:00", "14:00", 0)))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verify(shiftRepository, never()).saveAll(any());
+        }
+
+        private CreateShiftBatchRequest batch(List<UUID> staffIds, UUID templateId, String start, String end,
+                                              int openSlots) {
+            CreateShiftBatchRequest request = new CreateShiftBatchRequest();
+            request.setLocationId(LOCATION_ID);
+            request.setShiftDate(MONDAY);
+            request.setSourceTemplateId(templateId);
+            request.setStartTime(start == null ? null : LocalTime.parse(start));
+            request.setEndTime(end == null ? null : LocalTime.parse(end));
+            request.setStaffIds(staffIds);
+            request.setOpenSlots(openSlots);
+            return request;
+        }
+    }
+
     // ── Sửa ngày giờ ca ─────────────────────────────────────────────────────
 
     @Nested
@@ -556,6 +721,14 @@ class ShiftServiceTest {
         when(shiftRepository.findByIdAndTenantId(SHIFT_ID, TENANT_ID)).thenReturn(Optional.of(shift));
     }
 
+    private void givenUser(User user) {
+        when(userRepository.findByIdAndTenantId(user.getId(), TENANT_ID)).thenReturn(Optional.of(user));
+    }
+
+    private void givenSaveAllReturnsArgument() {
+        when(shiftRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
     private void givenSaveReturnsArgument() {
         when(shiftRepository.save(any(Shift.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -585,6 +758,13 @@ class ShiftServiceTest {
             .startTime(LocalTime.of(22, 0))
             .endTime(LocalTime.of(6, 0))
             .build();
+    }
+
+    private static User staff(UUID id, String fullName) {
+        User staff = activeStaff();
+        staff.setId(id);
+        staff.setFullName(fullName);
+        return staff;
     }
 
     private static User activeStaff() {

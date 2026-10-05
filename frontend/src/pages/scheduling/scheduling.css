@@ -336,6 +336,109 @@
 .modal .modal__actions.modal__actions--split {
   justify-content: space-between;
 }
+/* Nút chuyển cách xem nằm trên thanh công cụ — không cần khoảng dưới. */
+.segmented--flush {
+  margin-bottom: 0;
+}
+.segmented--wrap {
+  flex-wrap: wrap;
+}
+
+/* ── Bảng theo ca: hàng là mẫu ca, ô là danh sách người ─────────────────── */
+.shift-row-head {
+  border-left: 4px solid var(--tone, var(--border));
+}
+.sched-row--other th,
+.sched-row--other td,
+.sched-row--other .sched-grid__person {
+  background: #fbfbfd;
+}
+.shift-chip.shift-chip--compact {
+  margin-bottom: 4px;
+  padding: 4px 8px;
+}
+.cell-coverage {
+  margin: 2px 0 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ── Hộp thoại giao ca nhiều người ────────────────────────────────────── */
+.modal.modal--assign {
+  max-width: 640px;
+}
+.pick-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13.5px;
+}
+.pick-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.pick-list li + li {
+  border-top: 1px solid var(--border);
+}
+.pick-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.pick-row input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+.pick-row.is-selected {
+  background: #f3f7fc;
+}
+.pick-row.is-disabled {
+  cursor: not-allowed;
+  background: #fafbfc;
+  color: var(--muted);
+}
+.pick-row.has-error {
+  background: #fdf5f5;
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+.pick-row__body b {
+  display: block;
+}
+.pick-row__body small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.pick-row__body small.is-over,
+.pick-row__body small.pick-row__error {
+  color: var(--danger);
+  font-weight: 600;
+}
+.open-slots input {
+  max-width: 120px;
+}
+/* Ô nhập hẹp nên câu gợi ý (span) phải xuống dòng riêng, không đứng cạnh ô. */
+.open-slots .field__help {
+  display: block;
+}
+.violation-list {
+  margin: 6px 0 8px;
+  padding-left: 18px;
+}
 
 /* ── Quy định xếp ca (Giám đốc) ───────────────────────────────────────── */
 .input-unit {
