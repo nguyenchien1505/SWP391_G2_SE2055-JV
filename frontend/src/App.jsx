@@ -18,6 +18,7 @@ import HousekeepingPage from './pages/rooms/HousekeepingPage';
 import MyTasksPage from './pages/rooms/MyTasksPage';
 import SchedulePage from './pages/scheduling/SchedulePage';
 import ScheduleRulesPage from './pages/scheduling/ScheduleRulesPage';
+import HotelOpsSummary from './components/rooms/HotelOpsSummary';
 import ReserveManagerPage from './pages/ReserveManagerPage';
 import AssetCategoriesPage from './pages/AssetCategoriesPage';
 import OrganizationCatalogPage from './pages/OrganizationCatalogPage';
@@ -129,7 +130,15 @@ function useAssetNavigate() {
 }
 
 function OverviewWrapper() {
-  return <DashboardScreen onNavigate={useAssetNavigate()} />;
+  const { user } = useAuth();
+  const onNavigate = useAssetNavigate();
+  return (
+    <>
+      {/* BR-DASH-03: Manager thấy số liệu vận hành của khách sạn mình trước phần tài sản. */}
+      {user?.role === 'MANAGER' && <HotelOpsSummary />}
+      <DashboardScreen onNavigate={onNavigate} />
+    </>
+  );
 }
 function FixedAssetWrapper() {
   return <AssetManagementScreen onNavigate={useAssetNavigate()} />;

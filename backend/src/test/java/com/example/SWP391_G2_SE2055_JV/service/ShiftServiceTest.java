@@ -78,6 +78,7 @@ class ShiftServiceTest {
     @Mock LocationRepository      locationRepository;
     @Mock ShiftTemplateRepository shiftTemplateRepository;
     @Mock SchedulePolicyValidator policyValidator;
+    @Mock HousekeepingService     housekeepingService;
 
     @InjectMocks ShiftService service;
 
@@ -412,6 +413,63 @@ class ShiftServiceTest {
             assertThatThrownBy(() -> service.updateShift(SHIFT_ID, new UpdateShiftRequest()))
                 .isInstanceOf(ResourceNotFoundException.class);
         }
+
+        /** BR-HK-03: dời ca sang ngày khác thì người được gán mất ngày CŨ — phải xét việc dọn ngày đó. */
+        @Test
+        void shouldCheckCleaningTasksOfOldDayBeforeMovingShift() {
+            givenOwnedShift(assignedShift());
+            givenSaveReturnsArgument();
+
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setShiftDate(MONDAY.plusDays(1));
+            service.updateShift(SHIFT_ID, request);
+
+            verify(housekeepingService).assertCanLeaveShiftDay(STAFF_ID, MONDAY, SHIFT_ID);
+        }
+
+        @Test
+        void shouldNotMoveShiftWhileStaffStillHoldsCleaningTasksThatDay() {
+            Shift shift = assignedShift();
+            givenOwnedShift(shift);
+            doThrow(new BusinessException("Nguyễn Thị Lan đang giữ 1 việc dọn ngày 05/10/2026 (phòng 201)."))
+                .when(housekeepingService).assertCanLeaveShiftDay(STAFF_ID, MONDAY, SHIFT_ID);
+
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setShiftDate(MONDAY.plusDays(1));
+
+            assertThatThrownBy(() -> service.updateShift(SHIFT_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("việc dọn");
+            assertThat(shift.getShiftDate()).isEqualTo(MONDAY);
+            verifyNoInteractions(policyValidator);
+            verify(shiftRepository, never()).save(any());
+        }
+
+        /** Đổi giờ trong cùng ngày không làm ai mất ngày làm việc. */
+        @Test
+        void shouldNotCheckCleaningTasksWhenOnlyHoursChange() {
+            givenOwnedShift(assignedShift());
+            givenSaveReturnsArgument();
+
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setShiftDate(MONDAY);
+            request.setEndTime(LocalTime.of(13, 0));
+            service.updateShift(SHIFT_ID, request);
+
+            verifyNoInteractions(housekeepingService);
+        }
+
+        @Test
+        void shouldNotCheckCleaningTasksWhenMovingEmptyShift() {
+            givenOwnedShift(unassignedShift());
+            givenSaveReturnsArgument();
+
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setShiftDate(MONDAY.plusDays(1));
+            service.updateShift(SHIFT_ID, request);
+
+            verifyNoInteractions(housekeepingService);
+        }
     }
 
     // ── Gán / gỡ người — DM-03, BR-SCH-24 ───────────────────────────────────
@@ -501,6 +559,32 @@ class ShiftServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("chưa phân công");
         }
+
+        /** BR-HK-03: gỡ người khỏi ca phải xét việc dọn của người đó trong ngày của ca. */
+        @Test
+        void shouldCheckCleaningTasksBeforeUnassigning() {
+            givenOwnedShift(assignedShift());
+            givenSaveReturnsArgument();
+
+            service.unassignStaff(SHIFT_ID, UnassignedReason.MANAGER_MANUAL);
+
+            verify(housekeepingService).assertCanLeaveShiftDay(STAFF_ID, MONDAY, SHIFT_ID);
+        }
+
+        /** Nhóm đã chốt: còn việc dọn hôm đó thì CHẶN — Manager gỡ người khỏi việc dọn trước. */
+        @Test
+        void shouldNotUnassignWhileStaffStillHoldsCleaningTasksThatDay() {
+            Shift shift = assignedShift();
+            givenOwnedShift(shift);
+            doThrow(new BusinessException("Nguyễn Thị Lan đang giữ 1 việc dọn ngày 05/10/2026 (phòng 201)."))
+                .when(housekeepingService).assertCanLeaveShiftDay(STAFF_ID, MONDAY, SHIFT_ID);
+
+            assertThatThrownBy(() -> service.unassignStaff(SHIFT_ID, UnassignedReason.MANAGER_MANUAL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("việc dọn");
+            assertThat(shift.getStaffId()).isEqualTo(STAFF_ID);
+            verify(shiftRepository, never()).save(any());
+        }
     }
 
     // ── Xóa ca ─────────────────────────────────────────────────────────────
@@ -533,6 +617,30 @@ class ShiftServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("check-in");
             verify(shiftRepository, never()).delete(any());
+        }
+
+        @Test
+        void shouldNotDeleteWhileStaffStillHoldsCleaningTasksThatDay() {
+            givenOwnedShift(assignedShift());
+            doThrow(new BusinessException("Nguyễn Thị Lan đang giữ 1 việc dọn ngày 05/10/2026 (phòng 201)."))
+                .when(housekeepingService).assertCanLeaveShiftDay(STAFF_ID, MONDAY, SHIFT_ID);
+
+            assertThatThrownBy(() -> service.deleteShift(SHIFT_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("việc dọn");
+            verify(shiftRepository, never()).delete(any());
+        }
+
+        /** Ca chưa có người thì xóa không làm ai mất ngày làm việc. */
+        @Test
+        void shouldDeleteEmptyShiftWithoutCheckingCleaningTasks() {
+            Shift shift = unassignedShift();
+            givenOwnedShift(shift);
+
+            service.deleteShift(SHIFT_ID);
+
+            verify(shiftRepository).delete(shift);
+            verifyNoInteractions(housekeepingService);
         }
     }
 

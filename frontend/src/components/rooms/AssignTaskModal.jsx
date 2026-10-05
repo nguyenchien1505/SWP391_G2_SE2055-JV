@@ -14,14 +14,17 @@ import { taskTypeLabel } from '../../pages/rooms/roomLabels';
  * Đổi ngày là tải lại danh sách, vì "có ca" phụ thuộc ngày. KHÔNG hiện giới hạn số việc mỗi
  * người: BR-HK-02 nói rõ là không có giới hạn.
  *
+ * @param initialDate ngày mở sẵn — bảng theo nhân viên đang xem ngày nào thì giao cho ngày đó;
+ *                    việc dọn sau trả phòng luôn là hôm nay
  * @param onAssigned nhận việc SAU KHI gán (kèm trạng thái mới) để màn hình cập nhật ngay
  */
-export default function AssignTaskModal({ task, onClose, onAssigned }) {
+export default function AssignTaskModal({ task, initialDate, onClose, onAssigned }) {
   // Việc dọn sau trả phòng chỉ gán được cho hôm nay (phòng sang «Đang dọn» ngay khi gán), nên
   // khóa luôn ô ngày cho khỏi chọn nhầm rồi nhận lỗi.
   const todayOnly = task.taskType === 'CHECKOUT';
 
-  const [date, setDate] = useState(todayIso());
+  const [date, setDate] = useState(() =>
+    (!todayOnly && initialDate && initialDate > todayIso() ? initialDate : todayIso()));
   const [staff, setStaff] = useState(null); // null = đang tải
   const [staffId, setStaffId] = useState('');
   const [error, setError] = useState('');

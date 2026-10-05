@@ -59,6 +59,10 @@ public interface HousekeepingTaskRepository extends JpaRepository<HousekeepingTa
     List<HousekeepingTask> findByAssignedStaffIdAndStatusAndAssignedDateGreaterThan(
         UUID staffId, HousekeepingTaskStatus status, LocalDate today);
 
+    /** Việc một nhân viên đang giữ trong ĐÚNG một ngày, ở trạng thái cho trước — BR-HK-03. */
+    List<HousekeepingTask> findByAssignedStaffIdAndAssignedDateAndStatus(
+        UUID staffId, LocalDate assignedDate, HousekeepingTaskStatus status);
+
     /** Số task một nhân viên đang giữ ở trạng thái cho trước (mọi ngày). */
     long countByAssignedStaffIdAndStatus(UUID staffId, HousekeepingTaskStatus status);
 }

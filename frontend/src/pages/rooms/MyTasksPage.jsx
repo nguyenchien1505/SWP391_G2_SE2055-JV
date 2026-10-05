@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
 import { completeTask, fetchTasks } from '../../api/housekeeping';
+import { fetchShifts } from '../../api/scheduling';
 import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import TaskStatusBadge from '../../components/rooms/TaskStatusBadge';
-import { formatDate, todayIso } from './format';
+import { formatClock, formatDate, todayIso } from './format';
+import { timeRange } from '../scheduling/scheduleFormat';
 import { compareNatural, taskTypeLabel } from './roomLabels';
 import './rooms.css';
 
@@ -34,6 +36,7 @@ export default function MyTasksPage() {
   const [banner, setBanner] = useState(null);       // { type, text }
   const [submittingId, setSubmittingId] = useState(null);
   const [previousOf, setPreviousOf] = useState(null);   // việc dọn lại đang xem lý do không đạt
+  const [shifts, setShifts] = useState(null);           // ca hôm nay của mình; null = chưa tải / lỗi
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +58,17 @@ export default function MyTasksPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Ca hôm nay: backend chỉ trả ca của chính nhân viên. Lỗi thì ẩn thẻ — không chặn việc dọn.
+  useEffect(() => {
+    let cancelled = false;
+    fetchShifts({ from: today, to: today })
+      .then((list) => !cancelled && setShifts(list))
+      .catch(() => !cancelled && setShifts(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [today]);
 
   async function handleComplete(task) {
     setSubmittingId(task.id);
@@ -101,6 +115,26 @@ export default function MyTasksPage() {
       )}
       {loading && <p className="state">Đang tải dữ liệu…</p>}
 
+      {shifts && (
+        <section className="my-shift" aria-label="Ca hôm nay">
+          <span className="my-shift__label">Ca hôm nay</span>
+          {shifts.length === 0 ? (
+            <span className="my-shift__none">
+              Hôm nay bạn không có ca — việc dọn chỉ được giao vào ngày bạn có ca.
+            </span>
+          ) : (
+            shifts.map((shift) => (
+              <span key={shift.id} className="my-shift__time">
+                {timeRange(shift.startTime, shift.endTime)}
+                {shift.checkInAt && (
+                  <small> · đã vào ca {formatClock(new Date(shift.checkInAt))}</small>
+                )}
+              </span>
+            ))
+          )}
+        </section>
+      )}
+
       <section className="panel">
         <div className="panel__head">
           <h2>Cần làm</h2>
@@ -123,6 +157,10 @@ export default function MyTasksPage() {
                   Tầng {task.floor ?? '—'} · {taskTypeLabel(task.taskType)}
                 </span>
                 {/* BR-HK-04: việc của hôm trước chưa xong thì vẫn phải làm, không tự hủy. */}
+                {/* Quản lý giao trước việc dọn hằng ngày cho ngày có ca — ghi rõ ngày làm. */}
+                {task.assignedDate && task.assignedDate > today && (
+                  <span className="task-row__meta">Làm ngày {formatDate(task.assignedDate)}</span>
+                )}
                 {task.assignedDate && task.assignedDate < today && (
                   <span className="task-card__flag">Tồn đọng từ {formatDate(task.assignedDate)}</span>
                 )}

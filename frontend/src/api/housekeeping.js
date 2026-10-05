@@ -44,6 +44,16 @@ export async function createStayoverTask(roomId) {
 }
 
 /**
+ * POST .../stayover-batch — tạo việc dọn hằng ngày cho MỌI phòng đang có khách của khách sạn mình,
+ * bỏ qua phòng đã có việc đang mở (BR-HK-05, BR-HK-11). Trả { created, skipped, tasks }.
+ * Chỉ Quản lý chi nhánh gọi được.
+ */
+export async function createStayoverBatch() {
+  const { data } = await api.post('/housekeeping/tasks/stayover-batch');
+  return data;
+}
+
+/**
  * PATCH .../assign — gán người. Với việc dọn sau check-out, backend chuyển phòng sang «Đang dọn»
  * trong cùng transaction, nên response đã phản ánh trạng thái mới của cả hai.
  */

@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.StayoverBatchResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
@@ -168,6 +169,34 @@ class HousekeepingTaskControllerTest {
         void shouldReturnBadRequestWhenDateMalformed() throws Exception {
             mockMvc.perform(get("/housekeeping/tasks/assignable-staff").param("date", "23-09-2026"))
                 .andExpect(status().isBadRequest());
+        }
+    }
+
+    // ── Tạo việc dọn hằng ngày hàng loạt: chỉ Manager ──────────────────────
+
+    @Nested
+    class StayoverBatch {
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldCreateBatchForManager() throws Exception {
+            when(housekeepingService.createStayoverTasksForOccupiedRooms()).thenReturn(
+                StayoverBatchResponse.builder().created(1).skipped(2).tasks(List.of(sampleTask())).build());
+
+            mockMvc.perform(post("/housekeeping/tasks/stayover-batch"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.created").value(1))
+                .andExpect(jsonPath("$.skipped").value(2))
+                .andExpect(jsonPath("$.tasks[0].roomNumber").value("201"));
+        }
+
+        /** Cần một khách sạn cụ thể: Giám đốc và nhân viên đều bị chặn. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_DIRECTOR"})
+        void shouldForbidNonManager(String authorities) throws Exception {
+            mockMvc.perform(post("/housekeeping/tasks/stayover-batch").with(authorities(authorities)))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(housekeepingService);
         }
     }
 
