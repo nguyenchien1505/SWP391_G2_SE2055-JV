@@ -49,6 +49,10 @@
   background: #fdf0dc;
   color: #b85300;
 }
+.chip.chip--danger {
+  background: #fdecec;
+  color: var(--danger);
+}
 .sched-info {
   display: flex;
   flex-wrap: wrap;
@@ -79,8 +83,8 @@
   background: var(--tone, var(--grey));
 }
 
-/* ── Lưới tuần: hàng = nhân viên, cột = 7 ngày (design.md màn 21) ──────────
- * Cuộn ngang trên màn nhỏ, cột tên nhân viên dính bên trái để không lạc hàng khi cuộn.
+/* ── Lưới tuần: hàng = mẫu ca, cột = 7 ngày (design.md màn 21) ──────────────
+ * Cuộn ngang trên màn nhỏ, cột tên ca dính bên trái để không lạc hàng khi cuộn.
  */
 .sched-scroll {
   overflow-x: auto;
@@ -169,62 +173,76 @@
   font-weight: 600;
   color: var(--muted);
 }
-.person-cell__hours.is-over {
-  color: var(--danger);
-}
 
-/* Hàng ca chưa phân công — nổi lên đầu bảng vì đó là việc Manager cần xử lý. */
-.sched-row--open th,
-.sched-row--open td {
-  background: #fffaf3;
+/* Hàng của mẫu cũ (đã tắt / không thuộc bộ mẫu đang dùng) — chỉ còn ca cũ, không xếp thêm. */
+.sched-row--legacy th,
+.sched-row--legacy td,
+.sched-row--legacy .sched-grid__person {
+  background: #fbfbfd;
 }
-.sched-row--open .sched-grid__person {
-  background: #fffaf3;
-}
-.sched-row--readonly .person-cell b {
-  color: var(--muted);
-}
-
-/* ── Thẻ ca ───────────────────────────────────────────────────────────── */
-.shift-chip {
+.legacy-note {
   display: block;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #8a6d00;
+}
+
+/* ── Ô ca: khối tóm tắt, bấm vào xem chi tiết (chốt 05/10/2026) ─────────── */
+.cell-block {
+  display: grid;
+  gap: 2px;
   width: 100%;
-  margin-bottom: 6px;
   padding: 6px 8px;
-  border: 1px solid var(--tone-border);
-  border-left: 4px solid var(--tone);
+  border: 1px solid var(--tone-border, var(--border));
+  border-left: 4px solid var(--tone, var(--border));
   border-radius: var(--radius-control);
-  background: var(--tone-bg);
+  background: var(--tone-bg, #fff);
   color: var(--text);
   font: inherit;
   font-size: 12.5px;
   text-align: left;
   cursor: pointer;
 }
-.shift-chip:hover,
-.shift-chip:focus-visible {
-  outline: 2px solid var(--tone);
+.cell-block:hover,
+.cell-block:focus-visible {
+  outline: 2px solid var(--tone, var(--accent));
   outline-offset: 1px;
 }
-/* design.md: ca chưa có người — viền đứt nét, nền nhạt. */
-.shift-chip--open {
-  border-style: dashed;
-  border-left-style: solid;
-  background: #fff;
+.cell-block__count b {
+  font-size: 15px;
 }
-.shift-chip__name {
-  display: block;
-  font-weight: 700;
+.cell-block__open {
+  color: #b85300;
+  font-weight: 600;
 }
-.shift-chip__time {
-  display: block;
-  font-variant-numeric: tabular-nums;
-}
-.shift-chip__meta {
-  display: block;
-  margin-top: 2px;
+.cell-block__meta {
   font-size: 11.5px;
   color: var(--muted);
+}
+/* Vài tên đầu cho dễ quét — tối đa hai dòng, đầy đủ ở hộp thoại chi tiết. */
+.cell-block__names {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 11.5px;
+}
+/* Ca theo mẫu đã có người mà chưa có lễ tân: viền đỏ + nhãn, luôn kèm chữ chứ không chỉ màu. */
+.cell-block.cell-block--warn {
+  border-color: #f5c2c2;
+  box-shadow: inset 0 0 0 1px #f5c2c2;
+}
+.cell-block__flag {
+  justify-self: start;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fdecec;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 700;
 }
 .cell-add {
   display: block;
@@ -353,14 +371,62 @@
 .sched-row--other .sched-grid__person {
   background: #fbfbfd;
 }
-.shift-chip.shift-chip--compact {
-  margin-bottom: 4px;
-  padding: 4px 8px;
+
+/* ── Hộp thoại chi tiết một ô ca ──────────────────────────────────────── */
+.cell-dialog__icon {
+  background: var(--tone-bg, #e7eff8);
 }
-.cell-coverage {
-  margin: 2px 0 6px;
-  font-size: 11.5px;
+.cell-dialog__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.cell-dialog__list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.cell-dialog__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.cell-dialog__row + .cell-dialog__row {
+  border-top: 1px solid var(--border);
+}
+/* Chỗ trống chưa giao người — nền nhạt như viền đứt nét của design.md. */
+.cell-dialog__row.is-open {
+  background: #fffaf3;
+}
+.cell-dialog__who b {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.cell-dialog__who small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
   color: var(--muted);
+}
+.cell-dialog__tag {
+  font-size: 11px;
+}
+.alert .alert__action {
+  display: block;
+  margin-top: 8px;
+}
+.field__help.is-error {
+  color: var(--danger);
+  font-weight: 600;
 }
 
 /* ── Hộp thoại giao ca nhiều người ────────────────────────────────────── */
@@ -463,6 +529,60 @@
 }
 .checkbox.checkbox--inline {
   margin: 0;
+}
+/* Bảng mẫu ca nằm trong cột hẹp của bố cục hai cột: giữ đủ chỗ cho tên mẫu, phần còn lại cuộn ngang. */
+.template-table td:first-child {
+  min-width: 150px;
+}
+.template-hours {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+/* Tên chi nhánh của mẫu riêng (kèm nhắc khi chi nhánh chưa bật bộ riêng) — ngay dưới nhãn bộ. */
+.template-set-note {
+  display: block;
+  margin-top: 4px;
+  max-width: 170px;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* Bảng bộ mẫu từng chi nhánh — nằm dưới hai cột mẫu ca / quy định. */
+.panel.location-sets {
+  margin-top: 16px;
+}
+.location-sets__intro {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+}
+.link-button.location-sets__view {
+  margin-left: 8px;
+}
+/* Lọc mẫu theo bộ (chung / riêng chi nhánh) cạnh ô "Hiện cả mẫu đã tắt". */
+.template-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.template-scope-select {
+  height: 36px;
+  max-width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font: inherit;
+  font-size: 13.5px;
+  background: #fff;
+  color: var(--text);
+}
+.template-scope-select:focus {
+  outline: 2px solid rgba(46, 116, 181, 0.35);
+  outline-offset: 1px;
+  border-color: var(--accent);
 }
 .cell-hotel .legend {
   margin-top: 6px;

@@ -11,12 +11,17 @@ function withoutEmpty(params) {
  * GET /housekeeping/tasks — Page các việc dọn phòng.
  *
  * Phạm vi do BACKEND quyết định theo vai trò, không phải tham số: Quản lý chi nhánh thấy việc
- * trong khách sạn của mình, nhân viên dọn chỉ thấy việc CỦA CHÍNH MÌNH (BR-PERM-05). Vì vậy màn
- * "Việc của tôi" gọi đúng endpoint này, không cần `/me`.
+ * trong khách sạn của mình, nhân viên dọn chỉ thấy việc CÓ MÌNH TRONG NHÓM DỌN (BR-PERM-05). Vì vậy
+ * màn "Việc của tôi" gọi đúng endpoint này, không cần `/me`.
+ *
+ * Mỗi việc có `assignees` = [{ staffId, fullName }] (một phòng nhiều người dọn — chốt 05/10/2026),
+ * `roomTypeName` để hiện "101 - Deluxe" và `roomStatus` (trạng thái hiện tại của phòng).
+ *
+ * `from` + `to` (đi cùng nhau, tính cả hai đầu) lọc theo ngày làm — lịch dọn theo tuần.
  */
-export async function fetchTasks({ status, taskType, assignedDate, page = 0, size = 50, sort } = {}) {
+export async function fetchTasks({ status, taskType, assignedDate, from, to, page = 0, size = 50, sort } = {}) {
   const { data } = await api.get('/housekeeping/tasks', {
-    params: withoutEmpty({ status, taskType, assignedDate, page, size, sort }),
+    params: withoutEmpty({ status, taskType, assignedDate, from, to, page, size, sort }),
   });
   return data;
 }
@@ -37,40 +42,32 @@ export async function fetchAssignableStaff(date) {
   return data;
 }
 
-/** POST — chỉ tạo tay được việc dọn hằng ngày; việc dọn sau check-out do hệ thống tự sinh. */
-export async function createStayoverTask(roomId) {
-  const { data } = await api.post('/housekeeping/tasks', { roomId });
-  return data;
-}
-
 /**
- * POST .../stayover-batch — tạo việc dọn hằng ngày cho MỌI phòng đang có khách của khách sạn mình,
- * bỏ qua phòng đã có việc đang mở (BR-HK-05, BR-HK-11). Trả { created, skipped, tasks }.
- * Chỉ Quản lý chi nhánh gọi được.
+ * PATCH .../assign — giao việc cho MỘT HOẶC NHIỀU người (tất cả hoặc không ai).
+ *
+ * - Việc đang chờ giao: cả nhóm bắt đầu dọn, backend chuyển phòng sang «Đang dọn» trong cùng
+ *   transaction — response đã phản ánh trạng thái mới.
+ * - Việc đang làm: thêm những người này vào nhóm; `assignedDate` phải đúng ngày của việc đó.
  */
-export async function createStayoverBatch() {
-  const { data } = await api.post('/housekeeping/tasks/stayover-batch');
+export async function assignTask(id, { staffIds, assignedDate }) {
+  const { data } = await api.patch(`/housekeeping/tasks/${id}/assign`, { staffIds, assignedDate });
   return data;
 }
 
 /**
- * PATCH .../assign — gán người. Với việc dọn sau check-out, backend chuyển phòng sang «Đang dọn»
- * trong cùng transaction, nên response đã phản ánh trạng thái mới của cả hai.
+ * PATCH .../unassign — gỡ người khỏi nhóm dọn. Có `staffId` thì gỡ đúng người đó, bỏ trống thì gỡ
+ * cả nhóm. Gỡ đến người cuối cùng thì việc quay lại hàng chờ và phòng quay về «Chờ dọn».
  */
-export async function assignTask(id, { staffId, assignedDate }) {
-  const { data } = await api.patch(`/housekeeping/tasks/${id}/assign`, { staffId, assignedDate });
-  return data;
-}
-
-/** PATCH .../unassign — gỡ người; việc quay lại hàng chờ và phòng quay về «Chờ dọn». */
-export async function unassignTask(id) {
-  const { data } = await api.patch(`/housekeeping/tasks/${id}/unassign`);
+export async function unassignTask(id, staffId) {
+  const { data } = await api.patch(`/housekeeping/tasks/${id}/unassign`, null, {
+    params: staffId ? { staffId } : undefined,
+  });
   return data;
 }
 
 /**
- * PATCH .../complete — chỉ người được phân công bấm được (BR-PERM-05). Việc dọn sau check-out
- * chuyển sang «Chờ kiểm tra» chứ chưa phải hoàn thành; dọn hằng ngày thì xong luôn.
+ * PATCH .../complete — bất kỳ ai trong nhóm dọn bấm được, và là xong cho cả nhóm (BR-PERM-05, chốt
+ * 05/10/2026). Việc sang «Chờ kiểm tra» chứ chưa phải hoàn thành — còn chờ Quản lý nghiệm thu.
  */
 export async function completeTask(id) {
   const { data } = await api.patch(`/housekeeping/tasks/${id}/complete`);
@@ -97,17 +94,5 @@ export async function inspectTask(id, { result, reason }) {
  */
 export async function fetchInspection(taskId) {
   const { data } = await api.get(`/housekeeping/tasks/${taskId}/inspection`);
-  return data;
-}
-
-/**
- * PATCH .../cancel — hủy tay một việc dọn. Không có body: lý do luôn là "Quản lý hủy", hai lý
- * do còn lại do hệ thống tự đặt khi phòng đổi trạng thái.
- *
- * Chỉ hủy được việc dọn HẰNG NGÀY. Việc dọn sau khi khách trả phòng mà hủy thì phòng sẽ kẹt ở
- * «Chờ dọn» mà không còn việc nào, nên backend chặn — muốn dừng hẳn thì khóa phòng.
- */
-export async function cancelTask(id) {
-  const { data } = await api.patch(`/housekeeping/tasks/${id}/cancel`);
   return data;
 }

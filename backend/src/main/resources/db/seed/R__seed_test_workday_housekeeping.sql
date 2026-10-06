@@ -19,28 +19,34 @@
 --   dondep3@swp391.test   Trần Văn Nam
 --   dondep4@swp391.test   Lê Thị Mai       (nghỉ hôm nay — không có hàng trên bảng hôm nay)
 --
--- Ca làm việc (Ca sáng 06–14, Ca chiều 14–22 — khớp Schedule Policy mặc định, BR-SCH-02/20):
---   Hôm qua   Dọn dẹp Test (sáng, đã chấm công vào/ra)
+-- Ca làm việc (Ca sáng 06–14, Ca chiều 14–22 — khớp Schedule Policy mặc định, BR-SCH-02/20). Mỗi ca
+-- theo mẫu đã có người phải có ít nhất 1 lễ tân — Lễ tân Test hoặc Kiêm nhiệm Test (chốt 05/10/2026):
+--   Hôm qua   Dọn dẹp Test, Lễ tân Test (sáng, đã chấm công vào/ra)
 --   Hôm nay   Hoa, Nam, Lễ tân Test, Kỹ thuật Test (sáng) · Dọn dẹp Test, Kiêm nhiệm Test (chiều)
 --   Ngày mai  Hoa, Mai, Lễ tân Test (sáng) · Dọn dẹp Test, Kiêm nhiệm Test (chiều)
---   Ngày kia  Hoa, Mai (sáng) · Nam, Lễ tân Test (chiều)
+--   Ngày kia  Hoa, Mai (sáng — THIẾU LỄ TÂN) · Nam, Kiêm nhiệm Test (chiều)
+-- Thử quy tắc lễ tân:
+--   · Ca sáng ngày kia cố ý thiếu lễ tân (như khi lễ tân vừa nghỉ việc): thêm Kỹ thuật Test → bị
+--     chặn; thêm Lễ tân Test → được; gỡ Hoa hoặc Mai vẫn được.
+--   · Gỡ Kiêm nhiệm Test khỏi Ca chiều hôm nay → bị chặn (lễ tân duy nhất của ca).
 --
--- Phòng tầng 3–4 và việc dọn (cùng phòng 101–203 của R__seed_test_rooms.sql):
+-- Phòng tầng 3–4 và việc dọn (cùng phòng 101–203 của R__seed_test_rooms.sql). Chỉ còn việc dọn
+-- sau khi khách trả phòng, hệ thống tự sinh — đã bỏ dọn hằng ngày (chốt 05/10/2026):
 --   Phòng Loại     Trạng thái    Việc dọn                                     Thử gì
---   301   Standard Đang sử dụng  Dọn hằng ngày — chờ giao                     Giao việc
---   302   Standard Đang sử dụng  Dọn hằng ngày — Hoa đang làm                 —
---   303   Deluxe   Đang sử dụng  Dọn hằng ngày — Nam đã xong                  Nút tạo hàng loạt tạo lại
---   304   Standard Chờ dọn       Dọn sau trả phòng — chờ giao                 Giao việc
---   305   Deluxe   Đang dọn      Dọn sau trả phòng — Hoa đang làm             Gỡ người
---   306   Standard Đang dọn      Dọn sau trả phòng — Nam đang làm             —
---   307   Standard Đang sử dụng  Dọn hằng ngày — Kiêm nhiệm (ca chiều) giữ    Gỡ Kiêm nhiệm khỏi ca → bị chặn
+--   301   Standard Đang sử dụng  —                                            Trả phòng → tự sinh việc dọn
+--   302   Standard Đang sử dụng  —                                            —
+--   303   Deluxe   Đang sử dụng  —                                            —
+--   304   Standard Chờ dọn       Chờ giao                                     Giao cho một hoặc nhiều người
+--   305   Deluxe   Đang dọn      Hoa + Nam cùng dọn                           Gỡ một người, thêm người
+--   306   Standard Đang dọn      Nam đang làm                                 Gỡ Nam khỏi ca sáng → bị chặn
+--   307   Standard Đang sử dụng  —                                            —
 --   401   Standard Chờ kiểm tra  Hoa đã báo xong                              Kiểm tra (Manager)
 --   402   Deluxe   Chờ kiểm tra  Nam đã báo xong                              Kiểm tra (Manager)
 --   403   Standard Sẵn sàng      Nam dọn — kiểm tra ĐẠT                       —
 --   404   Deluxe   Chờ dọn       Hoa dọn — KHÔNG ĐẠT → việc dọn lại chờ giao  Xem lý do, giao lại
 --   405   Standard Đang dọn      Dọn dẹp Test nhận từ HÔM QUA, chưa xong       Tồn đọng (BR-HK-04)
 --   406   Standard Đã đặt        —                                            —
---   407   Deluxe   Đang sử dụng  Dọn hằng ngày — giao trước cho Kiêm nhiệm ngày mai   Xem ngày mai
+--   407   Deluxe   Đang sử dụng  —                                            —
 --
 -- Mỗi phòng có vài dòng lịch sử trạng thái khớp với việc dọn của nó (BR-ROOM-09).
 -- =============================================================================
@@ -70,21 +76,16 @@ SET @d0  = CURRENT_DATE;                    -- hôm nay
 SET @d1  = CURRENT_DATE + INTERVAL 1 DAY;   -- ngày mai
 SET @d2  = CURRENT_DATE + INTERVAL 2 DAY;
 
--- Việc dọn — id theo số phòng cho dễ tra (…3011 = phòng 301, việc thứ nhất).
-SET @t301  = '80000000-0000-0000-0000-000000003011';
-SET @t302  = '80000000-0000-0000-0000-000000003021';
-SET @t303  = '80000000-0000-0000-0000-000000003031';
+-- Việc dọn — id theo số phòng cho dễ tra (…3041 = phòng 304, việc thứ nhất).
 SET @t304  = '80000000-0000-0000-0000-000000003041';
 SET @t305  = '80000000-0000-0000-0000-000000003051';
 SET @t306  = '80000000-0000-0000-0000-000000003061';
-SET @t307  = '80000000-0000-0000-0000-000000003071';
 SET @t401  = '80000000-0000-0000-0000-000000004011';
 SET @t402  = '80000000-0000-0000-0000-000000004021';
 SET @t403  = '80000000-0000-0000-0000-000000004031';
 SET @t404  = '80000000-0000-0000-0000-000000004041';   -- lần dọn đầu, kiểm tra không đạt
 SET @t404b = '80000000-0000-0000-0000-000000004042';   -- việc dọn lại (BR-HK-12)
 SET @t405  = '80000000-0000-0000-0000-000000004051';
-SET @t407  = '80000000-0000-0000-0000-000000004071';
 SET @fail_404 = 'Còn tóc trên gối, chưa thay khăn tắm';
 
 -- ── Nhân viên dọn phòng thêm — BR-USER-01; quyền tick riêng ở user_permissions ────────
@@ -151,6 +152,7 @@ FROM (
     SELECT '90000000-0000-0000-0000-000000000001' AS id, @dondep AS staff_id, @d_1 AS shift_date,
            TIME '06:00:00' AS start_time, TIME '14:00:00' AS end_time, @ca_sang AS template_id,
            TIMESTAMP(@d_1, '06:02:00') AS check_in_at, TIMESTAMP(@d_1, '14:05:00') AS check_out_at
+    UNION ALL SELECT '90000000-0000-0000-0000-000000000017', @letan,   @d_1, TIME '06:00:00', TIME '14:00:00', @ca_sang,  TIMESTAMP(@d_1, '05:57:00'), TIMESTAMP(@d_1, '14:02:00')
     UNION ALL SELECT '90000000-0000-0000-0000-000000000002', @hoa,     @d0, TIME '06:00:00', TIME '14:00:00', @ca_sang,  TIMESTAMP(@d0, '05:58:00'), NULL
     UNION ALL SELECT '90000000-0000-0000-0000-000000000003', @nam,     @d0, TIME '06:00:00', TIME '14:00:00', @ca_sang,  TIMESTAMP(@d0, '06:03:00'), NULL
     UNION ALL SELECT '90000000-0000-0000-0000-000000000004', @letan,   @d0, TIME '06:00:00', TIME '14:00:00', @ca_sang,  TIMESTAMP(@d0, '05:55:00'), NULL
@@ -165,52 +167,59 @@ FROM (
     UNION ALL SELECT '90000000-0000-0000-0000-000000000013', @hoa,     @d2, TIME '06:00:00', TIME '14:00:00', @ca_sang,  NULL, NULL
     UNION ALL SELECT '90000000-0000-0000-0000-000000000014', @mai,     @d2, TIME '06:00:00', TIME '14:00:00', @ca_sang,  NULL, NULL
     UNION ALL SELECT '90000000-0000-0000-0000-000000000015', @nam,     @d2, TIME '14:00:00', TIME '22:00:00', @ca_chieu, NULL, NULL
-    UNION ALL SELECT '90000000-0000-0000-0000-000000000016', @letan,   @d2, TIME '14:00:00', TIME '22:00:00', @ca_chieu, NULL, NULL
+    UNION ALL SELECT '90000000-0000-0000-0000-000000000018', @kiem,    @d2, TIME '14:00:00', TIME '22:00:00', @ca_chieu, NULL, NULL
 ) AS s
 WHERE EXISTS (SELECT 1 FROM users u WHERE u.id = s.staff_id AND u.status = 'ACTIVE')
   AND NOT EXISTS (SELECT 1 FROM shifts x WHERE x.staff_id = s.staff_id AND x.shift_date = s.shift_date)
 ON DUPLICATE KEY UPDATE shifts.id = shifts.id;
 
--- ── Việc dọn — BR-HK-05/06/11/12; mỗi phòng tối đa 1 việc mở cho mỗi loại ───────────
+-- ── Việc dọn — BR-HK-06/11/12; mỗi phòng tối đa 1 việc đang mở ─────────────────
 -- Việc «Chờ kiểm tra» chưa có completed_at: app chỉ điền khi Manager kiểm tra xong (BR-HK-06).
+-- Người dọn nằm ở bảng housekeeping_task_assignees bên dưới (một việc có thể nhiều người — V4).
 INSERT INTO housekeeping_tasks (id, tenant_id, location_id, room_id, task_type, status,
-                                assigned_staff_id, assigned_date, assigned_by, assigned_at,
+                                assigned_date, assigned_by, assigned_at,
                                 completed_at, created_source, created_at)
-SELECT t.id, @tenant, @hanoi, t.room_id, t.task_type, t.status,
-       t.staff_id, t.assigned_date, IF(t.staff_id IS NULL, NULL, @manager), t.assigned_at,
-       t.completed_at, t.created_source, t.created_at
+SELECT t.id, @tenant, @hanoi, t.room_id, 'CHECKOUT', t.status,
+       t.assigned_date, IF(t.assigned_date IS NULL, NULL, @manager), t.assigned_at,
+       t.completed_at, 'CHECKOUT_AUTO', t.created_at
 FROM (
-    SELECT @t301 AS id, '70000000-0000-0000-0000-000000000301' AS room_id, 'STAYOVER' AS task_type,
-           'UNASSIGNED' AS status, NULL AS staff_id, NULL AS assigned_date, NULL AS assigned_at,
-           NULL AS completed_at, 'MANAGER_STAYOVER' AS created_source, TIMESTAMP(@d0, '07:00:00') AS created_at
-    UNION ALL SELECT @t302, '70000000-0000-0000-0000-000000000302', 'STAYOVER', 'IN_PROGRESS', @hoa, @d0,
-           TIMESTAMP(@d0, '07:10:00'), NULL, 'MANAGER_STAYOVER', TIMESTAMP(@d0, '07:00:00')
-    UNION ALL SELECT @t303, '70000000-0000-0000-0000-000000000303', 'STAYOVER', 'COMPLETED', @nam, @d0,
-           TIMESTAMP(@d0, '07:10:00'), TIMESTAMP(@d0, '09:40:00'), 'MANAGER_STAYOVER', TIMESTAMP(@d0, '07:00:00')
-    UNION ALL SELECT @t304, '70000000-0000-0000-0000-000000000304', 'CHECKOUT', 'UNASSIGNED', NULL, NULL,
-           NULL, NULL, 'CHECKOUT_AUTO', TIMESTAMP(@d0, '11:20:00')
-    UNION ALL SELECT @t305, '70000000-0000-0000-0000-000000000305', 'CHECKOUT', 'IN_PROGRESS', @hoa, @d0,
-           TIMESTAMP(@d0, '08:05:00'), NULL, 'CHECKOUT_AUTO', TIMESTAMP(@d0, '07:30:00')
-    UNION ALL SELECT @t306, '70000000-0000-0000-0000-000000000306', 'CHECKOUT', 'IN_PROGRESS', @nam, @d0,
-           TIMESTAMP(@d0, '08:10:00'), NULL, 'CHECKOUT_AUTO', TIMESTAMP(@d0, '07:45:00')
-    UNION ALL SELECT @t307, '70000000-0000-0000-0000-000000000307', 'STAYOVER', 'IN_PROGRESS', @kiem, @d0,
-           TIMESTAMP(@d0, '10:30:00'), NULL, 'MANAGER_STAYOVER', TIMESTAMP(@d0, '10:30:00')
-    UNION ALL SELECT @t401, '70000000-0000-0000-0000-000000000401', 'CHECKOUT', 'PENDING_INSPECTION', @hoa, @d0,
-           TIMESTAMP(@d0, '07:00:00'), NULL, 'CHECKOUT_AUTO', TIMESTAMP(@d0, '06:40:00')
-    UNION ALL SELECT @t402, '70000000-0000-0000-0000-000000000402', 'CHECKOUT', 'PENDING_INSPECTION', @nam, @d0,
-           TIMESTAMP(@d0, '07:05:00'), NULL, 'CHECKOUT_AUTO', TIMESTAMP(@d0, '06:50:00')
-    UNION ALL SELECT @t403, '70000000-0000-0000-0000-000000000403', 'CHECKOUT', 'COMPLETED', @nam, @d0,
-           TIMESTAMP(@d0, '06:45:00'), TIMESTAMP(@d0, '08:00:00'), 'CHECKOUT_AUTO', TIMESTAMP(@d0, '06:30:00')
-    UNION ALL SELECT @t404, '70000000-0000-0000-0000-000000000404', 'CHECKOUT', 'COMPLETED', @hoa, @d0,
-           TIMESTAMP(@d0, '06:50:00'), TIMESTAMP(@d0, '08:05:00'), 'CHECKOUT_AUTO', TIMESTAMP(@d0, '06:35:00')
-    UNION ALL SELECT @t405, '70000000-0000-0000-0000-000000000405', 'CHECKOUT', 'IN_PROGRESS', @dondep, @d_1,
-           TIMESTAMP(@d_1, '12:30:00'), NULL, 'CHECKOUT_AUTO', TIMESTAMP(@d_1, '11:00:00')
-    UNION ALL SELECT @t407, '70000000-0000-0000-0000-000000000407', 'STAYOVER', 'IN_PROGRESS', @kiem, @d1,
-           TIMESTAMP(@d0, '10:00:00'), NULL, 'MANAGER_STAYOVER', TIMESTAMP(@d0, '10:00:00')
+    SELECT @t304 AS id, '70000000-0000-0000-0000-000000000304' AS room_id, 'UNASSIGNED' AS status,
+           NULL AS assigned_date, NULL AS assigned_at, NULL AS completed_at, TIMESTAMP(@d0, '11:20:00') AS created_at
+    UNION ALL SELECT @t305, '70000000-0000-0000-0000-000000000305', 'IN_PROGRESS', @d0,
+           TIMESTAMP(@d0, '08:05:00'), NULL, TIMESTAMP(@d0, '07:30:00')
+    UNION ALL SELECT @t306, '70000000-0000-0000-0000-000000000306', 'IN_PROGRESS', @d0,
+           TIMESTAMP(@d0, '08:10:00'), NULL, TIMESTAMP(@d0, '07:45:00')
+    UNION ALL SELECT @t401, '70000000-0000-0000-0000-000000000401', 'PENDING_INSPECTION', @d0,
+           TIMESTAMP(@d0, '07:00:00'), NULL, TIMESTAMP(@d0, '06:40:00')
+    UNION ALL SELECT @t402, '70000000-0000-0000-0000-000000000402', 'PENDING_INSPECTION', @d0,
+           TIMESTAMP(@d0, '07:05:00'), NULL, TIMESTAMP(@d0, '06:50:00')
+    UNION ALL SELECT @t403, '70000000-0000-0000-0000-000000000403', 'COMPLETED', @d0,
+           TIMESTAMP(@d0, '06:45:00'), TIMESTAMP(@d0, '08:00:00'), TIMESTAMP(@d0, '06:30:00')
+    UNION ALL SELECT @t404, '70000000-0000-0000-0000-000000000404', 'COMPLETED', @d0,
+           TIMESTAMP(@d0, '06:50:00'), TIMESTAMP(@d0, '08:05:00'), TIMESTAMP(@d0, '06:35:00')
+    UNION ALL SELECT @t405, '70000000-0000-0000-0000-000000000405', 'IN_PROGRESS', @d_1,
+           TIMESTAMP(@d_1, '12:30:00'), NULL, TIMESTAMP(@d_1, '11:00:00')
 ) AS t
 WHERE EXISTS (SELECT 1 FROM rooms r WHERE r.id = t.room_id)
-  AND (t.staff_id IS NULL OR EXISTS (SELECT 1 FROM users u WHERE u.id = t.staff_id))
 ON DUPLICATE KEY UPDATE housekeeping_tasks.id = housekeeping_tasks.id;
+
+-- Người dọn của từng việc — phòng 305 có hai người cùng dọn. Chỉ gắn vào việc ĐÃ giao: việc chờ
+-- giao thì không có ai (service giữ bất biến này).
+INSERT INTO housekeeping_task_assignees (task_id, staff_id)
+SELECT a.task_id, a.staff_id
+FROM (
+    SELECT @t305 AS task_id, @hoa AS staff_id
+    UNION ALL SELECT @t305, @nam
+    UNION ALL SELECT @t306, @nam
+    UNION ALL SELECT @t401, @hoa
+    UNION ALL SELECT @t402, @nam
+    UNION ALL SELECT @t403, @nam
+    UNION ALL SELECT @t404, @hoa
+    UNION ALL SELECT @t405, @dondep
+) AS a
+WHERE EXISTS (SELECT 1 FROM housekeeping_tasks t WHERE t.id = a.task_id AND t.status <> 'UNASSIGNED')
+  AND EXISTS (SELECT 1 FROM users u WHERE u.id = a.staff_id)
+ON DUPLICATE KEY UPDATE housekeeping_task_assignees.task_id = housekeeping_task_assignees.task_id;
 
 -- Việc dọn lại của phòng 404 — chèn RIÊNG, sau việc gốc, vì trỏ về việc gốc (BR-HK-12).
 INSERT INTO housekeeping_tasks (id, tenant_id, location_id, room_id, task_type, status,

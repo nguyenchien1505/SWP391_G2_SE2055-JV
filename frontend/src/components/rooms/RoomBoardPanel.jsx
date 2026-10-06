@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import { fetchRoomHistory } from '../../api/rooms';
-import { formatDate, formatDateTime, formatShortDateTime } from '../../pages/rooms/format';
+import { formatDate, formatDateTime, formatShortDateTime, todayIso } from '../../pages/rooms/format';
 import { roomActionsFor } from '../../pages/rooms/roomActions';
 import { isOverdue, whyNoRoomActions } from '../../pages/rooms/roomBoard';
 import {
@@ -10,6 +10,7 @@ import {
   roomStatusMeta,
   taskSourceLabel,
   taskTypeLabel,
+  teamNames,
   unassignedReasonLabel,
 } from '../../pages/rooms/roomLabels';
 import RoomStatusBadge from './RoomStatusBadge';
@@ -39,7 +40,6 @@ export default function RoomBoardPanel({
   role,
   locationName,
   tasks = [],
-  staffNames = {},
   historyKey = 0,
   busy = false,
   autoFocusClose = false,
@@ -48,14 +48,11 @@ export default function RoomBoardPanel({
   onAssign,
   onInspect,
   onUnassign,
-  onCancel,
-  onCreateStayover,
   onEditNote,
   onShowPreviousInspection,
 }) {
   const meta = roomStatusMeta(room.status);
   const actions = roomActionsFor(room);
-  const hasStayover = tasks.some((task) => task.taskType === 'STAYOVER');
 
   return (
     <aside className="board-panel" aria-labelledby="board-panel-title">
@@ -118,21 +115,12 @@ export default function RoomBoardPanel({
               <BoardTask
                 key={task.id}
                 task={task}
-                staffName={staffNames[task.assignedStaffId]}
                 onAssign={onAssign}
                 onInspect={onInspect}
                 onUnassign={onUnassign}
-                onCancel={onCancel}
                 onShowPreviousInspection={onShowPreviousInspection}
               />
             ))}
-            {/* BR-HK-05: khách đang ở cần dọn hằng ngày thì Quản lý tạo tay; tối đa 1 việc mở mỗi
-                loại (BR-HK-11) nên đã có thì ẩn nút. */}
-            {room.status === 'OCCUPIED' && !hasStayover && (
-              <button type="button" className="btn btn--ghost btn--block" onClick={() => onCreateStayover(room)}>
-                + Tạo việc dọn hằng ngày
-              </button>
-            )}
           </section>
         )}
 
@@ -186,8 +174,11 @@ export default function RoomBoardPanel({
   );
 }
 
-/** Một việc dọn đang mở của phòng, kèm đúng nút mà trạng thái của việc đó cho phép (F5, F6). */
-function BoardTask({ task, staffName, onAssign, onInspect, onUnassign, onCancel, onShowPreviousInspection }) {
+/**
+ * Một việc dọn đang mở của phòng, kèm đúng nút mà trạng thái của việc đó cho phép (F5, F6). Việc đang
+ * làm HÔM NAY thêm được người dọn cùng (`onAssign` mở hộp thoại ở chế độ thêm người).
+ */
+function BoardTask({ task, onAssign, onInspect, onUnassign, onShowPreviousInspection }) {
   return (
     <div className="board-task">
       <div className="board-task__head">
@@ -196,9 +187,9 @@ function BoardTask({ task, staffName, onAssign, onInspect, onUnassign, onCancel,
       </div>
       <p className="board-task__meta">{taskSourceLabel(task.createdSource)}</p>
 
-      {task.assignedStaffId && (
+      {(task.assignees?.length ?? 0) > 0 && (
         <p className="board-task__meta">
-          Người làm: <b>{staffName ?? 'Nhân viên đã nghỉ'}</b>
+          Người dọn: <b>{teamNames(task)}</b>
           {task.assignedDate ? ` · ngày ${formatDate(task.assignedDate)}` : ''}
         </p>
       )}
@@ -232,16 +223,14 @@ function BoardTask({ task, staffName, onAssign, onInspect, onUnassign, onCancel,
             Kiểm tra phòng
           </button>
         )}
+        {task.status === 'IN_PROGRESS' && task.assignedDate === todayIso() && (
+          <button type="button" className="btn btn--ghost" onClick={() => onAssign(task)}>
+            Thêm người
+          </button>
+        )}
         {task.status === 'IN_PROGRESS' && (
           <button type="button" className="btn btn--ghost" onClick={() => onUnassign(task)}>
             Gỡ người
-          </button>
-        )}
-        {/* Hủy tay chỉ dành cho việc dọn HẰNG NGÀY: hủy việc dọn sau trả phòng sẽ để phòng «Chờ dọn»
-            mà không còn việc nào. Backend cũng chặn, ẩn nút chỉ để khỏi bấm nhầm — giống S-11. */}
-        {task.taskType === 'STAYOVER' && (
-          <button type="button" className="btn btn--danger" onClick={() => onCancel(task)}>
-            Hủy việc
           </button>
         )}
       </div>

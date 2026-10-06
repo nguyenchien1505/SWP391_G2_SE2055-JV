@@ -24,6 +24,11 @@ public class ShiftResponse {
     private boolean          overnight;
     private BigDecimal       durationHours;
     private UUID             sourceTemplateId;
+    /**
+     * Tên mẫu ca của ca này (null với ca tự nhập giờ) — trả kèm để nhân viên, vốn không đọc được danh
+     * mục mẫu ca, vẫn hiện được "Ca sáng" trên lịch của mình.
+     */
+    private String           sourceTemplateName;
     private LocalDateTime    checkInAt;
     private LocalDateTime    checkOutAt;
     private UnassignedReason unassignedReason;
@@ -31,6 +36,11 @@ public class ShiftResponse {
     private LocalDateTime    createdAt;
 
     public static ShiftResponse fromEntity(Shift shift) {
+        return fromEntity(shift, null);
+    }
+
+    /** @param templateName tên mẫu của {@code shift.sourceTemplateId}; null nếu ca không theo mẫu */
+    public static ShiftResponse fromEntity(Shift shift, String templateName) {
         return ShiftResponse.builder()
             .id(shift.getId())
             .locationId(shift.getLocationId())
@@ -41,6 +51,7 @@ public class ShiftResponse {
             .overnight(shift.isOvernight())
             .durationHours(shift.getDurationHours())
             .sourceTemplateId(shift.getSourceTemplateId())
+            .sourceTemplateName(templateName)
             .checkInAt(shift.getCheckInAt())
             .checkOutAt(shift.getCheckOutAt())
             .unassignedReason(shift.getUnassignedReason())

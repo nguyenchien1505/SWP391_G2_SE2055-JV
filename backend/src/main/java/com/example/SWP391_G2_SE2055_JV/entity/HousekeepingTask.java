@@ -13,17 +13,20 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Task dọn phòng — BR-HK-01..12, DM-04, DM-05.
  *
- * <p>DM-05: hai loại CHECKOUT và STAYOVER dùng CHUNG một bảng, phân biệt bằng
- * {@code taskType}. DM-04: task gắn với {@code assignedStaffId} + {@code assignedDate},
- * KHÔNG gắn trực tiếp vào Shift — nhân viên chỉ cần có ca trong ngày đó (BR-HK-03).
+ * <p>Chỉ còn việc dọn sau khi khách trả phòng (CHECKOUT) — việc dọn hằng ngày đã bỏ (V4).
+ * Task gắn với một NHÓM người dọn ({@code assigneeIds}) + {@code assignedDate}, KHÔNG gắn trực
+ * tiếp vào Shift — mỗi người chỉ cần có ca trong ngày đó (BR-HK-03). Một phòng nhiều người dọn
+ * thay cho "một task một người" của DM-04 (chốt 05/10/2026).
  *
- * <p>BR-HK-11 (mỗi phòng tối đa 1 task đang mở cho mỗi loại) được ép ở tầng DB bằng
- * cột sinh {@code open_task_key}; cột này CỐ Ý không map vào entity.
+ * <p>BR-HK-11 (mỗi phòng tối đa 1 task đang mở) được ép ở tầng DB bằng cột sinh
+ * {@code open_task_key}; cột này CỐ Ý không map vào entity.
  */
 @Entity
 @Table(name = "housekeeping_tasks")
@@ -47,21 +50,31 @@ public class HousekeepingTask extends AuditableEntity {
     @Column(name = "room_id", length = 36, nullable = false)
     private UUID roomId;
 
-    /** CHECKOUT | STAYOVER — BR-HK-05. */
+    /** Chỉ còn CHECKOUT (V4). */
     @Enumerated(EnumType.STRING)
     @Column(name = "task_type", length = 20, nullable = false)
-    private HousekeepingTaskType taskType;
+    @lombok.Builder.Default
+    private HousekeepingTaskType taskType = HousekeepingTaskType.CHECKOUT;
 
-    /** BR-HK-06: STAYOVER bỏ qua PENDING_INSPECTION. */
+    /** BR-HK-06. */
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 30, nullable = false)
     private HousekeepingTaskStatus status;
 
-    /** NULL khi task đang UNASSIGNED — BR-HK-07. */
-    @Column(name = "assigned_staff_id", length = 36)
-    private UUID assignedStaffId;
+    /**
+     * Nhóm người dọn — rỗng khi task đang UNASSIGNED (BR-HK-07), có từ một người trở lên khi đang
+     * làm. Bất kỳ ai trong nhóm bấm "Hoàn thành" là xong cho cả nhóm.
+     *
+     * <p>LAZY + BatchSize như {@code User.permissions}: danh sách việc dọn nạp người theo lô.
+     */
+    @ElementCollection
+    @CollectionTable(name = "housekeeping_task_assignees", joinColumns = @JoinColumn(name = "task_id"))
+    @Column(name = "staff_id", length = 36, nullable = false)
+    @org.hibernate.annotations.BatchSize(size = 100)
+    @lombok.Builder.Default
+    private Set<UUID> assigneeIds = new LinkedHashSet<>();
 
-    /** Nhân viên được phân công phải có ca làm trong đúng ngày này — BR-HK-03. */
+    /** Cả nhóm dọn trong đúng ngày này; MỖI người phải có ca ngày đó — BR-HK-03. */
     @Column(name = "assigned_date")
     private LocalDate assignedDate;
 
@@ -74,7 +87,7 @@ public class HousekeepingTask extends AuditableEntity {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
-    /** CHECKOUT_AUTO | MANAGER_STAYOVER | INSPECTION_FAILED — BR-HK-12. */
+    /** CHECKOUT_AUTO | INSPECTION_FAILED — BR-HK-12. */
     @Enumerated(EnumType.STRING)
     @Column(name = "created_source", length = 30, nullable = false)
     private TaskCreatedSource createdSource;
@@ -88,7 +101,7 @@ public class HousekeepingTask extends AuditableEntity {
     @Column(name = "unassigned_reason", length = 30)
     private UnassignedReason unassignedReason;
 
-    /** Lý do HỦY task — BR-HK-09 (phòng Không khả dụng), BR-HK-10 (khách check-out). */
+    /** Lý do HỦY task — BR-HK-09 (phòng Không khả dụng). */
     @Enumerated(EnumType.STRING)
     @Column(name = "cancel_reason", length = 30)
     private TaskCancelReason cancelReason;
@@ -102,6 +115,10 @@ public class HousekeepingTask extends AuditableEntity {
     }
 
     public boolean isAssigned() {
-        return assignedStaffId != null;
+        return !assigneeIds.isEmpty();
+    }
+
+    public boolean isAssignedTo(UUID staffId) {
+        return assigneeIds.contains(staffId);
     }
 }

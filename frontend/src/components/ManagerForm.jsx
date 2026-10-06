@@ -288,6 +288,9 @@ export default function ManagerForm({
             value={values.startWorkDate}
             onChange={(e) => setField('startWorkDate', e.target.value)}
           />
+          <span className="field__help">
+            Khách sạn được giao chuyển sang “Đang hoạt động” đúng vào ngày này.
+          </span>
         </label>
       </div>
 

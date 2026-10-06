@@ -11,7 +11,7 @@ import {
   hhmm,
   timeRange,
 } from '../../pages/scheduling/scheduleFormat';
-import { personOptionLabel } from '../../pages/scheduling/schedulePeople';
+import { hasReceptionist, isReceptionist, personOptionLabel } from '../../pages/scheduling/schedulePeople';
 import { BlockedAlert, DateHelp, ShiftTimeFields, resolveHours, useCloseOnEscape } from './shiftFields';
 
 /**
@@ -21,24 +21,44 @@ import { BlockedAlert, DateHelp, ShiftTimeFields, resolveHours, useCloseOnEscape
  * giờ / xóa) — gộp vào một nút "Lưu" thì một bước bị chặn giữa chừng sẽ để lại ca đã đổi một nửa.
  * Mọi kiểm tra quy định chạy ở backend lúc lưu; bị chặn thì hộp thoại hiện nguyên văn lý do.
  *
- * @param people        người giao ca được (Manager và nhân viên chưa nghỉ việc của khách sạn)
+ * Quy tắc mỗi ca theo mẫu có ít nhất 1 lễ tân (chốt 05/10/2026) được nhắc TRƯỚC khi bấm: người này là
+ * lễ tân duy nhất của một ca còn người khác thì báo trước là không gỡ / xóa / dời được; ca chưa có lễ
+ * tân thì chỉ giao được chỗ trống cho một lễ tân.
+ *
+ * @param shifts        mọi ca của tuần đang xem — để biết ai đang cùng ca
+ * @param people        người giao ca được (nhân viên chưa nghỉ việc của khách sạn)
  * @param peopleById    tra tên cả người đã nghỉ việc / đã chuyển đi cho ca cũ
  * @param templates     mẫu ca đang dùng — chỉ mẫu này được chọn (BR-SCH-22)
  * @param templatesById tra tên cả mẫu đã tắt cho ca cũ
  * @param onSaved       nhận câu thông báo sau khi lưu xong; trang tự đóng hộp thoại và tải lại lịch
  */
-export default function EditShiftDialog({ shift, people, peopleById, templates, templatesById, onClose, onSaved }) {
+export default function EditShiftDialog({
+  shift, shifts, people, peopleById, templates, templatesById, onClose, onSaved,
+}) {
   const checkedIn = Boolean(shift.checkInAt);
   const assignee = shift.staffId ? peopleById.get(shift.staffId) : null;
   const template = shift.sourceTemplateId ? templatesById.get(shift.sourceTemplateId) : null;
+
+  // Những người KHÁC đang cùng ca theo mẫu này hôm đó (một ca = một mẫu trong một ngày).
+  const crewmates = template
+    ? shifts
+      .filter((s) => s.id !== shift.id && s.staffId && s.shiftDate === shift.shiftDate
+        && s.sourceTemplateId === shift.sourceTemplateId)
+      .map((s) => peopleById.get(s.staffId))
+    : [];
+  const onlyReceptionist = Boolean(template) && isReceptionist(assignee) && crewmates.length > 0
+    && !hasReceptionist(crewmates);
+  const crewLacksReception = Boolean(template) && !hasReceptionist(crewmates);
   const currentStart = hhmm(shift.startTime);
   const currentEnd = hhmm(shift.endTime);
 
   const [newStaffId, setNewStaffId] = useState('');
   const [date, setDate] = useState(shift.shiftDate);
+  // Mẫu đã tắt (BR-SCH-22) hay không còn thuộc bộ mẫu chi nhánh đang dùng thì không chọn lại được.
+  const usable = Boolean(template) && templates.some((t) => t.id === template.id);
   const [time, setTime] = useState(() =>
-    // Mẫu đã tắt thì không chọn lại được (BR-SCH-22): mở sẵn ô giờ tự do với giờ hiện tại.
-    template?.active
+    // Mẫu không chọn lại được thì mở sẵn ô giờ tự do với giờ hiện tại.
+    usable
       ? { mode: 'template', templateId: template.id, start: currentStart, end: currentEnd }
       : { mode: 'free', templateId: templates[0]?.id ?? '', start: currentStart, end: currentEnd },
   );
@@ -65,6 +85,9 @@ export default function EditShiftDialog({ shift, people, peopleById, templates, 
   const changes = changedFields();
   const hours = resolveHours(time, templates);
   const canUpdate = Boolean(date && hours) && Object.keys(changes).length > 0;
+  // Giao chỗ trống của ca theo mẫu chưa có lễ tân: người được giao phải là lễ tân.
+  const newcomer = newStaffId ? peopleById.get(newStaffId) : null;
+  const assignNeedsReceptionist = crewLacksReception && Boolean(newcomer) && !isReceptionist(newcomer);
 
   async function run(action, call, successText) {
     setBusy(action);
@@ -89,8 +112,8 @@ export default function EditShiftDialog({ shift, people, peopleById, templates, 
           <div>
             <h2 id="shift-dialog-title">{formatLongDate(shift.shiftDate)}</h2>
             <p className="muted">
-              {template ? template.name : 'Ca tự do'}
-              {template && !template.active ? ' (mẫu đã tắt)' : ''}
+              {template ? template.name : shift.sourceTemplateId ? 'Mẫu ca khác' : 'Ca tự do'}
+              {template && !usable ? (template.active ? ' (không thuộc bộ mẫu đang dùng)' : ' (mẫu đã tắt)') : ''}
             </p>
           </div>
         </header>
@@ -118,6 +141,14 @@ export default function EditShiftDialog({ shift, people, peopleById, templates, 
           )}
         </div>
 
+        {onlyReceptionist && !checkedIn && (
+          <div className="alert alert--warn" role="status">
+            <b className="alert__title">{assignee.fullName} là lễ tân duy nhất của ca này</b>
+            Mỗi ca theo mẫu đã có người phải có ít nhất 1 lễ tân. Giao thêm một lễ tân khác cho ca này trước,
+            rồi mới gỡ, xóa hoặc dời ca của {assignee.fullName}.
+          </div>
+        )}
+
         {checkedIn ? (
           <div className="alert alert--info">
             Ca đã check-in nên không đổi giờ, đổi người hay xóa được nữa — giờ chấm công nằm ngay trên ca này.
@@ -142,28 +173,35 @@ export default function EditShiftDialog({ shift, people, peopleById, templates, 
                   </button>
                 </div>
               ) : (
-                <div className="dialog-inline">
-                  <label className="field" htmlFor="shift-assignee">
-                    <span className="field__label">Giao cho</span>
-                    <select id="shift-assignee" value={newStaffId} onChange={(e) => setNewStaffId(e.target.value)}>
-                      <option value="">— Chọn nhân viên —</option>
-                      {people.map((person) => (
-                        <option key={person.id} value={person.id}>
-                          {personOptionLabel(person)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={!newStaffId || Boolean(busy)}
-                    onClick={() => run('assign', () => assignShift(shift.id, newStaffId),
-                      `Đã giao ${label} cho ${peopleById.get(newStaffId)?.fullName ?? 'nhân viên'}.`)}
-                  >
-                    {busy === 'assign' ? 'Đang kiểm tra…' : 'Giao ca'}
-                  </button>
-                </div>
+                <>
+                  <div className="dialog-inline">
+                    <label className="field" htmlFor="shift-assignee">
+                      <span className="field__label">Giao cho</span>
+                      <select id="shift-assignee" value={newStaffId} onChange={(e) => setNewStaffId(e.target.value)}>
+                        <option value="">— Chọn nhân viên —</option>
+                        {people.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {personOptionLabel(person)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn--primary"
+                      disabled={!newStaffId || assignNeedsReceptionist || Boolean(busy)}
+                      onClick={() => run('assign', () => assignShift(shift.id, newStaffId),
+                        `Đã giao ${label} cho ${peopleById.get(newStaffId)?.fullName ?? 'nhân viên'}.`)}
+                    >
+                      {busy === 'assign' ? 'Đang kiểm tra…' : 'Giao ca'}
+                    </button>
+                  </div>
+                  {crewLacksReception && (
+                    <p className={`field__help ${assignNeedsReceptionist ? 'is-error' : ''}`}>
+                      Ca này chưa có lễ tân — chỗ trống chỉ giao được cho người có quyền Lễ tân.
+                    </p>
+                  )}
+                </>
               )}
             </section>
 

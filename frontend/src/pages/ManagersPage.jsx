@@ -143,12 +143,13 @@ export default function ManagersPage() {
   );
   const locationName = useCallback((id) => locationById[id]?.name ?? '—', [locationById]);
 
-  // DM-13: khách sạn "Chưa vận hành" nghĩa là chưa có Manager — chỉ những khách sạn này mới
-  // gán được Manager mới (mỗi khách sạn một Manager).
-  const freeLocations = useMemo(
-    () => locations.filter((loc) => loc.status === 'NOT_OPERATIONAL'),
-    [locations],
-  );
+  // Mỗi khách sạn một Manager: chỉ khách sạn CHƯA có Manager (tính cả người đang tạm khóa) mới gán
+  // được. Không suy từ trạng thái "Chưa vận hành" — khách sạn đã giao cho Manager bắt đầu làm sau hôm
+  // nay vẫn "Chưa vận hành" tới ngày đó (chốt 06/10/2026).
+  const freeLocations = useMemo(() => {
+    const taken = new Set(managers.filter((m) => m.locationId && m.status !== 'TERMINATED').map((m) => m.locationId));
+    return locations.filter((loc) => !taken.has(loc.id));
+  }, [locations, managers]);
 
   // Người nhận bàn giao phải đăng nhập được ngay — bỏ qua Quản lý dự bị đang bị khóa.
   const activeReserves = useMemo(

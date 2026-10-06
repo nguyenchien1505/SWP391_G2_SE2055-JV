@@ -1,18 +1,14 @@
 package com.example.SWP391_G2_SE2055_JV.enums;
 
 /**
- * Loại task dọn phòng — BR-HK-05, DM-05.
+ * Loại task dọn phòng — DM-05.
  *
- * <p>Hai loại dùng chung 1 bảng, phân biệt bằng trường này.
+ * <p>Chỉ còn một loại: việc dọn hằng ngày (STAYOVER) đã bỏ từ V4 (chốt 05/10/2026, thay BR-HK-05).
+ * Giữ enum và cột {@code task_type} vì ràng buộc BR-HK-11 ở DB (cột sinh {@code open_task_key})
+ * dựa vào nó, và để còn chỗ cho loại việc mới sau này.
  */
 public enum HousekeepingTaskType {
 
-    /** Dọn sau khi khách check-out. Đi đủ 4 bước, có bước Manager kiểm tra. */
-    CHECKOUT,
-
-    /**
-     * Dọn hằng ngày khi phòng vẫn Đang sử dụng. Manager tạo thủ công, phòng giữ
-     * nguyên trạng thái, BỎ QUA bước Chờ kiểm tra — BR-HK-05, BR-HK-06.
-     */
-    STAYOVER
+    /** Dọn sau khi khách check-out — hệ thống tự sinh, đi đủ 4 bước có Manager kiểm tra. */
+    CHECKOUT
 }

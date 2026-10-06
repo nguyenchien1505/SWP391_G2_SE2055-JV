@@ -1,11 +1,9 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
-import com.example.SWP391_G2_SE2055_JV.dto.CreateStayoverTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
-import com.example.SWP391_G2_SE2055_JV.dto.StayoverBatchResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.Department;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
@@ -25,7 +23,6 @@ import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
-import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
@@ -51,6 +48,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,8 +60,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Đây là lưới an toàn cho phần tích hợp giai đoạn 2: unit test chỉ kiểm được "có gọi
  * RoomStatusService không", còn những thứ chỉ vỡ khi chạm DB thật thì phải ở đây —
- * {@code uk_hk_open_task_per_room_type} (không sinh task trùng), {@code ck_hk_stayover_no_inspection},
- * và việc phòng với task luôn khớp nhau sau mỗi bước.
+ * {@code uk_hk_open_task_per_room_type} (không sinh task trùng), bảng nhóm dọn
+ * {@code housekeeping_task_assignees} cùng các truy vấn {@code member of} trên nó (V4), và việc phòng
+ * với task luôn khớp nhau sau mỗi bước.
  *
  * <p>Mỗi test chạy trong một transaction và tự rollback. {@link #flushAndClear()} ép Hibernate gửi
  * SQL xuống DB rồi đọc lại, để ràng buộc DB được kiểm thật chứ không chỉ trong bộ nhớ.
@@ -84,8 +83,8 @@ class HousekeepingFlowTest {
     private UUID hanoi;
     private User manager;
     private User cleaner;
+    private User secondCleaner;
     private Room dirty201;
-    private Room occupied102;
     private HousekeepingTask checkoutTaskOf201;
     private LocalDate today;
     private Shift cleanerShiftToday;
@@ -111,13 +110,15 @@ class HousekeepingFlowTest {
             .positionId(cleanerPosition).permissions(EnumSet.of(StaffPermission.HOUSEKEEPING))
             .email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
             .fullName("Phạm Dọn Dẹp").phone("0900000001").build());
+        secondCleaner = persist(User.builder().tenantId(tenantId).locationId(hanoi).role(Role.STAFF)
+            .positionId(cleanerPosition).permissions(EnumSet.of(StaffPermission.HOUSEKEEPING))
+            .email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
+            .fullName("Nguyễn Thị Hoa").phone("0900000002").build());
         // BR-HK-03: có ca trong ngày mới nhận được task.
-        cleanerShiftToday = persist(Shift.builder().tenantId(tenantId).locationId(hanoi).staffId(cleaner.getId())
-            .shiftDate(today).startTime(LocalTime.of(8, 0)).endTime(LocalTime.of(16, 0))
-            .durationHours(new BigDecimal("8.00")).build());
+        cleanerShiftToday = persistShiftToday(cleaner);
+        persistShiftToday(secondCleaner);
 
         dirty201 = persistRoom(roomTypeId, "201", RoomStatus.DIRTY);
-        occupied102 = persistRoom(roomTypeId, "102", RoomStatus.OCCUPIED);
         checkoutTaskOf201 = persist(HousekeepingTask.builder()
             .tenantId(tenantId).locationId(hanoi).roomId(dirty201.getId())
             .taskType(HousekeepingTaskType.CHECKOUT).status(HousekeepingTaskStatus.UNASSIGNED)
@@ -142,7 +143,7 @@ class HousekeepingFlowTest {
 
         HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
         assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.IN_PROGRESS);
-        assertThat(task.getAssignedStaffId()).isEqualTo(cleaner.getId());
+        assertThat(task.getAssigneeIds()).containsExactly(cleaner.getId());
         assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.CLEANING);
 
         // BR-ROOM-09: bước này do hệ thống gây ra, không phải Manager tự đổi trạng thái phòng.
@@ -157,12 +158,12 @@ class HousekeepingFlowTest {
     @Test
     void shouldRevertRoomAndKeepSingleOpenTaskWhenManagerUnassigns() {
         housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
-        housekeepingService.unassignTask(checkoutTaskOf201.getId());
+        housekeepingService.unassignTask(checkoutTaskOf201.getId(), null);
         flushAndClear();
 
         HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
         assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
-        assertThat(task.getAssignedStaffId()).isNull();
+        assertThat(task.getAssigneeIds()).isEmpty();
         assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.DIRTY);
         assertThat(taskRepository.findByRoomIdAndStatusIn(dirty201.getId(), HousekeepingTaskStatus.OPEN_STATUSES))
             .hasSize(1);
@@ -183,23 +184,92 @@ class HousekeepingFlowTest {
         assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.INSPECTION);
     }
 
-    /** BR-HK-05 — dọn hằng ngày đi trọn vòng mà KHÔNG đụng tới trạng thái phòng. */
-    @Test
-    void shouldRunStayoverCycleWithoutTouchingRoomStatus() {
-        CreateStayoverTaskRequest request = new CreateStayoverTaskRequest();
-        request.setRoomId(occupied102.getId());
-        HousekeepingTaskResponse created = housekeepingService.createStayoverTask(request);
+    // ── Một phòng nhiều người dọn — V4 ──────────────────────────────────────
 
-        housekeepingService.assignTask(created.getId(), assignRequest(today));
-        loginAsCleaner();
-        housekeepingService.completeTask(created.getId());
+    /** Giao hai người một lần: cả nhóm lưu xuống bảng housekeeping_task_assignees, phòng chuyển MỘT lần. */
+    @Test
+    void shouldPersistWholeTeamWhenAssigningTwoCleaners() {
+        housekeepingService.assignTask(checkoutTaskOf201.getId(),
+            assignRequest(today, cleaner.getId(), secondCleaner.getId()));
         flushAndClear();
 
-        HousekeepingTask task = em.find(HousekeepingTask.class, created.getId());
-        assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.COMPLETED);
-        assertThat(task.getCompletedAt()).isNotNull();
-        assertThat(em.find(Room.class, occupied102.getId()).getStatus()).isEqualTo(RoomStatus.OCCUPIED);
-        assertThat(historyOf(occupied102)).isEmpty();
+        HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
+        assertThat(task.getAssigneeIds()).containsExactlyInAnyOrder(cleaner.getId(), secondCleaner.getId());
+        assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.CLEANING);
+        assertThat(historyOf(dirty201)).hasSize(1);
+    }
+
+    /** Thêm người giữa chừng rồi gỡ một người: việc vẫn chạy, phòng vẫn «Đang dọn». */
+    @Test
+    void shouldKeepRoomCleaningWhileTeamChanges() {
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today, secondCleaner.getId()));
+        flushAndClear();
+        housekeepingService.unassignTask(checkoutTaskOf201.getId(), cleaner.getId());
+        flushAndClear();
+
+        HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
+        assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.IN_PROGRESS);
+        assertThat(task.getAssigneeIds()).containsExactly(secondCleaner.getId());
+        assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.CLEANING);
+    }
+
+    /** Một người bấm là xong cho cả nhóm (chốt 05/10/2026). */
+    @Test
+    void shouldLetEitherCleanerCompleteForWholeTeam() {
+        housekeepingService.assignTask(checkoutTaskOf201.getId(),
+            assignRequest(today, cleaner.getId(), secondCleaner.getId()));
+        loginAs(secondCleaner);
+
+        housekeepingService.completeTask(checkoutTaskOf201.getId());
+        flushAndClear();
+
+        HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
+        assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.PENDING_INSPECTION);
+        assertThat(task.getAssigneeIds()).hasSize(2);
+        assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.INSPECTION);
+    }
+
+    /** BR-PERM-05 trên DB thật: lọc "việc có mình trong nhóm" là truy vấn member of trên bảng nhóm. */
+    @Test
+    void shouldListTaskOnlyToCleanersInItsTeam() {
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today, secondCleaner.getId()));
+        flushAndClear();
+
+        assertThat(housekeepingService.getTasks(null, null, null, null, null, PageRequest.of(0, 20)).getContent())
+            .singleElement()
+            .satisfies(task -> assertThat(task.getAssignees())
+                .extracting(HousekeepingTaskResponse.Assignee::fullName)
+                .containsExactly("Nguyễn Thị Hoa"));
+
+        loginAs(cleaner);
+        assertThat(housekeepingService.getTasks(null, null, null, null, null, PageRequest.of(0, 20)).getContent()).isEmpty();
+
+        loginAs(secondCleaner);
+        assertThat(housekeepingService.getTasks(null, null, null, null, null, PageRequest.of(0, 20)).getContent())
+            .singleElement()
+            .satisfies(task -> assertThat(task.getRoomTypeName()).isEqualTo("Đôi"));
+    }
+
+    /** Đếm việc đang làm và gỡ việc tương lai đi qua bảng nhóm (BR-HK-07, BR-SCH-17). */
+    @Test
+    void shouldCountAndReleaseTasksThroughTeamTable() {
+        housekeepingService.assignTask(checkoutTaskOf201.getId(),
+            assignRequest(today, cleaner.getId(), secondCleaner.getId()));
+        flushAndClear();
+
+        assertThat(housekeepingService.countInProgressTasksOf(cleaner.getId())).isEqualTo(1);
+        // Mốc "hôm nay" lùi một ngày để việc hôm nay thành việc tương lai.
+        assertThat(housekeepingService.releaseFutureTasks(cleaner.getId(), UnassignedReason.TERMINATION,
+            today.minusDays(1))).isEqualTo(1);
+        flushAndClear();
+
+        HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
+        assertThat(task.getAssigneeIds()).containsExactly(secondCleaner.getId());
+        assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.IN_PROGRESS);
+        // Việc của chính hôm nay thì giữ nguyên.
+        assertThat(housekeepingService.releaseFutureTasks(secondCleaner.getId(), UnassignedReason.TERMINATION,
+            today)).isZero();
     }
 
     /**
@@ -217,7 +287,7 @@ class HousekeepingFlowTest {
 
         // Khóa phòng đã hủy task cũ (BR-HK-09) — và lệnh phân công không để lại dấu vết nào.
         HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
-        assertThat(task.getAssignedStaffId()).isNull();
+        assertThat(task.getAssigneeIds()).isEmpty();
         assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.UNAVAILABLE);
     }
 
@@ -235,7 +305,7 @@ class HousekeepingFlowTest {
     void shouldListOnlyStaffWithShiftToday() {
         assertThat(housekeepingService.getAssignableStaff(today))
             .extracting(staff -> staff.getFullName())
-            .containsExactly("Phạm Dọn Dẹp");
+            .containsExactlyInAnyOrder("Phạm Dọn Dẹp", "Nguyễn Thị Hoa");
         assertThat(housekeepingService.getAssignableStaff(today.plusDays(1))).isEmpty();
     }
 
@@ -326,29 +396,22 @@ class HousekeepingFlowTest {
             .hasMessageContaining("ck_inspection_fail_reason");
     }
 
-    /** RM-20 / Q13 — hủy tay chỉ dành cho việc dọn hằng ngày, và không đụng tới phòng. */
+    /** Khóa phòng đang dọn: việc bị HỦY kèm lý do (BR-HK-09), nhóm dọn vẫn giữ để tra lịch sử. */
     @Test
-    void shouldCancelStayoverManuallyButRejectCheckout() {
-        CreateStayoverTaskRequest request = new CreateStayoverTaskRequest();
-        request.setRoomId(occupied102.getId());
-        HousekeepingTaskResponse stayover = housekeepingService.createStayoverTask(request);
-        housekeepingService.assignTask(stayover.getId(), assignRequest(today));
-
-        housekeepingService.cancelTask(stayover.getId());
+    void shouldCancelTaskInProgressWhenRoomIsLocked() {
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
         flushAndClear();
 
-        HousekeepingTask cancelled = em.find(HousekeepingTask.class, stayover.getId());
-        assertThat(cancelled.getStatus()).isEqualTo(HousekeepingTaskStatus.CANCELLED);
-        assertThat(cancelled.getCancelReason()).isEqualTo(TaskCancelReason.MANAGER_MANUAL);
-        assertThat(em.find(Room.class, occupied102.getId()).getStatus()).isEqualTo(RoomStatus.OCCUPIED);
-        assertThat(historyOf(occupied102)).isEmpty();
+        roomService.changeStatus(dirty201.getId(), lockRequest());
+        flushAndClear();
 
-        assertThatThrownBy(() -> housekeepingService.cancelTask(checkoutTaskOf201.getId()))
-            .isInstanceOf(BusinessException.class)
-            .hasMessageContaining("Không khả dụng");
+        HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
+        assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.CANCELLED);
+        assertThat(task.getCancelReason()).isNotNull();
+        assertThat(task.getAssigneeIds()).containsExactly(cleaner.getId());
     }
 
-    // ── Lịch dọn ↔ lịch làm việc — BR-HK-03, BR-HK-05 ───────────────────────
+    // ── Lịch dọn ↔ lịch làm việc — BR-HK-03 ─────────────────────────────────
 
     /**
      * Gỡ / xóa ca hôm nay bị chặn khi người đó còn việc dọn hôm nay; gỡ người khỏi việc dọn
@@ -366,27 +429,11 @@ class HousekeepingFlowTest {
         assertThatThrownBy(() -> shiftService.deleteShift(cleanerShiftToday.getId()))
             .isInstanceOf(BusinessException.class);
 
-        housekeepingService.unassignTask(checkoutTaskOf201.getId());
+        housekeepingService.unassignTask(checkoutTaskOf201.getId(), cleaner.getId());
         shiftService.unassignStaff(cleanerShiftToday.getId(), UnassignedReason.MANAGER_MANUAL);
         flushAndClear();
 
         assertThat(em.find(Shift.class, cleanerShiftToday.getId()).getStaffId()).isNull();
-    }
-
-    /** Bấm lại lần hai không sinh trùng — vừa do service bỏ qua, vừa do uk_hk_open_task_per_room_type. */
-    @Test
-    void shouldCreateStayoverTasksForOccupiedRoomsOnlyOnce() {
-        StayoverBatchResponse first = housekeepingService.createStayoverTasksForOccupiedRooms();
-        flushAndClear();
-        StayoverBatchResponse second = housekeepingService.createStayoverTasksForOccupiedRooms();
-        flushAndClear();
-
-        assertThat(first.getCreated()).isEqualTo(1);
-        assertThat(first.getTasks()).singleElement()
-            .satisfies(task -> assertThat(task.getRoomNumber()).isEqualTo("102"));
-        assertThat(second.getCreated()).isZero();
-        assertThat(second.getSkipped()).isEqualTo(1);
-        assertThat(em.find(Room.class, occupied102.getId()).getStatus()).isEqualTo(RoomStatus.OCCUPIED);
     }
 
     // ── Tiện ích ────────────────────────────────────────────────────────────
@@ -412,12 +459,17 @@ class HousekeepingFlowTest {
     }
 
     private void loginAsCleaner() {
-        TestAuth.loginAs(cleaner.getId(), Role.STAFF, tenantId, hanoi, PositionType.HOUSEKEEPING);
+        loginAs(cleaner);
     }
 
-    private AssignTaskRequest assignRequest(LocalDate date) {
+    private void loginAs(User staff) {
+        TestAuth.loginAs(staff.getId(), Role.STAFF, tenantId, hanoi, PositionType.HOUSEKEEPING);
+    }
+
+    /** Giao cho {@code staffIds}; bỏ trống = giao cho người dọn chính của các test. */
+    private AssignTaskRequest assignRequest(LocalDate date, UUID... staffIds) {
         AssignTaskRequest request = new AssignTaskRequest();
-        request.setStaffId(cleaner.getId());
+        request.setStaffIds(staffIds.length == 0 ? List.of(cleaner.getId()) : List.of(staffIds));
         request.setAssignedDate(date);
         return request;
     }
@@ -431,6 +483,12 @@ class HousekeepingFlowTest {
 
     private java.util.List<com.example.SWP391_G2_SE2055_JV.dto.RoomStatusHistoryResponse> historyOf(Room room) {
         return roomService.getHistory(room.getId(), PageRequest.of(0, 20)).getContent();
+    }
+
+    private Shift persistShiftToday(User staff) {
+        return persist(Shift.builder().tenantId(tenantId).locationId(hanoi).staffId(staff.getId())
+            .shiftDate(today).startTime(LocalTime.of(8, 0)).endTime(LocalTime.of(16, 0))
+            .durationHours(new BigDecimal("8.00")).build());
     }
 
     private Room persistRoom(UUID roomTypeId, String number, RoomStatus status) {

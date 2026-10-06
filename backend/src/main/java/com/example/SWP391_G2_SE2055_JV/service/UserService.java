@@ -11,7 +11,6 @@ import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import com.example.SWP391_G2_SE2055_JV.entity.Subscription;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
-import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
@@ -41,6 +40,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -68,6 +68,8 @@ public class UserService {
     private final ShiftRepository    shiftRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final HousekeepingService housekeepingService;
+    // Chi nhánh "Đang vận hành" từ ngày quản lý bắt đầu làm (chốt 06/10/2026).
+    private final LocationActivationService locationActivation;
     private final ApplicationEventPublisher eventPublisher;
     private final PasswordEncoder    passwordEncoder;
 
@@ -145,11 +147,10 @@ public class UserService {
             saved.getEmail(), saved.getFullName(), tempPassword, false));
         log.info("Tạo tài khoản {} role={} tenant={}", saved.getEmail(), saved.getRole(), tenantId);
 
-        // BR-ORG-02, DM-13: Location có Manager thì mới chính thức vận hành. Manager dự bị
-        // (không có Location) chưa làm thay đổi khách sạn nào.
+        // BR-ORG-02, DM-13: Location có Manager thì mới chính thức vận hành — và chỉ từ ngày Manager
+        // bắt đầu làm (chốt 06/10/2026). Manager dự bị (không có Location) chưa làm thay đổi khách sạn nào.
         if (saved.getRole() == Role.MANAGER && location != null) {
-            location.setStatus(LocationStatus.OPERATIONAL);
-            locationRepository.save(location);
+            locationActivation.apply(location, saved);
         }
 
         return new TempPasswordResponse(UserResponse.fromEntity(saved), tempPassword);
@@ -168,6 +169,7 @@ public class UserService {
             throw new BusinessException("Không sửa được hồ sơ của nhân viên đã nghỉ việc.");
         }
 
+        LocalDate previousStart = user.getStartWorkDate();
         if (request.getFullName() != null)      user.setFullName(request.getFullName());
         if (request.getPhone() != null)         user.setPhone(request.getPhone());
         if (request.getStartWorkDate() != null) user.setStartWorkDate(request.getStartWorkDate());
@@ -208,6 +210,14 @@ public class UserService {
                     + "khách sạn phải qua luồng điều chuyển.");
             }
             assignManagerToLocation(user, getOwnedLocationWithoutManager(request.getLocationId()));
+        }
+
+        // Đổi ngày bắt đầu làm của Manager đang phụ trách khách sạn: trạng thái khách sạn đi theo ngày
+        // mới (chốt 06/10/2026) — dời ra sau hôm nay thì quay về "Chưa vận hành" tới ngày đó.
+        if (user.getRole() == Role.MANAGER && user.getLocationId() != null
+                && !Objects.equals(previousStart, user.getStartWorkDate())) {
+            locationRepository.findByIdAndTenantId(user.getLocationId(), user.getTenantId())
+                .ifPresent(location -> locationActivation.apply(location, user));
         }
 
         log.info("Cập nhật hồ sơ {}", user.getEmail());
@@ -259,8 +269,8 @@ public class UserService {
             return new TerminationResponse(UserResponse.fromEntity(user), null, null);
         }
 
-        // DM-13: khách sạn chuyển ngay sang người mới nên vẫn "Đang vận hành" — không có
-        // khoảng trống "Chưa vận hành" như trước.
+        // DM-13: khách sạn chuyển ngay sang người mới — vẫn "Đang vận hành" nếu người mới đã tới ngày
+        // bắt đầu làm; người mới bắt đầu sau hôm nay thì khách sạn "Chưa vận hành" tới đúng ngày đó.
         if (reserve != null) {
             Location location = locationRepository.findByIdAndTenantId(user.getLocationId(), user.getTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Location", "id", user.getLocationId()));
@@ -389,15 +399,17 @@ public class UserService {
         return location;
     }
 
-    /** Gán Manager dự bị vào khách sạn; khách sạn có Manager thì "Đang vận hành" (BR-ORG-02, DM-13). */
+    /**
+     * Gán Manager dự bị vào khách sạn. Khách sạn "Đang vận hành" từ ngày Manager bắt đầu làm (BR-ORG-02,
+     * DM-13, chốt 06/10/2026) — chưa tới ngày thì tác vụ định kỳ bật đúng ngày đó.
+     */
     private void assignManagerToLocation(User manager, Location location) {
         if (manager.getStatus() != UserStatus.ACTIVE) {
             throw new BusinessException("Mở khóa tài khoản trước khi gán khách sạn.");
         }
         manager.setLocationId(location.getId());
         userRepository.save(manager);
-        location.setStatus(LocationStatus.OPERATIONAL);
-        locationRepository.save(location);
+        locationActivation.apply(location, manager);
     }
 
     /**

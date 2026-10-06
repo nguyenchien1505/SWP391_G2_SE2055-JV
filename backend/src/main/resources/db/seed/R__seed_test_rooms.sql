@@ -8,8 +8,8 @@
 --
 --   Phòng  Tầng  Loại      Trạng thái      Dùng để test
 --   101    1     Standard  AVAILABLE       —
---   102    1     Standard  OCCUPIED        Tạo task STAYOVER
---   103    1     Deluxe    OCCUPIED        Tạo task STAYOVER
+--   102    1     Standard  OCCUPIED        Khách trả phòng → tự sinh task CHECKOUT
+--   103    1     Deluxe    OCCUPIED        Khách trả phòng → tự sinh task CHECKOUT
 --   201    2     Standard  DIRTY           Có sẵn task CHECKOUT chưa phân công
 --   202    2     Deluxe    DIRTY           Có sẵn task CHECKOUT chưa phân công
 --   203    2     Standard  UNAVAILABLE     —

@@ -13,7 +13,7 @@ import java.util.UUID;
 /**
  * Biên bản Manager kiểm tra phòng sau khi dọn — BR-HK-06, BR-HK-08, DM-06.
  *
- * <p>Chỉ task CHECKOUT mới đi qua bước kiểm tra; STAYOVER bỏ qua (BR-HK-06).
+ * <p>Mọi việc dọn đều đi qua bước kiểm tra này (BR-HK-06).
  *
  * <p>Kiểm tra KHÔNG đạt vẫn đưa task gốc sang COMPLETED — không có trạng thái FAILED.
  * Kết quả FAIL nằm ở đây, và {@code nextTaskId} trỏ tới task dọn lại vừa được sinh

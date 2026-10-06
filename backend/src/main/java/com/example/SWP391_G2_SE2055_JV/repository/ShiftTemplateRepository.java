@@ -4,8 +4,11 @@ import com.example.SWP391_G2_SE2055_JV.entity.ShiftTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -28,9 +31,37 @@ public interface ShiftTemplateRepository extends JpaRepository<ShiftTemplate, UU
      */
     Page<ShiftTemplate> findByTenantIdAndActiveTrue(UUID tenantId, Pageable pageable);
 
-    /** Unique theo (tenant_id, name) — trùng với ràng buộc DB. */
-    boolean existsByTenantIdAndName(UUID tenantId, String name);
+    /**
+     * Một BỘ mẫu: {@code locationId = null} là bộ mẫu chung, có giá trị là bộ mẫu riêng của chi
+     * nhánh đó (V6 — mỗi chi nhánh dùng đúng một bộ).
+     */
+    @Query("""
+        select t from ShiftTemplate t
+        where t.tenantId = :tenantId
+          and ((:locationId is null and t.locationId is null) or t.locationId = :locationId)
+          and (:includeInactive = true or t.active = true)
+        """)
+    Page<ShiftTemplate> findInSet(@Param("tenantId") UUID tenantId,
+                                  @Param("locationId") UUID locationId,
+                                  @Param("includeInactive") boolean includeInactive,
+                                  Pageable pageable);
 
-    /** Dùng khi đổi tên: bỏ qua chính bản ghi đang sửa. */
-    boolean existsByTenantIdAndNameAndIdNot(UUID tenantId, String name, UUID id);
+    /**
+     * Tên đã có trong CÙNG bộ chưa — khớp unique {@code (tenant_id, scope_key, name)} của V5.
+     * {@code excludeId} để đổi tên không tự đụng chính mình (null khi tạo mới).
+     */
+    @Query("""
+        select case when count(t) > 0 then true else false end from ShiftTemplate t
+        where t.tenantId = :tenantId and t.name = :name
+          and ((:locationId is null and t.locationId is null) or t.locationId = :locationId)
+          and (:excludeId is null or t.id <> :excludeId)
+        """)
+    boolean existsNameInSet(@Param("tenantId") UUID tenantId, @Param("locationId") UUID locationId,
+                            @Param("name") String name, @Param("excludeId") UUID excludeId);
+
+    /** Mẫu chung đang dùng — nguồn để sao chép sang bộ riêng của một chi nhánh. */
+    List<ShiftTemplate> findByTenantIdAndLocationIdIsNullAndActiveTrueOrderByStartTimeAsc(UUID tenantId);
+
+    /** Số mẫu riêng đang dùng của một chi nhánh — bộ rỗng thì không bật được. */
+    long countByTenantIdAndLocationIdAndActiveTrue(UUID tenantId, UUID locationId);
 }

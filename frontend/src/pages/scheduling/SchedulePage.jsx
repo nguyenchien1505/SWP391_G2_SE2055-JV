@@ -3,12 +3,12 @@ import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
 import { fetchLocation } from '../../api/locations';
 import { fetchPositions } from '../../api/organization';
-import { fetchPolicy, fetchShiftTemplates, fetchShifts } from '../../api/scheduling';
+import { fetchPolicy, fetchShiftTemplate, fetchShiftTemplates, fetchShifts } from '../../api/scheduling';
 import { fetchStaffDirectory } from '../../api/users';
 import CreateShiftsDialog from '../../components/scheduling/CreateShiftsDialog';
 import EditShiftDialog from '../../components/scheduling/EditShiftDialog';
-import PersonBoard from '../../components/scheduling/PersonBoard';
 import ShiftBoard from '../../components/scheduling/ShiftBoard';
+import ShiftCellDialog from '../../components/scheduling/ShiftCellDialog';
 import { formatDate, todayIso } from '../rooms/format';
 import {
   addDays,
@@ -19,22 +19,20 @@ import {
   weekDays,
   weekStartOf,
 } from './scheduleFormat';
-import { sortPeople } from './schedulePeople';
+import { groupByCell, lacksReceptionist } from './scheduleCells';
+import { isSchedulable, sortPeople } from './schedulePeople';
 import './scheduling.css';
-
-const VIEWS = [
-  { value: 'SHIFT', label: 'Theo ca' },
-  { value: 'PERSON', label: 'Theo nhân viên' },
-];
 
 /**
  * Bảng xếp lịch làm việc tuần — design.md màn 21 + 22; BR-SCH-02..05, BR-SCH-13..15, BR-SCH-24,
  * BR-PERM-03 (chỉ Quản lý chi nhánh — route bọc RequireBranchManager).
  *
- * Hai cách xem cùng một dữ liệu tuần:
- * - Theo ca (mặc định): hàng là mẫu ca + "Ca giờ khác", mỗi ô là những người làm ca đó — nhìn ra ngay
- *   ca nào thiếu người. Bấm + trong ô để giao ca đó cho nhiều người một lúc.
- * - Theo nhân viên: hàng là người, kèm tổng giờ tuần — để theo dõi ai sắp chạm giới hạn quy định.
+ * Xem theo ca: hàng là mẫu ca + "Ca giờ khác", mỗi ô là một khối tóm tắt những người làm ca đó — nhìn
+ * ra ngay ca nào thiếu người, ca nào thiếu lễ tân. Bấm khối để xem chi tiết và thao tác; ô trống bấm +
+ * để giao ca cho nhiều người một lúc (chốt 05/10/2026 — đã bỏ cách xem theo nhân viên).
+ *
+ * Chỉ xếp ca cho nhân viên; quản lý khách sạn không có ca. Mỗi ca theo mẫu đã có người phải có ít
+ * nhất 1 lễ tân (chốt 05/10/2026).
  *
  * Trang KHÔNG tự kiểm tra quy định xếp ca: backend chặn cứng lúc lưu và trả câu nêu rõ vi phạm điều
  * nào (BR-SCH-02); hộp thoại hiện nguyên văn câu đó.
@@ -46,14 +44,15 @@ export default function SchedulePage() {
   const [weekStart, setWeekStart] = useState(() => weekStartOf(today));
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
 
-  const [view, setView] = useState('SHIFT');
   const [lookups, setLookups] = useState(null); // { people, positionNames, templates, policy, locationName }
   const [lookupError, setLookupError] = useState('');
   const [shifts, setShifts] = useState([]);
   const [loadingShifts, setLoadingShifts] = useState(true);
   const [shiftError, setShiftError] = useState('');
   const [banner, setBanner] = useState(null); // { type, text }
-  const [dialog, setDialog] = useState(null); // { kind: 'create', initial } | { kind: 'edit', shift }
+  // { kind: 'cell', cell } | { kind: 'create', initial, returnTo? } | { kind: 'edit', shift, returnTo? }
+  // returnTo = ô đang xem chi tiết: đóng / lưu xong hộp thoại con thì quay lại đúng ô đó.
+  const [dialog, setDialog] = useState(null);
 
   // Danh bạ nhân sự, vị trí, mẫu ca, quy định: không đổi theo tuần nên chỉ tải một lần.
   useEffect(() => {
@@ -61,7 +60,8 @@ export default function SchedulePage() {
     Promise.all([
       fetchStaffDirectory({ size: 500 }),
       fetchPositions({ includeInactive: true }),
-      // Lấy cả mẫu đã tắt để ca cũ vẫn hiện đúng tên mẫu; ô chọn chỉ lấy mẫu đang dùng.
+      // Mẫu chung + mẫu riêng của khách sạn mình (backend tự giới hạn). Lấy cả mẫu đã tắt để ca cũ vẫn
+      // hiện đúng tên mẫu; ô chọn chỉ lấy mẫu đang dùng.
       fetchShiftTemplates({ includeInactive: true }),
       fetchPolicy(),
       user?.locationId ? fetchLocation(user.locationId).catch(() => null) : null,
@@ -112,24 +112,8 @@ export default function SchedulePage() {
     return map;
   }, [lookups]);
 
-  /** Người giao ca được: Manager và nhân viên chưa nghỉ việc của khách sạn (Giám đốc không có ca). */
-  const schedulable = useMemo(
-    () => sortPeople([...peopleById.values()].filter(
-      (p) => (p.role === 'STAFF' || p.role === 'MANAGER') && p.status !== 'TERMINATED',
-    )),
-    [peopleById],
-  );
-
-  /**
-   * Hàng của bảng theo nhân viên = người giao ca được + người KHÔNG còn giao được nhưng vẫn có ca trong
-   * tuần (đã nghỉ việc, đã chuyển khách sạn) — ca của họ không được biến mất khỏi lịch.
-   */
-  const personRows = useMemo(() => {
-    const listed = new Set(schedulable.map((p) => p.id));
-    const others = [...new Set(shifts.map((s) => s.staffId).filter((id) => id && !listed.has(id)))]
-      .map((id) => ({ ...(peopleById.get(id) ?? { id, fullName: 'Nhân viên không còn ở khách sạn này' }), readOnly: true }));
-    return [...schedulable, ...others];
-  }, [schedulable, shifts, peopleById]);
+  /** Người giao ca được: nhân viên chưa nghỉ việc của khách sạn (quản lý và Giám đốc không có ca). */
+  const schedulable = useMemo(() => sortPeople([...peopleById.values()].filter(isSchedulable)), [peopleById]);
 
   /** Tổng giờ và số ngày có ca của mỗi người trong tuần — để so với quy định trước khi xếp thêm. */
   const weekLoad = useMemo(() => {
@@ -144,8 +128,41 @@ export default function SchedulePage() {
     return map;
   }, [shifts]);
 
-  const templatesById = useMemo(() => new Map((lookups?.templates ?? []).map((t) => [t.id, t])), [lookups]);
+  // Mẫu của ca cũ không có trong bộ chi nhánh đang dùng (chi nhánh đã đổi bộ mẫu): tra từng mẫu theo id
+  // để hàng của nó hiện đúng tên. Lỗi tra thì hàng hiện "Mẫu ca khác" — không chặn bảng.
+  const [extraTemplates, setExtraTemplates] = useState(() => new Map());
+  const triedTemplateIds = useRef(new Set()); // mỗi id chỉ tra một lần, kể cả khi tra lỗi
+  useEffect(() => {
+    if (!lookups) return;
+    const known = new Set(lookups.templates.map((t) => t.id));
+    const missing = [...new Set(shifts.map((s) => s.sourceTemplateId))]
+      .filter((id) => id && !known.has(id) && !triedTemplateIds.current.has(id));
+    if (missing.length === 0) return;
+    missing.forEach((id) => triedTemplateIds.current.add(id));
+    Promise.all(missing.map((id) => fetchShiftTemplate(id).catch(() => null))).then((found) => {
+      const loaded = found.filter(Boolean);
+      if (loaded.length > 0) {
+        setExtraTemplates((prev) => new Map([...prev, ...loaded.map((t) => [t.id, t])]));
+      }
+    });
+  }, [shifts, lookups]);
+
+  const templatesById = useMemo(
+    () => new Map([...extraTemplates, ...(lookups?.templates ?? []).map((t) => [t.id, t])]),
+    [lookups, extraTemplates],
+  );
+  // Mẫu dùng được để xếp ca mới: đang dùng và thuộc bộ chi nhánh đang dùng (backend đã lọc bộ).
   const activeTemplates = useMemo(() => (lookups?.templates ?? []).filter((t) => t.active), [lookups]);
+
+  /** Số ô ca theo mẫu đã có người mà chưa có lễ tân trong tuần — để Manager rà lại lịch. */
+  const missingReceptionCount = useMemo(() => {
+    let count = 0;
+    for (const [key, list] of groupByCell(shifts, peopleById)) {
+      if (lacksReceptionist(key.split('|')[0], list, peopleById)) count += 1;
+    }
+    return count;
+  }, [shifts, peopleById]);
+
   const openCount = shifts.filter((s) => !s.staffId).length;
   const staffWithShifts = schedulable.filter((p) => weekLoad.has(p.id)).length;
   const policy = lookups?.policy;
@@ -153,21 +170,31 @@ export default function SchedulePage() {
 
   // ── Thao tác ───────────────────────────────────────────────────────────────
 
-  function openCreate(initial) {
+  function openCreate(initial, returnTo) {
     setBanner(null);
-    setDialog({ kind: 'create', initial });
+    setDialog({ kind: 'create', initial, returnTo });
   }
 
-  function openEdit(shift) {
+  function openCell(cell) {
     setBanner(null);
-    setDialog({ kind: 'edit', shift });
+    setDialog({ kind: 'cell', cell });
   }
 
-  /** Tải lại lịch TRƯỚC khi báo thành công, để lưới đã đúng khi người dùng đọc thông báo. */
+  /** Giao ca cho một ô: theo mẫu của hàng đó, hoặc giờ tự do với hàng "Ca giờ khác". */
+  const initialFor = ({ date, templateId }) => (templateId ? { date, templateId } : { date, mode: 'free' });
+
+  /** Đóng hộp thoại con: có ô đang xem dở thì quay lại ô đó. */
+  function closeDialog() {
+    setDialog((current) => (current?.returnTo ? { kind: 'cell', cell: current.returnTo } : null));
+  }
+
+  /** Tải lại lịch TRƯỚC khi báo thành công, để lưới (và ô đang xem) đã đúng khi người dùng đọc thông báo. */
   async function handleSaved(text) {
+    const back = dialog?.returnTo;
     setDialog(null);
     await loadShifts();
     setBanner({ type: 'success', text });
+    if (back) setDialog({ kind: 'cell', cell: back });
   }
 
   /** Nút "+ Giao ca" trên đầu trang: mặc định hôm nay nếu đang xem tuần này, không thì Thứ Hai. */
@@ -183,7 +210,7 @@ export default function SchedulePage() {
           <h1>Xếp lịch làm việc tuần</h1>
           <p className="muted">
             {lookups?.locationName ? `${lookups.locationName} · ` : ''}
-            Bấm + trong ô để giao ca cho một hoặc nhiều người; bấm vào tên để đổi giờ, gỡ người hoặc xóa.
+            Bấm vào một ô để xem chi tiết ca, thêm người, sửa hoặc gỡ; ô trống bấm + để giao ca.
           </p>
         </div>
         <div className="page__actions">
@@ -222,24 +249,12 @@ export default function SchedulePage() {
           </button>
         </div>
 
-        <div className="segmented segmented--flush" role="radiogroup" aria-label="Cách xem lịch">
-          {VIEWS.map((option) => (
-            <label key={option.value} className={view === option.value ? 'is-selected' : ''}>
-              <input
-                type="radio"
-                name="schedule-view"
-                value={option.value}
-                checked={view === option.value}
-                onChange={() => setView(option.value)}
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
-
         <div className="sched-summary">
           <span className="chip">{shifts.length} ca trong tuần</span>
           <span className={`chip ${openCount > 0 ? 'chip--warn' : ''}`}>{openCount} chỗ chưa phân công</span>
+          {missingReceptionCount > 0 && (
+            <span className="chip chip--danger">{missingReceptionCount} ca thiếu lễ tân</span>
+          )}
           <span className="chip">
             {staffWithShifts}/{schedulable.length} người có ca
           </span>
@@ -252,7 +267,7 @@ export default function SchedulePage() {
             <b>Quy định xếp ca:</b> tối đa <b>{formatHours(policy.maxHoursPerDay)}</b>/ngày ·{' '}
             <b>{formatHours(policy.maxHoursPerWeek)}</b>/tuần · <b>{policy.maxConsecutiveShifts}</b> ngày làm liền ·
             nghỉ ít nhất <b>{formatHours(policy.minRestHoursBetweenShifts)}</b> giữa 2 ca · ít nhất{' '}
-            <b>{policy.minDaysOffPerWeek}</b> ngày nghỉ/tuần
+            <b>{policy.minDaysOffPerWeek}</b> ngày nghỉ/tuần · mỗi ca theo mẫu có ít nhất <b>1 lễ tân</b>
           </span>
           {activeTemplates.length > 0 && (
             <span>
@@ -284,31 +299,16 @@ export default function SchedulePage() {
 
       {lookups && (
         <div aria-busy={loadingShifts}>
-          {view === 'SHIFT' ? (
-            <ShiftBoard
-              days={days}
-              today={today}
-              templates={activeTemplates}
-              shifts={shifts}
-              peopleById={peopleById}
-              onAdd={({ date, templateId }) =>
-                openCreate(templateId ? { date, templateId } : { date, mode: 'free' })}
-              onEdit={openEdit}
-            />
-          ) : (
-            <PersonBoard
-              days={days}
-              today={today}
-              rows={personRows}
-              shifts={shifts}
-              templatesById={templatesById}
-              weekLoad={weekLoad}
-              maxWeekHours={maxWeekHours}
-              onAddForPerson={(staffId, date) => openCreate({ date, staffIds: [staffId] })}
-              onAddOpen={(date) => openCreate({ date, openSlots: 1 })}
-              onEdit={openEdit}
-            />
-          )}
+          <ShiftBoard
+            days={days}
+            today={today}
+            templates={activeTemplates}
+            templatesById={templatesById}
+            shifts={shifts}
+            peopleById={peopleById}
+            onOpenCell={openCell}
+            onAdd={(cell) => openCreate(initialFor(cell))}
+          />
 
           {schedulable.length === 0 && (
             <div className="state state--empty">
@@ -324,38 +324,55 @@ export default function SchedulePage() {
         <div>
           <b>Cách hệ thống kiểm tra khi lưu ca</b>
           <p>
-            Một ca có thể có nhiều người, cùng quyền hay khác quyền; mỗi người là một ca riêng và được kiểm
-            tra riêng. Một người không được có hai ca chồng giờ nhau. Ca vi phạm bất kỳ quy định nào ở trên
-            đều bị chặn, không có ngoại lệ; giao cho nhiều người mà có người vi phạm thì chưa lưu ai. Ca qua
-            đêm thuộc về ngày bắt đầu: toàn bộ số giờ tính vào ngày đó và tuần chứa ngày đó. "Ngày làm liền"
-            đếm số ngày có ca, hai ca trong một ngày vẫn là một ngày. Chỗ chưa phân công không bị kiểm tra cho
-            tới khi giao người.
+            Chỉ xếp ca cho nhân viên; quản lý khách sạn không có ca. Một ca có thể có nhiều người, cùng quyền
+            hay khác quyền; mỗi người là một ca riêng và được kiểm tra riêng. Một người không được có hai ca
+            chồng giờ nhau. Mỗi ca theo mẫu đã có người phải có ít nhất 1 lễ tân: không thêm được người vào ca
+            chưa có lễ tân nếu không kèm một lễ tân, và không gỡ, xóa hay dời được lễ tân duy nhất của ca khi
+            ca còn người khác — "Ca giờ khác" không bắt buộc. Ca vi phạm bất kỳ quy định nào ở trên đều bị
+            chặn, không có ngoại lệ; giao cho nhiều người mà có người vi phạm thì chưa lưu ai. Ca qua đêm thuộc
+            về ngày bắt đầu: toàn bộ số giờ tính vào ngày đó và tuần chứa ngày đó. "Ngày làm liền" đếm số ngày
+            có ca, hai ca trong một ngày vẫn là một ngày. Chỗ chưa phân công không bị kiểm tra cho tới khi
+            giao người.
           </p>
         </div>
       </div>
 
+      {dialog?.kind === 'cell' && lookups && (
+        <ShiftCellDialog
+          cell={dialog.cell}
+          templates={activeTemplates}
+          templatesById={templatesById}
+          shifts={shifts}
+          peopleById={peopleById}
+          onEdit={(shift) => setDialog({ kind: 'edit', shift, returnTo: dialog.cell })}
+          onAdd={() => openCreate(initialFor(dialog.cell), dialog.cell)}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {dialog?.kind === 'create' && lookups && (
         <CreateShiftsDialog
           locationId={user?.locationId}
           days={days}
           shifts={shifts}
           people={schedulable}
+          peopleById={peopleById}
           weekLoad={weekLoad}
           maxWeekHours={maxWeekHours}
           templates={activeTemplates}
           initial={dialog.initial}
-          onClose={() => setDialog(null)}
+          onClose={closeDialog}
           onSaved={handleSaved}
         />
       )}
       {dialog?.kind === 'edit' && lookups && (
         <EditShiftDialog
           shift={dialog.shift}
+          shifts={shifts}
           people={schedulable}
           peopleById={peopleById}
           templates={activeTemplates}
           templatesById={templatesById}
-          onClose={() => setDialog(null)}
+          onClose={closeDialog}
           onSaved={handleSaved}
         />
       )}

@@ -17,16 +17,33 @@ export async function updatePolicy(payload) {
 // ── Mẫu ca — BR-SCH-04, BR-SCH-22 ───────────────────────────────────────────────
 
 /**
- * Danh mục mẫu ca của Tenant (nhỏ, lấy trọn một lần). `includeInactive = true` để Giám đốc quản trị
- * danh mục, hoặc để tra tên mẫu của ca cũ; ô chọn khi xếp ca chỉ được hiện mẫu đang dùng.
+ * Danh mục mẫu ca (nhỏ, lấy trọn một lần). `includeInactive = true` để Giám đốc quản trị danh mục,
+ * hoặc để tra tên mẫu của ca cũ; ô chọn khi xếp ca chỉ được hiện mẫu đang dùng.
+ *
+ * Bộ mẫu chung (`locationId` null) + bộ mẫu riêng từng chi nhánh; mỗi chi nhánh dùng đúng một bộ
+ * (`location.ownShiftTemplates`). Manager luôn nhận bộ chi nhánh mình đang dùng (backend tự giới hạn);
+ * Giám đốc nhận tất cả, hoặc truyền `locationId` để chỉ lấy bộ chi nhánh đó đang dùng.
  */
-export async function fetchShiftTemplates({ includeInactive = false } = {}) {
+export async function fetchShiftTemplates({ includeInactive = false, locationId } = {}) {
   const { data } = await api.get('/scheduling/shift-templates', {
-    params: { includeInactive, page: 0, size: 200, sort: 'startTime,asc' },
+    params: { includeInactive, locationId, page: 0, size: 200, sort: 'startTime,asc' },
   });
   return data.content ?? [];
 }
 
+/**
+ * Một mẫu theo id — để hiện đúng tên mẫu của ca cũ khi mẫu đó không còn trong bộ chi nhánh đang dùng
+ * (chi nhánh đã đổi bộ). Manager đọc được mẫu chung và mẫu riêng của chi nhánh mình.
+ */
+export async function fetchShiftTemplate(id) {
+  const { data } = await api.get(`/scheduling/shift-templates/${id}`);
+  return data;
+}
+
+/**
+ * `locationId` null = thêm vào bộ mẫu chung; có giá trị = thêm vào bộ mẫu riêng của chi nhánh đó (không
+ * đổi được về sau). Thêm vào bộ riêng KHÔNG tự bật bộ riêng cho chi nhánh.
+ */
 export async function createShiftTemplate(payload) {
   const { data } = await api.post('/scheduling/shift-templates', payload);
   return data;
@@ -41,6 +58,23 @@ export async function updateShiftTemplate(id, payload) {
 /** BR-SCH-22: không xóa mẫu — chỉ bật/tắt. */
 export async function setShiftTemplateActive(id, active) {
   const { data } = await api.patch(`/scheduling/shift-templates/${id}/active`, { active });
+  return data;
+}
+
+/**
+ * Chi nhánh dùng bộ mẫu chung (`own = false`) hay bộ mẫu riêng của nó (`own = true`) — chỉ Giám đốc.
+ * Bộ riêng chưa có mẫu nào đang dùng thì backend chặn. Trả { locationId, ownShiftTemplates, ownActiveTemplates }.
+ */
+export async function setLocationOwnTemplates(locationId, own) {
+  const { data } = await api.patch(`/scheduling/shift-templates/locations/${locationId}/own-templates`, {
+    ownShiftTemplates: own,
+  });
+  return data;
+}
+
+/** Sao chép các mẫu chung đang dùng sang bộ riêng của chi nhánh (bỏ qua tên đã có). Trả các mẫu vừa tạo. */
+export async function copyCommonTemplates(locationId) {
+  const { data } = await api.post(`/scheduling/shift-templates/locations/${locationId}/copy-common`);
   return data;
 }
 

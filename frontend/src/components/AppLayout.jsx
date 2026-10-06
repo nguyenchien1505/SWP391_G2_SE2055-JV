@@ -42,10 +42,10 @@ const isManager = (user) => user?.role === 'MANAGER';
 const canReportDamage = (user) => user?.role === 'STAFF' && (isReception(user) || isHousekeeper(user));
 
 /**
- * Có ca làm việc: check-in/out, xem lịch cá nhân, xin nghỉ — Manager và mọi Staff (BR-PERM-03..06).
- * Giám đốc không có ca nên không có mục này.
+ * Có ca làm việc: check-in/out, xem lịch cá nhân, xin nghỉ — chỉ nhân viên (BR-PERM-04..06). Quản lý
+ * khách sạn không có ca (chốt 05/10/2026), Giám đốc cũng không.
  */
-const hasShifts = (user) => user?.role === 'MANAGER' || user?.role === 'STAFF';
+const hasShifts = (user) => user?.role === 'STAFF';
 
 /**
  * Khung màn hình sau đăng nhập. Các mục điều hướng chưa có màn hình tương ứng được để ở
@@ -66,6 +66,7 @@ const NAV_GROUPS = [
       { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
       { label: 'Xếp lịch làm việc', to: '/xep-lich', visible: isBranchManager },
       { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
+      { label: 'Lịch dọn phòng', to: '/lich-don-phong', visible: isBranchManager },
       { label: 'Quản lý tài sản', to: '/tai-san', visible: isManagement },
       { label: 'Vật tư tiêu hao', to: '/vat-tu', visible: isManagement },
       // Màn xử lý báo hỏng của Manager (Giám đốc xem); nhân viên gửi báo hỏng ở mục riêng bên dưới.
@@ -102,6 +103,7 @@ const NAV_GROUPS = [
     title: 'Dọn dẹp',
     items: [
       { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: (user) => isStaff(user) && isHousekeeper(user) },
+      { label: 'Lịch dọn của tôi', to: '/lich-don-phong', visible: (user) => isStaff(user) && isHousekeeper(user) },
     ],
   },
   {
@@ -184,11 +186,6 @@ export default function AppLayout({ children }) {
             </div>
           ))}
         </nav>
-
-        <div className="shell__nav-foot">
-          <span className="dot dot--online" aria-hidden="true" /> Máy chủ hoạt động
-          <span className="version-chip">v2.4.1</span>
-        </div>
       </aside>
 
       <div className="shell__main">

@@ -3,14 +3,13 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { hasPermission } from '../../permissions';
 import { readErrorMessage } from '../../api/client';
-import { cancelTask, createStayoverTask, fetchTasks, unassignTask } from '../../api/housekeeping';
+import { fetchTasks } from '../../api/housekeeping';
 import { fetchAllRooms, fetchRoom } from '../../api/rooms';
-import { fetchStaffDirectory } from '../../api/users';
-import ConfirmDialog from '../../components/ConfirmDialog';
 import AssignTaskModal from '../../components/rooms/AssignTaskModal';
 import InspectTaskModal from '../../components/rooms/InspectTaskModal';
 import LockRoomModal from '../../components/rooms/LockRoomModal';
 import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
+import ReleaseTaskModal from '../../components/rooms/ReleaseTaskModal';
 import RoomActionDialog from '../../components/rooms/RoomActionDialog';
 import RoomBoardPanel from '../../components/rooms/RoomBoardPanel';
 import RoomCard from '../../components/rooms/RoomCard';
@@ -26,7 +25,7 @@ import {
   roomCardHint,
   roomTypeNamesOf,
 } from './roomBoard';
-import { ROOM_STATUS_ORDER, roomStatusMeta } from './roomLabels';
+import { ROOM_STATUS_ORDER, roomStatusMeta, taskRoomLabel, teamNames } from './roomLabels';
 import { useRoomAction } from './useRoomAction';
 import { useTenantLocations } from './useRoomLookups';
 import './rooms.css';
@@ -62,7 +61,7 @@ function useMediaQuery(query) {
  *
  * Bấm thẻ → bảng chi tiết (`RoomBoardPanel`): thao tác đổi trạng thái lấy từ `room.allowedTargets`
  * (Quản lý khóa / mở khóa — F2; Lễ tân đặt / nhận / trả phòng — F4). Riêng Quản lý chi nhánh thấy
- * thêm việc dọn đang mở của phòng để phân công, kiểm tra, gỡ người ngay tại sơ đồ (F5, F6).
+ * thêm việc dọn đang mở của phòng để phân công, thêm / gỡ người, kiểm tra ngay tại sơ đồ (F5, F6).
  *
  * Đổi trạng thái xong chỉ thay đúng thẻ đó bằng phòng trong response — không tải lại cả sơ đồ,
  * để Lễ tân đang xếp khách không bị mất chỗ đang xem.
@@ -94,14 +93,12 @@ export default function RoomBoardPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [historyKey, setHistoryKey] = useState(0);
 
-  // Chỉ Quản lý chi nhánh: việc dọn đang mở theo phòng + tên người làm (DTO chỉ có id).
+  // Chỉ Quản lý chi nhánh: việc dọn đang mở theo phòng (kèm tên nhóm dọn).
   const [tasksByRoom, setTasksByRoom] = useState({});
-  const [staffNames, setStaffNames] = useState({});
 
   const [assigning, setAssigning] = useState(null);
   const [inspecting, setInspecting] = useState(null);
   const [releasing, setReleasing] = useState(null);
-  const [cancelling, setCancelling] = useState(null);
   const [noteRoom, setNoteRoom] = useState(null);
   const [previousOf, setPreviousOf] = useState(null);
 
@@ -154,24 +151,9 @@ export default function RoomBoardPage() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (!isManager) return undefined;
-    let cancelled = false;
-    fetchStaffDirectory()
-      .then((data) => {
-        if (cancelled) return;
-        const list = data.content ?? data ?? [];
-        setStaffNames(Object.fromEntries(list.map((person) => [person.id, person.fullName])));
-      })
-      .catch(() => !cancelled && setStaffNames({}));
-    return () => {
-      cancelled = true;
-    };
-  }, [isManager]);
-
   /**
    * Sau mỗi thao tác: tải lại việc dọn (đổi trạng thái phòng có thể sinh / hủy việc — BR-HK-01,
-   * BR-HK-09, BR-HK-10) và lịch sử trong bảng chi tiết. Màn hẹp thì đóng bảng chi tiết để câu
+   * BR-HK-09) và lịch sử trong bảng chi tiết. Màn hẹp thì đóng bảng chi tiết để câu
    * báo kết quả và thẻ vừa đổi màu hiện ra ngay trước mắt.
    */
   const afterChange = useCallback(() => {
@@ -217,11 +199,13 @@ export default function RoomBoardPage() {
   }
 
   function finishAssign(updated) {
+    const wasAdding = assigning?.status === 'IN_PROGRESS';
     setAssigning(null);
     setBanner({
       type: 'success',
-      text: `Đã giao việc dọn phòng ${updated.roomNumber}.`
-        + (updated.taskType === 'CHECKOUT' ? ' Phòng chuyển sang «Đang dọn».' : ''),
+      text: wasAdding
+        ? `Nhóm dọn phòng ${taskRoomLabel(updated)} giờ gồm: ${teamNames(updated)}.`
+        : `Đã giao việc dọn phòng ${taskRoomLabel(updated)} cho ${teamNames(updated)}. Phòng chuyển sang «Đang dọn».`,
     });
     refreshRoom(updated.roomId);
     afterChange();
@@ -233,54 +217,23 @@ export default function RoomBoardPage() {
     setBanner({
       type: 'success',
       text: record.result === 'PASS'
-        ? `Phòng ${task.roomNumber} đã Sẵn sàng.`
-        : `Đã tạo việc dọn lại cho phòng ${task.roomNumber}. Phòng quay về «Chờ dọn».`,
+        ? `Phòng ${taskRoomLabel(task)} đã Sẵn sàng.`
+        : `Đã tạo việc dọn lại cho phòng ${taskRoomLabel(task)}. Phòng quay về «Chờ dọn».`,
     });
     refreshRoom(task.roomId);
     afterChange();
   }
 
-  async function confirmRelease() {
-    const task = releasing;
+  /** Gỡ người xong: hết người thì phòng vừa về «Chờ dọn» — tải lại đúng phòng đó. */
+  function finishRelease({ task, removedName, emptied }) {
     setReleasing(null);
-    try {
-      await unassignTask(task.id);
-      setBanner({
-        type: 'success',
-        text: `Đã gỡ người khỏi việc dọn phòng ${task.roomNumber}.`
-          + (task.taskType === 'CHECKOUT' ? ' Phòng quay về «Chờ dọn».' : ''),
-      });
-      refreshRoom(task.roomId);
-      afterChange();
-    } catch (err) {
-      showError(readErrorMessage(err, 'Không gỡ được người khỏi việc dọn.'));
-    }
-  }
-
-  /** Hủy tay một việc dọn hằng ngày — phòng không đổi gì, vẫn «Đang sử dụng» (BR-HK-05). */
-  async function confirmCancel() {
-    const task = cancelling;
-    setCancelling(null);
-    try {
-      await cancelTask(task.id);
-      setBanner({ type: 'success', text: `Đã hủy việc dọn hằng ngày của phòng ${task.roomNumber}.` });
-      afterChange();
-    } catch (err) {
-      showError(readErrorMessage(err, 'Không hủy được việc dọn.'));
-    }
-  }
-
-  /** BR-HK-05 — tạo việc dọn hằng ngày rồi mở luôn hộp thoại phân công, đỡ một bước. */
-  async function createStayover(room) {
-    setBanner(null);
-    try {
-      const created = await createStayoverTask(room.id);
-      setBanner({ type: 'success', text: `Đã tạo việc dọn hằng ngày cho phòng ${room.roomNumber}.` });
-      loadTasks();
-      setAssigning(created);
-    } catch (err) {
-      showError(readErrorMessage(err, 'Không tạo được việc dọn hằng ngày.'));
-    }
+    setBanner({
+      type: 'success',
+      text: `Đã gỡ ${removedName} khỏi việc dọn phòng ${taskRoomLabel(task)}.`
+        + (emptied ? ' Phòng quay về «Chờ dọn».' : ' Những người còn lại tiếp tục dọn.'),
+    });
+    refreshRoom(task.roomId);
+    afterChange();
   }
 
   function saveNote(updated) {
@@ -291,7 +244,7 @@ export default function RoomBoardPage() {
 
   const selectedRoom = rooms.find((room) => room.id === selectedId) ?? null;
   const modalOpen = Boolean(
-    assigning || inspecting || releasing || cancelling || noteRoom || previousOf || action.pending,
+    assigning || inspecting || releasing || noteRoom || previousOf || action.pending,
   );
 
   // Esc đóng bảng chi tiết khi nó đang đè lên trang — trừ lúc có hộp thoại mở (Esc là của hộp thoại).
@@ -317,7 +270,6 @@ export default function RoomBoardPage() {
     role,
     locationName,
     tasks: tasksByRoom[selectedRoom.id] ?? [],
-    staffNames,
     historyKey,
     busy: action.running,
     onClose: () => setSelectedId(null),
@@ -328,8 +280,6 @@ export default function RoomBoardPage() {
     onAssign: setAssigning,
     onInspect: setInspecting,
     onUnassign: setReleasing,
-    onCancel: setCancelling,
-    onCreateStayover: createStayover,
     onEditNote: setNoteRoom,
     onShowPreviousInspection: setPreviousOf,
   };
@@ -531,7 +481,7 @@ export default function RoomBoardPage() {
                       <RoomCard
                         key={room.id}
                         room={room}
-                        hint={roomCardHint(room, tasksByRoom[room.id], staffNames)}
+                        hint={roomCardHint(room, tasksByRoom[room.id])}
                         selected={room.id === selectedId}
                         onSelect={(picked) => setSelectedId(picked.id)}
                       />
@@ -585,37 +535,10 @@ export default function RoomBoardPage() {
         <AssignTaskModal task={assigning} onClose={() => setAssigning(null)} onAssigned={finishAssign} />
       )}
       {inspecting && (
-        <InspectTaskModal
-          task={inspecting}
-          staffName={staffNames[inspecting.assignedStaffId]}
-          onClose={() => setInspecting(null)}
-          onInspected={finishInspection}
-        />
+        <InspectTaskModal task={inspecting} onClose={() => setInspecting(null)} onInspected={finishInspection} />
       )}
       {releasing && (
-        <ConfirmDialog
-          title={`Gỡ người khỏi việc dọn phòng ${releasing.roomNumber}?`}
-          message={
-            <>
-              Việc dọn quay lại hàng chờ phân công.
-              {releasing.taskType === 'CHECKOUT'
-                ? ' Phòng cũng quay về trạng thái «Chờ dọn».'
-                : ' Phòng giữ nguyên «Đang sử dụng».'}
-            </>
-          }
-          confirmLabel="Gỡ người"
-          onCancel={() => setReleasing(null)}
-          onConfirm={confirmRelease}
-        />
-      )}
-      {cancelling && (
-        <ConfirmDialog
-          title={`Hủy việc dọn hằng ngày của phòng ${cancelling.roomNumber}?`}
-          message="Việc dọn đóng lại vĩnh viễn với lý do «Quản lý hủy». Phòng giữ nguyên «Đang sử dụng»."
-          confirmLabel="Hủy việc dọn"
-          onCancel={() => setCancelling(null)}
-          onConfirm={confirmCancel}
-        />
+        <ReleaseTaskModal task={releasing} onClose={() => setReleasing(null)} onReleased={finishRelease} />
       )}
       {noteRoom && <RoomNoteModal room={noteRoom} onClose={() => setNoteRoom(null)} onSaved={saveNote} />}
       {previousOf && <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />}

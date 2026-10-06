@@ -36,7 +36,7 @@ export default function HotelOpsSummary() {
     ])
       .then(([rooms, shifts, people, unassigned, inProgress, pending, doneToday]) => {
         if (cancelled) return;
-        // BR-DASH-03 đếm Staff: Manager cũng có ca nhưng không tính vào đây.
+        // BR-DASH-03 đếm Staff. Quản lý không có ca (chốt 05/10/2026) — vẫn lọc theo role cho ca cũ.
         const staffIds = new Set(
           people.filter((p) => p.role === 'STAFF' && p.status === 'ACTIVE').map((p) => p.id),
         );

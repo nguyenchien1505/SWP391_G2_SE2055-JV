@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalTime;
+import java.util.UUID;
 
 /**
  * Tạo mẫu ca — BR-SCH-22: tên, giờ bắt đầu, giờ kết thúc, mô tả (tùy chọn), cờ is_active.
@@ -17,6 +18,9 @@ import java.time.LocalTime;
  */
 @Data
 public class CreateShiftTemplateRequest {
+
+    /** Bỏ trống = thêm vào bộ mẫu chung; có giá trị = thêm vào bộ mẫu riêng của chi nhánh đó. Không đổi được sau này. */
+    private UUID locationId;
 
     @NotBlank(message = "Tên mẫu ca là bắt buộc")
     @Size(max = 100, message = "Tên mẫu ca tối đa 100 ký tự")

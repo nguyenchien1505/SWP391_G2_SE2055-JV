@@ -16,6 +16,8 @@ import RoomDetailPage from './pages/rooms/RoomDetailPage';
 import RoomBoardPage from './pages/rooms/RoomBoardPage';
 import HousekeepingPage from './pages/rooms/HousekeepingPage';
 import MyTasksPage from './pages/rooms/MyTasksPage';
+import CleaningSchedulePage from './pages/rooms/CleaningSchedulePage';
+import { hasPermission } from './permissions';
 import SchedulePage from './pages/scheduling/SchedulePage';
 import ScheduleRulesPage from './pages/scheduling/ScheduleRulesPage';
 import HotelOpsSummary from './components/rooms/HotelOpsSummary';
@@ -96,6 +98,17 @@ function RequireBranchManager({ children }) {
 function RequireDirector({ children }) {
   const { user } = useAuth();
   const allowed = user?.role === 'DIRECTOR' || user?.role === 'PLATFORM_ADMIN';
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
+ * Lịch dọn phòng theo nhân viên — Quản lý chi nhánh (mọi người dọn của khách sạn) và nhân viên có quyền
+ * Dọn dẹp (lịch của chính mình). Chỉ là lớp giao diện; phạm vi dữ liệu do backend quyết định.
+ */
+function RequireCleaningSchedule({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role === 'MANAGER' || user?.role === 'PLATFORM_ADMIN'
+    || (user?.role === 'STAFF' && hasPermission(user, 'HOUSEKEEPING'));
   return allowed ? children : <Navigate to={homePathFor(user)} replace />;
 }
 
@@ -215,6 +228,7 @@ export default function App() {
           chặn vai trò vì backend tự ép nhân viên về việc của chính mình (BR-PERM-05). */}
       <Route path="/don-phong" element={inShell(<RequireBranchManager><HousekeepingPage /></RequireBranchManager>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
+      <Route path="/lich-don-phong" element={inShell(<RequireCleaningSchedule><CleaningSchedulePage /></RequireCleaningSchedule>)} />
       {/* Danh mục tài sản cấp Tenant — BR-ASSET-09: Giám đốc CRUD, Manager chỉ xem. */}
       <Route path="/danh-muc-tai-san" element={inShell(<RequireManagementRole><AssetCategoriesPage /></RequireManagementRole>)} />
       {/* Loại phòng, Phòng ban, Vị trí công việc — BR-ORG-06, BR-ORG-11: chỉ Giám đốc; Manager vào thấy thông báo. */}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
 import { inspectTask } from '../../api/housekeeping';
 import { formatDate } from '../../pages/rooms/format';
-import { taskTypeLabel } from '../../pages/rooms/roomLabels';
+import { taskRoomLabel, taskSourceLabel, teamNames } from '../../pages/rooms/roomLabels';
 
 /** Khớp @Size(max = 500) của InspectTaskRequest và cột inspection_records.reason. */
 const REASON_MAX = 500;
@@ -20,7 +20,7 @@ const REASON_MAX = 500;
  * @param onInspected nhận BIÊN BẢN kiểm tra sau khi lưu (có `nextTaskId` khi không đạt), để
  *                    màn hình hiện đúng câu thông báo và tải lại bảng
  */
-export default function InspectTaskModal({ task, staffName, onClose, onInspected }) {
+export default function InspectTaskModal({ task, onClose, onInspected }) {
   const [result, setResult] = useState('');       // '' = chưa chọn
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
@@ -56,13 +56,13 @@ export default function InspectTaskModal({ task, staffName, onClose, onInspected
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="inspect-task-title"
          onClick={() => !submitting && onClose()}>
       <form className="modal room-modal" onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit} noValidate>
-        <h2 id="inspect-task-title">Kiểm tra phòng {task.roomNumber}</h2>
+        <h2 id="inspect-task-title">Kiểm tra phòng {taskRoomLabel(task)}</h2>
 
         <div className="modal__body">
           <div className="readonly-box">
-            <b>Tầng {task.floor ?? '—'} · {taskTypeLabel(task.taskType)}</b>
+            <b>Tầng {task.floor ?? '—'} · {taskSourceLabel(task.createdSource)}</b>
             <p>
-              Người dọn: <b>{staffName ?? 'Không rõ'}</b>
+              Người dọn: <b>{teamNames(task) || 'Không rõ'}</b>
               {task.assignedDate ? ` · Ngày làm ${formatDate(task.assignedDate)}` : ''}
             </p>
           </div>

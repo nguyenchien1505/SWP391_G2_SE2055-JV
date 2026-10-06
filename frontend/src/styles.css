@@ -645,6 +645,12 @@ a.nav-item {
   color: var(--muted);
   margin-top: 2px;
 }
+/* Dòng nhắc dưới huy hiệu trạng thái — ví dụ "Hoạt động từ 10/10/2026". */
+.cell-status-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
 .avatar {
   width: 38px;
   height: 38px;

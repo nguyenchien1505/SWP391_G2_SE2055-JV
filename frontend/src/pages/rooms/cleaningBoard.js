@@ -8,20 +8,19 @@ import { compareNatural } from './roomLabels';
 export const isRedo = (task) => task.createdSource === 'INSPECTION_FAILED';
 
 /**
- * Thứ tự hàng chờ: dọn lại (phòng đã chờ hai lần) → dọn sau trả phòng (phòng trống chờ khách mới)
- * → dọn hằng ngày; cùng nhóm thì theo số phòng tự nhiên.
+ * Thứ tự hàng chờ: dọn lại (phòng đã chờ hai lần) trước, rồi theo số phòng tự nhiên.
  */
 export function compareQueue(a, b) {
-  const rank = (task) => (isRedo(task) ? 0 : task.taskType === 'CHECKOUT' ? 1 : 2);
+  const rank = (task) => (isRedo(task) ? 0 : 1);
   return rank(a) - rank(b) || compareNatural(a.roomNumber, b.roomNumber);
 }
 
 /**
- * Giao được việc này cho ngày `date` không. Ngày đã qua thì không; việc dọn sau trả phòng chỉ giao
- * cho hôm nay, vì giao là phòng sang «Đang dọn» ngay (Q5). Backend kiểm lại đúng hai điều này.
+ * Giao được việc cho ngày `date` không: chỉ HÔM NAY — giao là phòng sang «Đang dọn» ngay (Q5), nên
+ * không giao trước cho ngày mai, và ngày đã qua thì chỉ xem. Backend kiểm lại đúng điều này.
  */
-export function canAssignOn(task, date, today) {
-  return date >= today && (task.taskType !== 'CHECKOUT' || date === today);
+export function canAssignOn(date, today) {
+  return date === today;
 }
 
 /** Chữ viết tắt cho avatar — cùng cách các trang danh sách nhân sự đang làm. */

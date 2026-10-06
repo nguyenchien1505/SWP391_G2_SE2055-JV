@@ -1,6 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.repository;
 
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
+import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -9,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +32,12 @@ public interface LocationRepository extends JpaRepository<Location, UUID> {
      * vốn bị chặn bởi quota gói dịch vụ (BR-SAAS-02) nên luôn là tập nhỏ.
      */
     Page<Location> findByTenantId(UUID tenantId, Pageable pageable);
+
+    /**
+     * Chi nhánh theo trạng thái, MỌI Tenant — chỉ cho tác vụ định kỳ bật chi nhánh tới ngày quản lý
+     * bắt đầu làm ({@code LocationActivationJob}), chạy ngoài phiên đăng nhập của Tenant nào.
+     */
+    List<Location> findByStatus(LocationStatus status);
 
     /**
      * BR-SAAS-02: số Location đang chiếm quota. Location xóa là xóa cứng (không có cột xóa

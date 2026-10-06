@@ -173,8 +173,8 @@
   max-width: 100%;
   white-space: normal;
 }
-/* Dòng gợi ý: lý do khóa, người đang dọn… — tối đa HAI dòng rồi mới cắt bằng "…". Một dòng thì
-   trên điện thoại (thẻ ~140px) mất đúng phần quan trọng: "Dọn hằng ngày: chưa phân…". */
+/* Dòng gợi ý: lý do khóa, nhóm đang dọn… — tối đa HAI dòng rồi mới cắt bằng "…". Một dòng thì
+   trên điện thoại (thẻ ~140px) mất đúng phần quan trọng: "Hoa, Nam · từ 08:05…". */
 .room-card__hint {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -548,6 +548,13 @@
   font-size: 22px;
   font-weight: 700;
   line-height: 1.1;
+}
+/* Loại phòng sau số phòng: "301 - Deluxe" — cùng dòng nhưng nhỏ hơn để số phòng vẫn nổi nhất. */
+.task-card__room small,
+.task-row__room small {
+  font-size: 0.6em;
+  font-weight: 600;
+  color: var(--muted);
 }
 .task-card__meta {
   margin: 2px 0 0;
@@ -1750,3 +1757,155 @@ a.view-switch__item:hover {
     min-height: 44px;
   }
 }
+
+/* ── Lịch dọn phòng theo nhân viên (chốt 06/10/2026) ──────────────────── */
+/* Lưới tuần dùng lại .sched-grid của module Lịch làm việc; ở đây chỉ phần riêng của ô dọn phòng. */
+.clean-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.clean-person .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.clean-cell__shift {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.clean-cell__empty,
+.clean-cell__off {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.clean-cell__off {
+  text-align: center;
+}
+/* Một phòng trong ô: viền trái theo màu trạng thái, luôn kèm chữ (design.md mục 3). */
+.clean-entry {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--tone, var(--border));
+  border-radius: var(--radius-control);
+  background: var(--tone-bg, #fff);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.clean-entry:hover,
+.clean-entry:focus-visible {
+  outline: 2px solid var(--tone, var(--accent));
+  outline-offset: 1px;
+}
+.clean-entry__room {
+  font-weight: 700;
+}
+.clean-entry .badge {
+  white-space: normal;
+}
+.clean-entry__flag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b85300;
+}
+/* Chi tiết một lần dọn — các dòng nhãn / giá trị. */
+.clean-detail {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+.clean-detail div {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+.clean-detail dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+.clean-detail dd {
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .clean-detail div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+/* ── Lịch dọn của tôi: bảng theo ca (chốt 06/10/2026) ─────────────────── */
+/* Khối của một ca dùng lại .cell-block của bảng xếp lịch; ở đây chỉ danh sách phòng bên trong. */
+.work-block__rooms {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+.work-block__room {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 3px 0 3px 6px;
+  border-left: 3px solid var(--tone, var(--border));
+  background: #fff;
+  border-radius: 4px;
+}
+.work-block__room .badge {
+  white-space: normal;
+}
+.work-block__name {
+  font-weight: 700;
+}
+/* Có ca mà chưa có việc — chữ nhạt, không phải nút. */
+.work-idle {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+  color: var(--muted);
+}
+/* Chi tiết việc của một ca — mỗi phòng một thẻ, viền trái theo trạng thái. */
+.work-detail-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.work-detail {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--tone, var(--border));
+  border-radius: var(--radius-control);
+}
+.work-detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.work-detail__team {
+  margin: 6px 0 0;
+}
+.work-detail .clean-detail {
+  margin: 8px 0 4px;
+  gap: 6px;
+}
+

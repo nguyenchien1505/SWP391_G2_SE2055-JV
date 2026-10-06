@@ -20,6 +20,9 @@ public class LocationResponse {
     private String         timezone;
     private LocationStatus status;
 
+    /** Bộ mẫu ca đang dùng: false = bộ mẫu chung của chuỗi, true = bộ mẫu riêng của chi nhánh (V6). */
+    private boolean        ownShiftTemplates;
+
     /** BR-ORG-04: derived field — đếm phòng đang hoạt động, không lưu cột riêng. */
     private long           totalRooms;
 
@@ -35,6 +38,7 @@ public class LocationResponse {
             .starRating(location.getStarRating())
             .timezone(location.getTimezone())
             .status(location.getStatus())
+            .ownShiftTemplates(location.isOwnShiftTemplates())
             .totalRooms(totalRooms)
             .createdAt(location.getCreatedAt())
             .updatedAt(location.getUpdatedAt())

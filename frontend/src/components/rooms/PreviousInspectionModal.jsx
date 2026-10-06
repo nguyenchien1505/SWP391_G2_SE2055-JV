@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
 import { fetchInspection } from '../../api/housekeeping';
 import { formatDateTime } from '../../pages/rooms/format';
-import { inspectionResultMeta } from '../../pages/rooms/roomLabels';
+import { inspectionResultMeta, taskRoomLabel } from '../../pages/rooms/roomLabels';
 
 /**
  * Lần kiểm tra trước của một việc dọn lại — BR-HK-12.
@@ -40,7 +40,7 @@ export default function PreviousInspectionModal({ task, onClose }) {
     <div className="modal-backdrop" role="dialog" aria-modal="true"
          aria-labelledby="prev-inspection-title" onClick={onClose}>
       <div className="modal room-modal" onClick={(e) => e.stopPropagation()}>
-        <h2 id="prev-inspection-title">Lần kiểm tra trước — phòng {task.roomNumber}</h2>
+        <h2 id="prev-inspection-title">Lần kiểm tra trước — phòng {taskRoomLabel(task)}</h2>
 
         <div className="modal__body">
           {!record && !error && <p className="state">Đang tải biên bản…</p>}

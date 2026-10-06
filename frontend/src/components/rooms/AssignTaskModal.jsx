@@ -1,32 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
 import { assignTask, fetchAssignableStaff } from '../../api/housekeeping';
 import { formatDate, todayIso } from '../../pages/rooms/format';
-import { taskTypeLabel } from '../../pages/rooms/roomLabels';
+import { taskRoomLabel, teamNames } from '../../pages/rooms/roomLabels';
 
 /**
- * S-10 Phân công việc dọn — RM-14, BR-HK-02, BR-HK-03.
+ * S-10 Phân công việc dọn — RM-14, BR-HK-02, BR-HK-03. Một phòng được NHIỀU người cùng dọn (chốt
+ * 05/10/2026): tick bao nhiêu người cũng được, tất cả hoặc không ai — một người không đủ điều kiện thì
+ * không giao cho ai.
  *
- * Danh sách người nhận việc do BACKEND lọc (`/assignable-staff?date=`) với đúng bộ điều kiện mà
- * lệnh gán sẽ kiểm lại: đang làm việc, cùng khách sạn, có quyền Dọn dẹp, và có ca ngày đó.
- * Nhờ vậy ai hiện ra là gán được — Quản lý không bấm rồi mới nhận lỗi.
+ * Hai chế độ theo trạng thái của việc:
+ *   - **Chờ giao** — giao lần đầu: cả nhóm bắt đầu dọn, phòng sang «Đang dọn» ngay.
+ *   - **Đang làm** — thêm người vào nhóm: phòng đứng yên, người mới dọn cùng ngày với nhóm.
  *
- * Đổi ngày là tải lại danh sách, vì "có ca" phụ thuộc ngày. KHÔNG hiện giới hạn số việc mỗi
- * người: BR-HK-02 nói rõ là không có giới hạn.
+ * Danh sách người nhận do BACKEND lọc (`/assignable-staff?date=`) với đúng bộ điều kiện mà lệnh gán
+ * sẽ kiểm lại: đang làm việc, cùng khách sạn, có quyền Dọn dẹp, và có ca ngày đó — ai hiện ra là gán
+ * được. KHÔNG hiện giới hạn số việc mỗi người: BR-HK-02 nói rõ là không có giới hạn.
  *
- * @param initialDate ngày mở sẵn — bảng theo nhân viên đang xem ngày nào thì giao cho ngày đó;
- *                    việc dọn sau trả phòng luôn là hôm nay
- * @param onAssigned nhận việc SAU KHI gán (kèm trạng thái mới) để màn hình cập nhật ngay
+ * Việc dọn chỉ giao trong ngày (phòng sang «Đang dọn» ngay khi giao — Q5), nên ngày không chọn được.
+ *
+ * @param onAssigned nhận việc SAU KHI gán (kèm trạng thái và nhóm mới) để màn hình cập nhật ngay
  */
-export default function AssignTaskModal({ task, initialDate, onClose, onAssigned }) {
-  // Việc dọn sau trả phòng chỉ gán được cho hôm nay (phòng sang «Đang dọn» ngay khi gán), nên
-  // khóa luôn ô ngày cho khỏi chọn nhầm rồi nhận lỗi.
-  const todayOnly = task.taskType === 'CHECKOUT';
+export default function AssignTaskModal({ task, onClose, onAssigned }) {
+  const adding = task.status === 'IN_PROGRESS';
+  // Thêm người: dọn cùng ngày với nhóm. Giao lần đầu: hôm nay.
+  const date = adding ? task.assignedDate : todayIso();
+  const team = useMemo(() => new Set(task.assignedStaffIds ?? []), [task.assignedStaffIds]);
 
-  const [date, setDate] = useState(() =>
-    (!todayOnly && initialDate && initialDate > todayIso() ? initialDate : todayIso()));
   const [staff, setStaff] = useState(null); // null = đang tải
-  const [staffId, setStaffId] = useState('');
+  const [selected, setSelected] = useState(() => new Set());
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -36,12 +38,8 @@ export default function AssignTaskModal({ task, initialDate, onClose, onAssigned
     return () => window.removeEventListener('keydown', onKey);
   }, [submitting, onClose]);
 
-  // Đổi ngày → danh sách người có ca đổi theo. Cờ `cancelled` bỏ qua phản hồi của lần gọi cũ
-  // nếu người dùng bấm ngày khác nhanh hơn tốc độ mạng.
   useEffect(() => {
     let cancelled = false;
-    setStaff(null);
-    setStaffId('');
     fetchAssignableStaff(date)
       .then((data) => !cancelled && setStaff(data ?? []))
       .catch((err) => {
@@ -54,72 +52,69 @@ export default function AssignTaskModal({ task, initialDate, onClose, onAssigned
     };
   }, [date]);
 
+  // Người đã trong nhóm thì không chọn lại.
+  const candidates = (staff ?? []).filter((person) => !team.has(person.id));
+
+  function toggle(id) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
     setError('');
     try {
-      onAssigned(await assignTask(task.id, { staffId, assignedDate: date }));
+      onAssigned(await assignTask(task.id, { staffIds: [...selected], assignedDate: date }));
     } catch (err) {
-      setError(readErrorMessage(err, 'Không phân công được việc dọn.'));
+      setError(readErrorMessage(err, adding ? 'Không thêm được người vào nhóm dọn.' : 'Không phân công được việc dọn.'));
       setSubmitting(false);
     }
   }
+
+  const room = taskRoomLabel(task);
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="assign-task-title"
          onClick={() => !submitting && onClose()}>
       <form className="modal room-modal" onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit} noValidate>
-        <h2 id="assign-task-title">Phân công phòng {task.roomNumber}</h2>
+        <h2 id="assign-task-title">{adding ? `Thêm người dọn phòng ${room}` : `Phân công phòng ${room}`}</h2>
 
         <div className="modal__body">
           <div className="readonly-box">
-            <b>{taskTypeLabel(task.taskType)}</b>
+            <b>Ngày làm {formatDate(date)}</b>
             <p>
-              {todayOnly
-                ? 'Phòng sẽ chuyển sang «Đang dọn» ngay khi phân công.'
-                : 'Khách vẫn đang ở, phòng giữ nguyên «Đang sử dụng».'}
+              {adding
+                ? `Đang dọn: ${teamNames(task) || '—'}. Người thêm vào dọn cùng nhóm; phòng vẫn «Đang dọn».`
+                : 'Phòng sẽ chuyển sang «Đang dọn» ngay khi phân công. Việc dọn chỉ giao được trong ngày.'}
             </p>
           </div>
 
-          <label className="field" htmlFor="assign-date">
-            <span className="field__label">Ngày làm</span>
-            <input
-              id="assign-date"
-              type="date"
-              value={date}
-              min={todayIso()}
-              max={todayOnly ? todayIso() : undefined}
-              onChange={(e) => setDate(e.target.value)}
-              disabled={todayOnly}
-            />
-            <span className="field__help">
-              {todayOnly
-                ? 'Việc dọn sau trả phòng chỉ giao được trong ngày.'
-                : 'Chỉ hiện nhân viên dọn phòng có ca ngày này.'}
-            </span>
-          </label>
-
           {staff === null && <p className="state">Đang tải danh sách nhân viên…</p>}
 
-          {staff?.length === 0 && (
+          {staff !== null && candidates.length === 0 && !error && (
             <div className="alert alert--info">
-              Không có nhân viên dọn phòng nào có ca ngày {formatDate(date)}. Cần xếp ca trước khi
-              giao việc.
+              {staff.length === 0
+                ? `Không có nhân viên dọn phòng nào có ca ngày ${formatDate(date)}. Cần xếp ca trước khi giao việc.`
+                : 'Mọi người có ca hôm nay đều đã ở trong nhóm dọn phòng này.'}
             </div>
           )}
 
-          {staff?.length > 0 && (
+          {candidates.length > 0 && (
             <fieldset className="choice-list">
-              <legend className="field__label">Giao cho</legend>
-              {staff.map((person, index) => (
-                <label key={person.id} className={`choice ${staffId === person.id ? 'is-selected' : ''}`}>
+              <legend className="field__label">{adding ? 'Thêm vào nhóm' : 'Giao cho'}</legend>
+              {candidates.map((person, index) => (
+                <label key={person.id} className={`choice ${selected.has(person.id) ? 'is-selected' : ''}`}>
                   <input
-                    type="radio"
-                    name="assign-staff"
+                    type="checkbox"
                     value={person.id}
-                    checked={staffId === person.id}
-                    onChange={() => setStaffId(person.id)}
+                    checked={selected.has(person.id)}
+                    onChange={() => toggle(person.id)}
+                    disabled={submitting}
                     autoFocus={index === 0}
                   />
                   <span>
@@ -128,6 +123,10 @@ export default function AssignTaskModal({ task, initialDate, onClose, onAssigned
                   </span>
                 </label>
               ))}
+              <p className="field__help">
+                Chọn được nhiều người cùng dọn một phòng. Một người trong nhóm bấm «Hoàn thành» là xong
+                cho cả nhóm.
+              </p>
             </fieldset>
           )}
 
@@ -142,8 +141,10 @@ export default function AssignTaskModal({ task, initialDate, onClose, onAssigned
           <button type="button" className="btn btn--ghost" onClick={onClose} disabled={submitting}>
             Hủy
           </button>
-          <button type="submit" className="btn btn--primary" disabled={submitting || !staffId}>
-            {submitting ? 'Đang lưu…' : 'Giao việc'}
+          <button type="submit" className="btn btn--primary" disabled={submitting || selected.size === 0}>
+            {submitting
+              ? 'Đang lưu…'
+              : `${adding ? 'Thêm' : 'Giao việc'}${selected.size > 1 ? ` cho ${selected.size} người` : ''}`}
           </button>
         </div>
       </form>

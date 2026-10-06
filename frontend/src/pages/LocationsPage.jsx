@@ -14,6 +14,7 @@ import FormModal from '../components/FormModal';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { formatDate, todayIso } from './rooms/format';
 
 const PAGE_SIZE = 10;
 
@@ -281,6 +282,9 @@ export default function LocationsPage() {
                             <div className="cell-manager">
                               <b>{staff.manager.fullName}</b>
                               <small>{staff.manager.phone}</small>
+                              {staff.manager.startWorkDate > todayIso() && (
+                                <small className="muted">Bắt đầu làm {formatDate(staff.manager.startWorkDate)}</small>
+                              )}
                             </div>
                           ) : (
                             <span className="muted">Chưa phân công</span>
@@ -294,6 +298,12 @@ export default function LocationsPage() {
                         </td>
                         <td>
                           <StatusBadge status={row.status} />
+                          {/* Chốt 06/10/2026: có quản lý nhưng chưa tới ngày họ bắt đầu làm thì chưa vận hành. */}
+                          {row.status === 'NOT_OPERATIONAL' && staff?.manager?.startWorkDate > todayIso() && (
+                            <small className="muted cell-status-note">
+                              Hoạt động từ {formatDate(staff.manager.startWorkDate)}
+                            </small>
+                          )}
                         </td>
                         <td className="cell-actions">
                           <button

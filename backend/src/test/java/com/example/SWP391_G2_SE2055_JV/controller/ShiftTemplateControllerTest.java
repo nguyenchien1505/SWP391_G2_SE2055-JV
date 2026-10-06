@@ -1,6 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftTemplateRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.LocationTemplateSetResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.ShiftTemplateResponse;
 import com.example.SWP391_G2_SE2055_JV.service.ShiftTemplateService;
 import com.example.SWP391_G2_SE2055_JV.support.SecuredWebMvcTest;
@@ -22,6 +23,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -40,6 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ShiftTemplateControllerTest {
 
     private static final UUID TEMPLATE_ID = UUID.randomUUID();
+    private static final UUID LOCATION_ID = UUID.randomUUID();
 
     private static final String BODY = """
         {"name": "Ca đêm", "startTime": "22:00", "endTime": "06:00", "description": "Qua đêm"}
@@ -56,25 +59,39 @@ class ShiftTemplateControllerTest {
         @Test
         @WithMockUser(roles = "MANAGER")
         void shouldListActiveTemplatesForManagerByDefault() throws Exception {
-            when(shiftTemplateService.getTemplates(eq(false), any())).thenReturn(new PageImpl<>(List.of(nightTemplate())));
+            when(shiftTemplateService.getTemplates(eq(false), isNull(), any()))
+                .thenReturn(new PageImpl<>(List.of(nightTemplate())));
 
             mockMvc.perform(get("/scheduling/shift-templates"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].name").value("Ca đêm"))
-                .andExpect(jsonPath("$.content[0].overnight").value(true));
+                .andExpect(jsonPath("$.content[0].overnight").value(true))
+                .andExpect(jsonPath("$.content[0].locationId").doesNotExist());
 
-            verify(shiftTemplateService).getTemplates(eq(false), any());
+            verify(shiftTemplateService).getTemplates(eq(false), isNull(), any());
         }
 
         @Test
         @WithMockUser(roles = "DIRECTOR")
         void shouldIncludeDeactivatedTemplatesWhenAsked() throws Exception {
-            when(shiftTemplateService.getTemplates(eq(true), any())).thenReturn(new PageImpl<>(List.of()));
+            when(shiftTemplateService.getTemplates(eq(true), isNull(), any())).thenReturn(new PageImpl<>(List.of()));
 
             mockMvc.perform(get("/scheduling/shift-templates").param("includeInactive", "true"))
                 .andExpect(status().isOk());
 
-            verify(shiftTemplateService).getTemplates(eq(true), any());
+            verify(shiftTemplateService).getTemplates(eq(true), isNull(), any());
+        }
+
+        /** Màn xếp ca của Giám đốc theo một chi nhánh: chỉ mẫu dùng được ở chi nhánh đó (V5). */
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldPassChosenLocationToService() throws Exception {
+            when(shiftTemplateService.getTemplates(eq(false), eq(LOCATION_ID), any())).thenReturn(new PageImpl<>(List.of()));
+
+            mockMvc.perform(get("/scheduling/shift-templates").param("locationId", LOCATION_ID.toString()))
+                .andExpect(status().isOk());
+
+            verify(shiftTemplateService).getTemplates(eq(false), eq(LOCATION_ID), any());
         }
 
         @Test
@@ -102,6 +119,24 @@ class ShiftTemplateControllerTest {
             verify(shiftTemplateService).createTemplate(request.capture());
             assertThat(request.getValue().getStartTime()).isEqualTo(LocalTime.of(22, 0));
             assertThat(request.getValue().getEndTime()).isEqualTo(LocalTime.of(6, 0));
+            assertThat(request.getValue().getLocationId()).isNull();   // không gửi = mẫu chung
+        }
+
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldPassLocationOfPrivateTemplate() throws Exception {
+            when(shiftTemplateService.createTemplate(any())).thenReturn(nightTemplate());
+
+            mockMvc.perform(post("/scheduling/shift-templates")
+                    .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"locationId": "%s", "name": "Ca giữa", "startTime": "10:00", "endTime": "18:00"}
+                        """.formatted(LOCATION_ID)))
+                .andExpect(status().isCreated());
+
+            ArgumentCaptor<CreateShiftTemplateRequest> request =
+                ArgumentCaptor.forClass(CreateShiftTemplateRequest.class);
+            verify(shiftTemplateService).createTemplate(request.capture());
+            assertThat(request.getValue().getLocationId()).isEqualTo(LOCATION_ID);
         }
 
         @Test
@@ -136,6 +171,57 @@ class ShiftTemplateControllerTest {
                 .andExpect(status().isOk());
 
             verify(shiftTemplateService).setActive(TEMPLATE_ID, false);
+        }
+    }
+
+    // ── Bộ mẫu theo chi nhánh (V6) — chỉ Giám đốc ───────────────────────────
+
+    @Nested
+    class LocationSet {
+
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldLetDirectorSwitchLocationToOwnSet() throws Exception {
+            when(shiftTemplateService.setOwnTemplates(LOCATION_ID, true)).thenReturn(LocationTemplateSetResponse.builder()
+                .locationId(LOCATION_ID).locationName("Khách sạn Test Hà Nội").ownShiftTemplates(true)
+                .ownActiveTemplates(3).build());
+
+            mockMvc.perform(patch("/scheduling/shift-templates/locations/{id}/own-templates", LOCATION_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"ownShiftTemplates\": true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ownShiftTemplates").value(true))
+                .andExpect(jsonPath("$.ownActiveTemplates").value(3));
+        }
+
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldRequireChoiceWhenSwitching() throws Exception {
+            mockMvc.perform(patch("/scheduling/shift-templates/locations/{id}/own-templates", LOCATION_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(shiftTemplateService);
+        }
+
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldCopyCommonTemplatesIntoOwnSet() throws Exception {
+            when(shiftTemplateService.copyCommonTemplates(LOCATION_ID)).thenReturn(List.of(nightTemplate()));
+
+            mockMvc.perform(post("/scheduling/shift-templates/locations/{id}/copy-common", LOCATION_ID))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$[0].name").value("Ca đêm"));
+        }
+
+        /** Manager chỉ đọc mẫu — không đổi bộ, không sao chép. */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldForbidManager() throws Exception {
+            mockMvc.perform(patch("/scheduling/shift-templates/locations/{id}/own-templates", LOCATION_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"ownShiftTemplates\": true}"))
+                .andExpect(status().isForbidden());
+            mockMvc.perform(post("/scheduling/shift-templates/locations/{id}/copy-common", LOCATION_ID))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(shiftTemplateService);
         }
     }
 

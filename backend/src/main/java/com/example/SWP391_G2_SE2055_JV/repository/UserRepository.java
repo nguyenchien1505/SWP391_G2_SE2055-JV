@@ -85,4 +85,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * cả Manager đang tạm khóa (INACTIVE) — họ vẫn giữ Location.
      */
     boolean existsByLocationIdAndRoleAndStatusNot(UUID locationId, Role role, UserStatus status);
+
+    /**
+     * Manager đang phụ trách một Location (kể cả đang tạm khóa) — gọi với {@code status = TERMINATED}.
+     * Dùng để biết ngày bắt đầu làm của họ khi bật chi nhánh (chốt 06/10/2026).
+     */
+    Optional<User> findFirstByLocationIdAndRoleAndStatusNot(UUID locationId, Role role, UserStatus status);
 }

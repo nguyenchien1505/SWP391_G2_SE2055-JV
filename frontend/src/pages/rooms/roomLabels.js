@@ -85,7 +85,6 @@ export const TASK_STATUS_ORDER = ['UNASSIGNED', 'IN_PROGRESS', 'PENDING_INSPECTI
 export const TASK_STATUS = {
   UNASSIGNED: { label: 'Chưa phân công', tone: 'dirty' },
   IN_PROGRESS: { label: 'Đang làm', tone: 'cleaning' },
-  // Chỉ việc dọn sau check-out mới đi qua bước này (BR-HK-06).
   PENDING_INSPECTION: { label: 'Chờ kiểm tra', tone: 'inspection' },
   COMPLETED: { label: 'Đã xong', tone: 'available' },
   CANCELLED: { label: 'Đã hủy', tone: 'unavailable' },
@@ -95,10 +94,12 @@ export function taskStatusMeta(status) {
   return TASK_STATUS[status] ?? { label: status ?? '—', tone: 'unavailable' };
 }
 
-/** Gọi theo việc chứ không theo mã: người dùng không cần biết "CHECKOUT" là gì. */
+/**
+ * Gọi theo việc chứ không theo mã: người dùng không cần biết "CHECKOUT" là gì. Chỉ còn việc dọn sau
+ * khi khách trả phòng — đã bỏ dọn hằng ngày (chốt 05/10/2026).
+ */
 export const TASK_TYPE = {
   CHECKOUT: 'Dọn sau trả phòng',
-  STAYOVER: 'Dọn hằng ngày',
 };
 
 export const taskTypeLabel = (type) => TASK_TYPE[type] ?? type ?? '—';
@@ -106,7 +107,6 @@ export const taskTypeLabel = (type) => TASK_TYPE[type] ?? type ?? '—';
 /** BR-HK-12: vì sao việc này tồn tại — Quản lý cần biết để xếp thứ tự ưu tiên. */
 export const TASK_CREATED_SOURCE = {
   CHECKOUT_AUTO: 'Tự sinh khi khách trả phòng',
-  MANAGER_STAYOVER: 'Quản lý tạo cho khách đang ở',
   INSPECTION_FAILED: 'Dọn lại — kiểm tra không đạt',
 };
 
@@ -122,14 +122,37 @@ export const UNASSIGNED_REASON = {
 
 export const unassignedReasonLabel = (reason) => UNASSIGNED_REASON[reason] ?? reason ?? null;
 
-/** BR-HK-09, BR-HK-10: vì sao việc này bị hủy. */
+/** BR-HK-09: vì sao việc này bị hủy — chỉ còn một đường là khóa phòng. */
 export const TASK_CANCEL_REASON = {
   ROOM_UNAVAILABLE: 'Phòng chuyển sang Không khả dụng',
-  GUEST_CHECKED_OUT: 'Khách đã trả phòng',
-  MANAGER_MANUAL: 'Quản lý hủy',
 };
 
 export const taskCancelReasonLabel = (reason) => TASK_CANCEL_REASON[reason] ?? reason ?? null;
+
+/**
+ * "101 - Deluxe" — số phòng kèm loại phòng, để người dọn biết phòng to nhỏ ra sao mà không phải tra
+ * (chốt 05/10/2026). Chưa rõ loại thì chỉ còn số phòng.
+ */
+export function roomLabel(roomNumber, roomTypeName) {
+  const number = roomNumber ?? '—';
+  return roomTypeName ? `${number} - ${roomTypeName}` : number;
+}
+
+/** Nhãn phòng của một việc dọn — xem {@link roomLabel}. */
+export const taskRoomLabel = (task) => roomLabel(task?.roomNumber, task?.roomTypeName);
+
+/**
+ * Tên nhóm dọn của một việc: "Hoa, Nam". Một phòng có thể nhiều người dọn; backend trả sẵn
+ * `assignees` kèm họ tên, xếp theo tên.
+ *
+ * @param exceptId bỏ một người ra khỏi danh sách — ví dụ chính mình, để ghi "Dọn cùng: …"
+ */
+export function teamNames(task, exceptId) {
+  return (task?.assignees ?? [])
+    .filter((member) => member.staffId !== exceptId)
+    .map((member) => member.fullName ?? 'Nhân viên đã nghỉ')
+    .join(', ');
+}
 
 /**
  * So sánh tầng / số phòng: tầng là TEXT (G, M, B1 — BR-ROOM-05) nên so kiểu "tự nhiên"

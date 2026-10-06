@@ -3,18 +3,19 @@ import { readErrorMessage } from '../../api/client';
 import { assignTask } from '../../api/housekeeping';
 import { formatDate } from '../../pages/rooms/format';
 import { canAssignOn, compareQueue, isRedo } from '../../pages/rooms/cleaningBoard';
-import { taskTypeLabel } from '../../pages/rooms/roomLabels';
+import { taskRoomLabel } from '../../pages/rooms/roomLabels';
 
 /**
  * Giao NHIỀU việc trong hàng chờ cho MỘT người — chiều ngược lại của AssignTaskModal, mở từ nút
  * "+ Giao việc" trên một hàng của bảng theo nhân viên. BR-HK-02: giao tay, không giới hạn số việc.
+ * Muốn thêm người dọn cùng một phòng thì dùng nút "Thêm người" trên chính việc đó.
  *
  * Mỗi việc gọi API gán riêng: một việc lỗi (ví dụ vừa có người khác giao mất) không kéo cả loạt
  * thất bại. Chạy hết mới báo kết quả cho trang cha qua `onDone`.
  *
  * @param person  { id, fullName, shiftLabel } — người nhận, đã có ca ngày `date`
  * @param date    ngày giao (ISO)
- * @param today   hôm nay (ISO) — việc dọn sau trả phòng chỉ giao được cho hôm nay (Q5)
+ * @param today   hôm nay (ISO) — việc dọn chỉ giao được cho hôm nay (Q5)
  * @param tasks   các việc trong hàng chờ
  * @param onDone  nhận { assigned: task[], failed: [{ task, message }] }
  */
@@ -30,7 +31,7 @@ export default function AssignToStaffModal({ person, date, today, tasks, onClose
   }, [submitting, onClose]);
 
   const options = useMemo(() => [...tasks].sort(compareQueue), [tasks]);
-  const lockedCheckout = options.some((task) => !canAssignOn(task, date, today));
+  const allowed = canAssignOn(date, today);
 
   function toggle(taskId) {
     setSelected((current) => {
@@ -48,7 +49,7 @@ export default function AssignToStaffModal({ person, date, today, tasks, onClose
     const failed = [];
     for (const task of options.filter((t) => selected.has(t.id))) {
       try {
-        assigned.push(await assignTask(task.id, { staffId: person.id, assignedDate: date }));
+        assigned.push(await assignTask(task.id, { staffIds: [person.id], assignedDate: date }));
       } catch (err) {
         failed.push({ task, message: readErrorMessage(err, 'Không giao được việc này.') });
       }
@@ -76,35 +77,32 @@ export default function AssignToStaffModal({ person, date, today, tasks, onClose
           {options.length > 0 && (
             <fieldset className="choice-list">
               <legend className="field__label">Việc trong hàng chờ</legend>
-              {options.map((task) => {
-                const allowed = canAssignOn(task, date, today);
-                return (
-                  <label
-                    key={task.id}
-                    className={`choice ${selected.has(task.id) ? 'is-selected' : ''} ${allowed ? '' : 'is-disabled'}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(task.id)}
-                      disabled={!allowed || submitting}
-                      onChange={() => toggle(task.id)}
-                    />
-                    <span>
-                      <b>Phòng {task.roomNumber ?? '—'}</b>
-                      <small>
-                        Tầng {task.floor ?? '—'} · {taskTypeLabel(task.taskType)}
-                        {isRedo(task) ? ' · Dọn lại' : ''}
-                      </small>
-                    </span>
-                  </label>
-                );
-              })}
+              {options.map((task) => (
+                <label
+                  key={task.id}
+                  className={`choice ${selected.has(task.id) ? 'is-selected' : ''} ${allowed ? '' : 'is-disabled'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(task.id)}
+                    disabled={!allowed || submitting}
+                    onChange={() => toggle(task.id)}
+                  />
+                  <span>
+                    <b>Phòng {taskRoomLabel(task)}</b>
+                    <small>
+                      Tầng {task.floor ?? '—'}
+                      {isRedo(task) ? ' · Dọn lại' : ''}
+                    </small>
+                  </span>
+                </label>
+              ))}
             </fieldset>
           )}
 
-          {lockedCheckout && (
+          {!allowed && (
             <p className="field__help">
-              Việc dọn sau trả phòng chỉ giao được trong ngày, vì phòng chuyển sang «Đang dọn» ngay khi giao.
+              Việc dọn chỉ giao được trong ngày, vì phòng chuyển sang «Đang dọn» ngay khi giao.
             </p>
           )}
         </div>

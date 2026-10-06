@@ -5,7 +5,7 @@ import { fetchAssignableStaff, fetchTasks } from '../../api/housekeeping';
 import { fetchShifts } from '../../api/scheduling';
 import { formatDate } from '../../pages/rooms/format';
 import { canAssignOn, compareQueue, initials, isRedo } from '../../pages/rooms/cleaningBoard';
-import { compareNatural, taskStatusMeta } from '../../pages/rooms/roomLabels';
+import { compareNatural, taskStatusMeta, teamNames } from '../../pages/rooms/roomLabels';
 import { addDays, formatLongDate, timeRange } from '../../pages/scheduling/scheduleFormat';
 import TaskCard from './TaskCard';
 import TaskStatusBadge from './TaskStatusBadge';
@@ -19,25 +19,25 @@ const ROW_ORDER = ['IN_PROGRESS', 'PENDING_INSPECTION', 'COMPLETED'];
 /**
  * Lịch dọn theo ngày, theo NGƯỜI — chế độ "Theo nhân viên" của màn Công việc dọn phòng.
  *
- * Theo BR, lịch dọn không phải lịch riêng mà là các việc dọn gắn (người, ngày) — DM-04 — với điều
- * kiện người nhận có ca ngày đó và có quyền Dọn dẹp (BR-HK-03). Vì vậy mỗi HÀNG là đúng một người
- * như thế (lấy thẳng từ `assignable-staff`), kèm giờ ca để Quản lý chia việc cho đều.
+ * Theo BR, lịch dọn không phải lịch riêng mà là các việc dọn gắn (nhóm người, ngày) với điều kiện
+ * mỗi người nhận có ca ngày đó và có quyền Dọn dẹp (BR-HK-03). Vì vậy mỗi HÀNG là đúng một người
+ * như thế (lấy thẳng từ `assignable-staff`), kèm giờ ca để Quản lý chia việc cho đều. Một phòng nhiều
+ * người dọn thì việc đó hiện ở hàng của MỖI người trong nhóm, kèm tên người dọn cùng.
  *
  * - **Hàng chờ**: việc chưa ai nhận, dọn lại xếp đầu.
  * - **Tồn đọng**: việc hôm trước chưa xong (BR-HK-04) — chỉ hiện khi xem hôm nay.
  * - **Cần xử lý**: việc đang làm trong ngày nhưng người giữ không còn trong danh sách giao được
  *   (mất ca / mất quyền, dữ liệu cũ) — hiện riêng để không việc nào bị khuất.
  *
- * Ngày đã qua chỉ xem; ngày tương lai chỉ giao được việc dọn hằng ngày (Q5).
+ * Việc dọn chỉ giao trong ngày (Q5): ngày đã qua và ngày tương lai chỉ xem.
  *
- * Mọi thao tác (giao, gỡ, kiểm tra, hủy) do trang cha giữ để dùng chung hộp thoại với bảng theo
+ * Mọi thao tác (giao, thêm người, gỡ, kiểm tra) do trang cha giữ để dùng chung hộp thoại với bảng theo
  * trạng thái; `version` tăng sau mỗi thao tác thì bảng tải lại.
  */
 export default function CleaningDayBoard({
   today,
   canManage,
   version,
-  staffNames,
   actionsFor,
   onAssignToPerson,
   onShowPreviousInspection,
@@ -86,7 +86,7 @@ export default function CleaningDayBoard({
           .filter((shift) => shift.staffId === person.id)
           .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)));
         const tasks = data.dayTasks
-          .filter((task) => task.assignedStaffId === person.id)
+          .filter((task) => (task.assignedStaffIds ?? []).includes(person.id))
           .sort((a, b) => ROW_ORDER.indexOf(a.status) - ROW_ORDER.indexOf(b.status)
             || compareNatural(a.roomNumber, b.roomNumber));
         const count = (status) => tasks.filter((task) => task.status === status).length;
@@ -102,22 +102,28 @@ export default function CleaningDayBoard({
       .sort((a, b) => a.person.fullName.localeCompare(b.person.fullName, 'vi'));
   }, [data]);
 
+  // Việc đang làm có người trong nhóm không còn ca / quyền ngày đó — kèm tên đúng những người ấy.
   const orphans = useMemo(() => {
     if (!data) return [];
     const onShift = new Set(data.people.map((person) => person.id));
     return data.dayTasks
-      .filter((task) => task.status === 'IN_PROGRESS' && !onShift.has(task.assignedStaffId))
-      .sort((a, b) => compareNatural(a.roomNumber, b.roomNumber));
+      .filter((task) => task.status === 'IN_PROGRESS')
+      .map((task) => ({
+        task,
+        offShift: (task.assignees ?? []).filter((member) => !onShift.has(member.staffId)),
+      }))
+      .filter(({ offShift }) => offShift.length > 0)
+      .sort((a, b) => compareNatural(a.task.roomNumber, b.task.roomNumber));
   }, [data]);
 
   const readOnly = !canManage || date < today;
-  const assignableQueue = (data?.queue ?? []).filter((task) => canAssignOn(task, date, today));
+  const canAssign = canAssignOn(date, today);
   const isFuture = date > today;
 
-  /** Thẻ trong hàng chờ: ngày tương lai bỏ nút giao của việc dọn sau trả phòng (Q5). */
+  /** Thẻ trong hàng chờ: chỉ giao được khi đang xem hôm nay (Q5). */
   function queueActions(task) {
     if (readOnly) return [];
-    return actionsFor(task, { date }).filter((action) => action.key !== 'assign' || canAssignOn(task, date, today));
+    return actionsFor(task).filter((action) => action.key !== 'assign' || canAssign);
   }
 
   return (
@@ -171,9 +177,9 @@ export default function CleaningDayBoard({
                 <h2>Hàng chờ</h2>
                 <span className="chip">{data.queue.length}</span>
               </header>
-              {isFuture && data.queue.some((task) => !canAssignOn(task, date, today)) && (
+              {isFuture && data.queue.length > 0 && (
                 <p className="day-panel__note">
-                  Ngày tương lai chỉ giao được việc dọn hằng ngày; việc dọn sau trả phòng chỉ giao trong ngày.
+                  Việc dọn chỉ giao được trong ngày, vì phòng chuyển sang «Đang dọn» ngay khi giao.
                 </p>
               )}
               {data.queue.length === 0 && <p className="state state--empty">Không còn việc nào chờ giao.</p>}
@@ -201,7 +207,6 @@ export default function CleaningDayBoard({
                   <TaskCard
                     key={task.id}
                     task={task}
-                    staffName={staffNames[task.assignedStaffId]}
                     today={today}
                     actions={readOnly ? [] : actionsFor(task)}
                     onShowPreviousInspection={onShowPreviousInspection}
@@ -223,11 +228,11 @@ export default function CleaningDayBoard({
                   giao lại cho người có ca.
                 </p>
                 <ul className="staff-row__tasks">
-                  {orphans.map((task) => (
+                  {orphans.map(({ task, offShift }) => (
                     <TaskChip
                       key={task.id}
                       task={task}
-                      who={staffNames[task.assignedStaffId] ?? 'Nhân viên đã nghỉ'}
+                      who={offShift.map((member) => member.fullName ?? 'Nhân viên đã nghỉ').join(', ')}
                       actions={readOnly ? [] : actionsFor(task)}
                       onShowPreviousInspection={onShowPreviousInspection}
                     />
@@ -263,8 +268,10 @@ export default function CleaningDayBoard({
                     <button
                       type="button"
                       className="btn btn--primary btn--sm"
-                      disabled={assignableQueue.length === 0}
-                      title={assignableQueue.length === 0 ? 'Hàng chờ không còn việc giao được cho ngày này' : undefined}
+                      disabled={!canAssign || data.queue.length === 0}
+                      title={!canAssign
+                        ? 'Việc dọn chỉ giao được trong ngày'
+                        : data.queue.length === 0 ? 'Hàng chờ không còn việc nào' : undefined}
                       onClick={() => onAssignToPerson({
                         person: { ...row.person, shiftLabel: row.shiftLabel },
                         date,
@@ -284,6 +291,7 @@ export default function CleaningDayBoard({
                       <TaskChip
                         key={task.id}
                         task={task}
+                        who={teamNames(task, row.person.id) && `Cùng: ${teamNames(task, row.person.id)}`}
                         actions={readOnly ? [] : actionsFor(task)}
                         onShowPreviousInspection={onShowPreviousInspection}
                       />
@@ -299,13 +307,13 @@ export default function CleaningDayBoard({
   );
 }
 
-/** Một việc dạng gọn trong hàng của một người — số phòng, loại, trạng thái và nút thao tác. */
+/** Một việc dạng gọn trong hàng của một người — "301 - Deluxe", trạng thái, người dọn cùng và nút. */
 function TaskChip({ task, who, actions, onShowPreviousInspection }) {
   return (
     <li className={`hk-chip room-tone--${taskStatusMeta(task.status).tone}`}>
       <div className="hk-chip__main">
         <span className="hk-chip__room">{task.roomNumber ?? '—'}</span>
-        <span className="hk-chip__type">{task.taskType === 'CHECKOUT' ? 'Sau trả phòng' : 'Hằng ngày'}</span>
+        {task.roomTypeName && <span className="hk-chip__type">- {task.roomTypeName}</span>}
         <TaskStatusBadge status={task.status} />
       </div>
       {who && <p className="hk-chip__who">{who}</p>}

@@ -33,9 +33,10 @@ import java.util.stream.Collectors;
  * Location (khách sạn) — BR-ORG-02, BR-ORG-03, BR-ORG-04, BR-ORG-05.
  *
  * <p><b>Trạng thái vận hành không sửa tay.</b> Location mới luôn ở NOT_OPERATIONAL và chỉ
- * chuyển sang OPERATIONAL khi có Manager (BR-ORG-02, DM-13). Việc lật trạng thái nằm ở
- * {@link UserService}: tạo tài khoản Manager cho Location thì bật, cho Manager nghỉ việc
- * thì tắt. Đó chính là "2 bước tách rời" của BR-ORG-02 — tạo Location trước, gán Manager
+ * chuyển sang OPERATIONAL khi có Manager VÀ tới ngày Manager đó bắt đầu làm (BR-ORG-02, DM-13, chốt
+ * 06/10/2026). Việc lật trạng thái nằm ở {@link LocationActivationService}: {@link UserService} gọi
+ * khi gán Manager cho Location hoặc đổi ngày bắt đầu làm, còn {@link LocationActivationJob} bật đúng
+ * ngày với Manager bắt đầu sau ngày được gán. Đó chính là "2 bước tách rời" của BR-ORG-02 — tạo Location trước, gán Manager
  * sau — nên ở đây không có endpoint gán Manager riêng.
  *
  * <p><b>Chưa làm:</b> điều chuyển Manager/Staff sang Location khác (BR-TRF-01..07).

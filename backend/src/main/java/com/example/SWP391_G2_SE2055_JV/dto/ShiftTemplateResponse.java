@@ -15,6 +15,8 @@ import java.util.UUID;
 public class ShiftTemplateResponse {
 
     private UUID          id;
+    /** null = thuộc bộ mẫu chung của chuỗi; có giá trị = thuộc bộ mẫu riêng của chi nhánh đó. */
+    private UUID          locationId;
     private String        name;
     private LocalTime     startTime;
     private LocalTime     endTime;
@@ -33,6 +35,7 @@ public class ShiftTemplateResponse {
     public static ShiftTemplateResponse fromEntity(ShiftTemplate template) {
         return ShiftTemplateResponse.builder()
             .id(template.getId())
+            .locationId(template.getLocationId())
             .name(template.getName())
             .startTime(template.getStartTime())
             .endTime(template.getEndTime())

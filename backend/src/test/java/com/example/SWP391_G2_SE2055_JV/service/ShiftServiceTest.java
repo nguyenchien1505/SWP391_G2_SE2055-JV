@@ -51,6 +51,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -84,6 +85,7 @@ class ShiftServiceTest {
     @Mock ShiftTemplateRepository shiftTemplateRepository;
     @Mock SchedulePolicyValidator policyValidator;
     @Mock HousekeepingService     housekeepingService;
+    @Mock ReceptionCoverageRule   receptionCoverage;
 
     @InjectMocks ShiftService service;
 
@@ -120,6 +122,26 @@ class ShiftServiceTest {
             service.getShifts(MONDAY, SUNDAY, pageable);
 
             verify(shiftRepository).findByStaffIdAndShiftDateBetween(staff.getId(), MONDAY, SUNDAY, pageable);
+        }
+
+        /** Nhân viên không đọc được danh mục mẫu ca — tên mẫu đi kèm từng ca để lịch hiện đúng "Ca đêm". */
+        @Test
+        void shouldIncludeTemplateNameWithEachShift() {
+            CustomUserDetails staff = TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            Shift night = assignedShift();
+            night.setStaffId(staff.getId());
+            night.setSourceTemplateId(TEMPLATE_ID);
+            Shift free = assignedShift();
+            free.setId(UUID.randomUUID());
+            free.setStaffId(staff.getId());
+            when(shiftRepository.findByStaffIdAndShiftDateBetween(staff.getId(), MONDAY, SUNDAY, pageable))
+                .thenReturn(new PageImpl<>(List.of(night, free)));
+            when(shiftTemplateRepository.findAllById(any())).thenReturn(List.of(nightTemplate()));
+
+            Page<ShiftResponse> page = service.getShifts(MONDAY, SUNDAY, pageable);
+
+            assertThat(page.getContent()).extracting(ShiftResponse::getSourceTemplateName)
+                .containsExactly("Ca đêm", null);
         }
 
         @Test
@@ -512,6 +534,7 @@ class ShiftServiceTest {
         @Test
         void shouldTakeHoursFromNewTemplate() {
             givenOwnedShift(assignedShift());
+            givenLocationInTenant();
             givenTemplate(nightTemplate());
             givenSaveReturnsArgument();
 
@@ -809,12 +832,262 @@ class ShiftServiceTest {
         }
     }
 
+    // ── Mỗi ca theo mẫu phải có lễ tân; chỉ xếp ca cho nhân viên (chốt 05/10/2026) ──
+    // Luật "thế nào là đủ lễ tân" đã test ở ReceptionCoverageRuleTest; ở đây chỉ kiểm đường ghi nào
+    // phải hỏi quy tắc đó, vào lúc nào, và bị chặn thì không lưu gì.
+
+    @Nested
+    class ReceptionCoverage {
+
+        private static final UUID OTHER_STAFF_ID = UUID.randomUUID();
+
+        @BeforeEach
+        void loginAsManager() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+        }
+
+        /** Kiểm CẢ CA trước từng người: thiếu lễ tân thì chọn lại danh sách, chưa cần xét Policy của ai. */
+        @Test
+        void shouldCheckWholeCrewBeforeAnyoneWhenCreatingShifts() {
+            givenLocationInTenant();
+            givenTemplate(nightTemplate());
+            doThrow(new BusinessException("Ca đêm ngày 05/10/2026 phải có ít nhất 1 lễ tân"))
+                .when(receptionCoverage).assertCoveredAfterAdding(eq(LOCATION_ID), eq(MONDAY), eq(TEMPLATE_ID), any());
+
+            assertThatThrownBy(() -> service.createShifts(batchOf(List.of(STAFF_ID, OTHER_STAFF_ID))))
+                .isInstanceOf(BusinessException.class)
+                .isNotInstanceOf(ShiftBatchRejectedException.class)
+                .hasMessageContaining("lễ tân");
+            verifyNoInteractions(policyValidator, userRepository);
+            verify(shiftRepository, never()).saveAll(any());
+        }
+
+        @Test
+        void shouldCheckCoverageWhenCreatingShiftWithPerson() {
+            givenLocationInTenant();
+            givenTemplate(nightTemplate());
+            givenStaff(activeStaff());
+            givenSaveReturnsArgument();
+
+            service.createShift(request(STAFF_ID, TEMPLATE_ID, null, null));
+
+            verify(receptionCoverage).assertCoveredAfterAdding(LOCATION_ID, MONDAY, TEMPLATE_ID, List.of(STAFF_ID));
+        }
+
+        @Test
+        void shouldNotAssignWhenShiftWouldLackReceptionist() {
+            Shift shift = unassignedShift();
+            shift.setSourceTemplateId(TEMPLATE_ID);
+            givenOwnedShift(shift);
+            givenStaff(activeStaff());
+            doThrow(new BusinessException("Ca đêm ngày 05/10/2026 phải có ít nhất 1 lễ tân"))
+                .when(receptionCoverage).assertCoveredAfterAdding(LOCATION_ID, MONDAY, TEMPLATE_ID, List.of(STAFF_ID));
+
+            assertThatThrownBy(() -> service.assignStaff(SHIFT_ID, STAFF_ID))
+                .isInstanceOf(BusinessException.class);
+            assertThat(shift.getStaffId()).isNull();
+            verifyNoInteractions(policyValidator);
+            verify(shiftRepository, never()).save(any());
+        }
+
+        /** Không gỡ được lễ tân duy nhất của một ca còn người khác — ca giữ nguyên người. */
+        @Test
+        void shouldNotUnassignLastReceptionist() {
+            Shift shift = assignedShift();
+            shift.setSourceTemplateId(TEMPLATE_ID);
+            givenOwnedShift(shift);
+            doThrow(new BusinessException("Nguyễn Thị Lan là lễ tân duy nhất của Ca đêm ngày 05/10/2026."))
+                .when(receptionCoverage).assertStillCoveredAfterRemoving(shift);
+
+            assertThatThrownBy(() -> service.unassignStaff(SHIFT_ID, UnassignedReason.MANAGER_MANUAL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("lễ tân duy nhất");
+            assertThat(shift.getStaffId()).isEqualTo(STAFF_ID);
+            verify(shiftRepository, never()).save(any());
+        }
+
+        @Test
+        void shouldNotDeleteShiftOfLastReceptionist() {
+            Shift shift = assignedShift();
+            givenOwnedShift(shift);
+            doThrow(new BusinessException("Nguyễn Thị Lan là lễ tân duy nhất của Ca sáng ngày 05/10/2026."))
+                .when(receptionCoverage).assertStillCoveredAfterRemoving(shift);
+
+            assertThatThrownBy(() -> service.deleteShift(SHIFT_ID)).isInstanceOf(BusinessException.class);
+            verify(shiftRepository, never()).delete(any());
+        }
+
+        /** Chỗ trống chưa giao ai không tính là người — xóa không làm ca nào thiếu lễ tân. */
+        @Test
+        void shouldNotCheckCoverageWhenDeletingEmptySlot() {
+            givenOwnedShift(unassignedShift());
+
+            service.deleteShift(SHIFT_ID);
+
+            verifyNoInteractions(receptionCoverage);
+        }
+
+        /**
+         * Dời người sang mẫu khác = rời ca cũ rồi vào ca mới: kiểm "rời" TRƯỚC khi đổi (lúc ca còn giữ
+         * mẫu cũ) và kiểm "vào" SAU khi đổi.
+         */
+        @Test
+        void shouldCheckOldCrewBeforeAndNewCrewAfterMovingToAnotherTemplate() {
+            UUID morningTemplateId = UUID.randomUUID();
+            Shift shift = assignedShift();
+            shift.setSourceTemplateId(morningTemplateId);
+            givenOwnedShift(shift);
+            givenLocationInTenant();
+            givenTemplate(nightTemplate());
+            givenSaveReturnsArgument();
+            doAnswer(invocation -> {
+                assertThat(invocation.<Shift>getArgument(0).getSourceTemplateId()).isEqualTo(morningTemplateId);
+                return null;
+            }).when(receptionCoverage).assertStillCoveredAfterRemoving(shift);
+
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setSourceTemplateId(TEMPLATE_ID);
+            service.updateShift(SHIFT_ID, request);
+
+            verify(receptionCoverage).assertStillCoveredAfterRemoving(shift);
+            verify(receptionCoverage).assertCoveredAfterAdding(LOCATION_ID, MONDAY, TEMPLATE_ID, List.of(STAFF_ID));
+        }
+
+        /** Chỉ đổi giờ của ca tự nhập: không rời ca theo mẫu nào, không vào ca nào — không kiểm. */
+        @Test
+        void shouldNotCheckCoverageWhenOnlyHoursOfFreeShiftChange() {
+            givenOwnedShift(assignedShift());
+            givenSaveReturnsArgument();
+
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setStartTime(LocalTime.of(7, 0));
+            request.setEndTime(LocalTime.of(15, 0));
+            service.updateShift(SHIFT_ID, request);
+
+            verifyNoInteractions(receptionCoverage);
+        }
+
+        /** Quản lý khách sạn không có ca làm việc — chỉ xếp ca cho nhân viên. */
+        @Test
+        void shouldNotScheduleManager() {
+            givenOwnedShift(unassignedShift());
+            User manager = activeStaff();
+            manager.setRole(Role.MANAGER);
+            givenStaff(manager);
+
+            assertThatThrownBy(() -> service.assignStaff(SHIFT_ID, STAFF_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Chỉ xếp ca cho nhân viên");
+            verifyNoInteractions(policyValidator, receptionCoverage);
+        }
+
+        /** Trong lần xếp nhiều người, quản lý bị nêu tên như một người vi phạm — không lưu ca nào. */
+        @Test
+        void shouldReportManagerInBatchAsViolation() {
+            givenLocationInTenant();
+            User manager = staff(OTHER_STAFF_ID, "Trần Quản Lý");
+            manager.setRole(Role.MANAGER);
+            givenUser(manager);
+
+            assertThatThrownBy(() -> service.createShifts(batchOf(List.of(OTHER_STAFF_ID))))
+                .isInstanceOfSatisfying(ShiftBatchRejectedException.class, ex ->
+                    assertThat(ex.getViolations()).singleElement().satisfies(violation -> {
+                        assertThat(violation.getFullName()).isEqualTo("Trần Quản Lý");
+                        assertThat(violation.getMessage()).contains("Chỉ xếp ca cho nhân viên");
+                    }));
+            verify(shiftRepository, never()).saveAll(any());
+        }
+
+        /** Xếp nhiều người vào Ca đêm (theo mẫu) — hoặc ca tự nhập giờ khi không truyền mẫu. */
+        private CreateShiftBatchRequest batchOf(List<UUID> staffIds) {
+            CreateShiftBatchRequest request = new CreateShiftBatchRequest();
+            request.setLocationId(LOCATION_ID);
+            request.setShiftDate(MONDAY);
+            if (staffIds.contains(STAFF_ID)) {
+                request.setSourceTemplateId(TEMPLATE_ID);
+            } else {
+                request.setStartTime(LocalTime.of(8, 0));
+                request.setEndTime(LocalTime.of(16, 0));
+            }
+            request.setStaffIds(staffIds);
+            request.setOpenSlots(0);
+            return request;
+        }
+    }
+
+    // ── Bộ mẫu ca chi nhánh đang dùng (V6, chốt 06/10/2026) ─────────────────
+
+    @Nested
+    class TemplateSet {
+
+        @BeforeEach
+        void loginAsManager() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+        }
+
+        /** Chi nhánh đã bật bộ riêng: không xếp ca theo mẫu chung nữa. */
+        @Test
+        void shouldRejectCommonTemplateWhenLocationUsesOwnSet() {
+            givenLocationInTenant(true);
+            givenTemplate(nightTemplate());
+
+            assertThatThrownBy(() -> service.createShift(request(null, TEMPLATE_ID, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("đang dùng bộ mẫu ca riêng");
+            verify(shiftRepository, never()).save(any());
+        }
+
+        /** Mẫu riêng soạn sẵn nhưng chi nhánh chưa bật bộ riêng: chưa dùng được. */
+        @Test
+        void shouldRejectOwnTemplateWhileLocationUsesCommonSet() {
+            givenLocationInTenant(false);
+            ShiftTemplate own = nightTemplate();
+            own.setLocationId(LOCATION_ID);
+            givenTemplate(own);
+
+            assertThatThrownBy(() -> service.createShift(request(null, TEMPLATE_ID, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("đang dùng bộ mẫu ca chung");
+            verify(shiftRepository, never()).save(any());
+        }
+
+        @Test
+        void shouldAcceptOwnTemplateWhenLocationUsesOwnSet() {
+            givenLocationInTenant(true);
+            ShiftTemplate own = nightTemplate();
+            own.setLocationId(LOCATION_ID);
+            givenTemplate(own);
+            givenSaveReturnsArgument();
+
+            ShiftResponse created = service.createShift(request(null, TEMPLATE_ID, null, null));
+
+            assertThat(created.getSourceTemplateId()).isEqualTo(TEMPLATE_ID);
+        }
+
+        @Test
+        void shouldRejectTemplateOfAnotherLocation() {
+            givenLocationInTenant(true);
+            ShiftTemplate foreign = nightTemplate();
+            foreign.setLocationId(OTHER_LOCATION_ID);
+            givenTemplate(foreign);
+
+            assertThatThrownBy(() -> service.createShift(request(null, TEMPLATE_ID, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("chi nhánh khác");
+        }
+    }
+
     // ── Tiện ích ───────────────────────────────────────────────────────────
 
     private void givenLocationInTenant() {
+        givenLocationInTenant(false);
+    }
+
+    /** @param ownTemplates chi nhánh dùng bộ mẫu riêng (true) hay bộ mẫu chung (false) — V6 */
+    private void givenLocationInTenant(boolean ownTemplates) {
         when(locationRepository.findByIdAndTenantId(LOCATION_ID, TENANT_ID)).thenReturn(Optional.of(
             Location.builder().id(LOCATION_ID).tenantId(TENANT_ID).name("Khách sạn Test")
-                .status(LocationStatus.OPERATIONAL).build()));
+                .status(LocationStatus.OPERATIONAL).ownShiftTemplates(ownTemplates).build()));
     }
 
     private void givenTemplate(ShiftTemplate template) {

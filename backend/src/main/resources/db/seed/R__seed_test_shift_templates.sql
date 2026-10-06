@@ -11,13 +11,16 @@
 --   Ca chiều   14:00 – 22:00  —
 --   Ca đêm     22:00 – 06:00  Qua đêm: 8 giờ tính trọn vào ngày bắt đầu (BR-SCH-03)
 --
--- "ON DUPLICATE KEY UPDATE id = id" cũng bỏ qua khi Tenant đã tự tạo mẫu trùng tên
--- (unique tenant_id + name), không ghi đè mẫu của người dùng.
+-- Cả ba là mẫu CHUNG (location_id NULL — dùng ở mọi chi nhánh). Mẫu riêng một chi nhánh thì
+-- Giám đốc tự tạo ở màn "Quy tắc xếp lịch" (V5).
+--
+-- "ON DUPLICATE KEY UPDATE id = id" cũng bỏ qua khi Tenant đã tự tạo mẫu chung trùng tên
+-- (unique tenant_id + scope_key + name — V5), không ghi đè mẫu của người dùng.
 -- =============================================================================
 
 SET NAMES utf8mb4;
 
--- ── Mẫu ca — danh mục cấp Tenant do Giám đốc quản lý (BR-SCH-04, BR-SCH-22) ──
+-- ── Mẫu ca chung — Giám đốc quản lý (BR-SCH-04, BR-SCH-22) ───────────────────
 INSERT INTO shift_templates (id, tenant_id, name, start_time, end_time, description) VALUES
     ('70000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
      'Ca sáng', '06:00:00', '14:00:00', 'Ca ban ngày, nhận bàn giao từ ca đêm'),

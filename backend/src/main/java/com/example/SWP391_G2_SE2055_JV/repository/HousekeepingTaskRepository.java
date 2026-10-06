@@ -24,16 +24,20 @@ public interface HousekeepingTaskRepository extends JpaRepository<HousekeepingTa
     /**
      * Lịch dọn. Tham số nào {@code null} thì bỏ qua điều kiện đó; {@code tenantId} luôn
      * bắt buộc để cách ly dữ liệu. Phạm vi theo vai trò do service quyết định:
-     * Manager truyền {@code locationId}, nhân viên dọn truyền {@code staffId}.
+     * Manager truyền {@code locationId}, nhân viên dọn truyền {@code staffId} — khi đó trả mọi
+     * việc mà người đó có trong nhóm dọn. {@code assignedFrom} / {@code assignedTo} lọc ngày làm
+     * theo khoảng (tính cả hai đầu) cho lịch dọn theo tuần.
      */
     @Query("""
         select t from HousekeepingTask t
         where t.tenantId = :tenantId
-          and (:locationId   is null or t.locationId      = :locationId)
-          and (:staffId      is null or t.assignedStaffId = :staffId)
-          and (:status       is null or t.status          = :status)
-          and (:taskType     is null or t.taskType        = :taskType)
-          and (:assignedDate is null or t.assignedDate    = :assignedDate)
+          and (:locationId   is null or t.locationId   = :locationId)
+          and (:staffId      is null or :staffId member of t.assigneeIds)
+          and (:status       is null or t.status       = :status)
+          and (:taskType     is null or t.taskType     = :taskType)
+          and (:assignedDate is null or t.assignedDate = :assignedDate)
+          and (:assignedFrom is null or t.assignedDate >= :assignedFrom)
+          and (:assignedTo   is null or t.assignedDate <= :assignedTo)
         """)
     Page<HousekeepingTask> search(@Param("tenantId") UUID tenantId,
                                   @Param("locationId") UUID locationId,
@@ -41,6 +45,8 @@ public interface HousekeepingTaskRepository extends JpaRepository<HousekeepingTa
                                   @Param("status") HousekeepingTaskStatus status,
                                   @Param("taskType") HousekeepingTaskType taskType,
                                   @Param("assignedDate") LocalDate assignedDate,
+                                  @Param("assignedFrom") LocalDate assignedFrom,
+                                  @Param("assignedTo") LocalDate assignedTo,
                                   Pageable pageable);
 
     /**
@@ -52,17 +58,33 @@ public interface HousekeepingTaskRepository extends JpaRepository<HousekeepingTa
 
     List<HousekeepingTask> findByRoomIdAndStatusIn(UUID roomId, Collection<HousekeepingTaskStatus> statuses);
 
-    List<HousekeepingTask> findByRoomIdAndTaskTypeAndStatusIn(UUID roomId, HousekeepingTaskType taskType,
-                                                              Collection<HousekeepingTaskStatus> statuses);
+    /** BR-HK-07 + BR-SCH-17: việc có người này trong nhóm dọn, ngày làm LỚN HƠN hôm nay. */
+    @Query("""
+        select t from HousekeepingTask t
+        where :staffId member of t.assigneeIds
+          and t.status = :status
+          and t.assignedDate > :today
+        """)
+    List<HousekeepingTask> findOfStaffAfter(@Param("staffId") UUID staffId,
+                                            @Param("status") HousekeepingTaskStatus status,
+                                            @Param("today") LocalDate today);
 
-    /** BR-HK-07 + BR-SCH-17: task đã gán cho ngày LỚN HƠN hôm nay của một nhân viên. */
-    List<HousekeepingTask> findByAssignedStaffIdAndStatusAndAssignedDateGreaterThan(
-        UUID staffId, HousekeepingTaskStatus status, LocalDate today);
+    /** Việc có người này trong nhóm dọn, trong ĐÚNG một ngày, ở trạng thái cho trước — BR-HK-03. */
+    @Query("""
+        select t from HousekeepingTask t
+        where :staffId member of t.assigneeIds
+          and t.assignedDate = :date
+          and t.status = :status
+        """)
+    List<HousekeepingTask> findOfStaffOn(@Param("staffId") UUID staffId,
+                                         @Param("date") LocalDate date,
+                                         @Param("status") HousekeepingTaskStatus status);
 
-    /** Việc một nhân viên đang giữ trong ĐÚNG một ngày, ở trạng thái cho trước — BR-HK-03. */
-    List<HousekeepingTask> findByAssignedStaffIdAndAssignedDateAndStatus(
-        UUID staffId, LocalDate assignedDate, HousekeepingTaskStatus status);
-
-    /** Số task một nhân viên đang giữ ở trạng thái cho trước (mọi ngày). */
-    long countByAssignedStaffIdAndStatus(UUID staffId, HousekeepingTaskStatus status);
+    /** Số việc có người này trong nhóm dọn, ở trạng thái cho trước (mọi ngày). */
+    @Query("""
+        select count(t) from HousekeepingTask t
+        where :staffId member of t.assigneeIds
+          and t.status = :status
+        """)
+    long countOfStaff(@Param("staffId") UUID staffId, @Param("status") HousekeepingTaskStatus status);
 }

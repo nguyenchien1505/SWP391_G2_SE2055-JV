@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
-import { cancelTask, createStayoverBatch, fetchTasks, unassignTask } from '../../api/housekeeping';
-import { fetchRoomStatusSummary } from '../../api/rooms';
-import { fetchStaffDirectory } from '../../api/users';
-import ConfirmDialog from '../../components/ConfirmDialog';
+import { fetchTasks } from '../../api/housekeeping';
 import AssignTaskModal from '../../components/rooms/AssignTaskModal';
 import AssignToStaffModal from '../../components/rooms/AssignToStaffModal';
 import CleaningDayBoard from '../../components/rooms/CleaningDayBoard';
 import InspectTaskModal from '../../components/rooms/InspectTaskModal';
 import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
-import StayoverTaskModal from '../../components/rooms/StayoverTaskModal';
+import ReleaseTaskModal from '../../components/rooms/ReleaseTaskModal';
 import TaskCard from '../../components/rooms/TaskCard';
 import { todayIso } from './format';
-import { TASK_STATUS_ORDER, compareNatural, taskStatusMeta } from './roomLabels';
+import { TASK_STATUS_ORDER, compareNatural, taskRoomLabel, taskStatusMeta, teamNames } from './roomLabels';
 import './rooms.css';
 
 /** Ba cột của bảng lịch dọn — đúng ba trạng thái "đang mở" của một việc (BR-HK-11). */
@@ -47,6 +44,9 @@ function readSavedView() {
  * đã bị gỡ khỏi đây: mọi thao tác trên lịch dọn đều ✖ với họ, và danh sách của họ trộn phòng
  * của mọi khách sạn trong chuỗi nên đọc dễ nhầm.
  *
+ * Chỉ còn việc dọn sau khi khách trả phòng, hệ thống tự sinh — đã bỏ dọn hằng ngày (chốt 05/10/2026),
+ * nên màn này không có nút tạo việc. Một phòng giao được cho NHIỀU người cùng dọn.
+ *
  * Hai cách xem, chung một bộ hộp thoại và thao tác:
  *   - **Theo trạng thái** — bảng ba cột: Quản lý nhìn ra ngay "còn bao nhiêu phòng chưa có ai dọn".
  *     Dưới 860px ba cột đổi thành ba tab (CSS + state `mobileTab`).
@@ -59,28 +59,22 @@ function readSavedView() {
 export default function HousekeepingPage() {
   const { user } = useAuth();
   const canManage = user?.role === 'MANAGER' || user?.role === 'PLATFORM_ADMIN';
-  // Tạo hàng loạt cần một khách sạn cụ thể — chỉ Manager có.
-  const isManager = user?.role === 'MANAGER';
   const today = todayIso();
 
   const [view, setView] = useState(readSavedView);
   const [version, setVersion] = useState(0);    // tăng sau mỗi thao tác để bảng theo nhân viên tải lại
   const [columns, setColumns] = useState({});   // { [status]: task[] }
   const [closedTasks, setClosedTasks] = useState([]);
-  const [staffNames, setStaffNames] = useState({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [banner, setBanner] = useState(null);   // { type: 'success' | 'error' | 'info', text }
 
   const [mobileTab, setMobileTab] = useState(COLUMNS[0]);
-  const [assigning, setAssigning] = useState(null);      // { task, initialDate } — hộp thoại phân công
+  const [assigning, setAssigning] = useState(null);      // việc đang mở hộp thoại phân công / thêm người
   const [assigningPerson, setAssigningPerson] = useState(null); // { person, date, tasks } — giao nhiều việc
-  const [releasing, setReleasing] = useState(null);      // việc đang hỏi xác nhận gỡ người
+  const [releasing, setReleasing] = useState(null);      // việc đang mở hộp thoại gỡ người
   const [inspecting, setInspecting] = useState(null);    // việc đang mở hộp thoại kiểm tra (S-13)
-  const [cancelling, setCancelling] = useState(null);    // việc đang hỏi xác nhận hủy (S-14)
   const [previousOf, setPreviousOf] = useState(null);    // việc dọn lại đang xem biên bản của task cha
-  const [stayoverOpen, setStayoverOpen] = useState(false);
-  const [batchConfirm, setBatchConfirm] = useState(null); // { occupied } — đang hỏi tạo hàng loạt
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -126,26 +120,16 @@ export default function HousekeepingPage() {
     }
   }
 
-  // Tên người làm: DTO của việc dọn chỉ có `assignedStaffId`. Tra một lần từ danh bạ nhân sự
-  // thay vì sửa DTO của module Lịch làm việc — cùng cách LocationsPage đang làm.
-  useEffect(() => {
-    let cancelled = false;
-    fetchStaffDirectory()
-      .then((data) => {
-        if (cancelled) return;
-        const list = data.content ?? data ?? [];
-        setStaffNames(Object.fromEntries(list.map((person) => [person.id, person.fullName])));
-      })
-      .catch(() => !cancelled && setStaffNames({}));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   /** Giao việc xong: đóng hộp thoại và tải lại — việc vừa đổi trạng thái nên nhảy sang chỗ khác. */
-  function finishAssign(successText) {
-    setBanner({ type: 'success', text: successText });
+  function finishAssign(updated) {
+    const wasAdding = assigning?.status === 'IN_PROGRESS';
     setAssigning(null);
+    setBanner({
+      type: 'success',
+      text: wasAdding
+        ? `Nhóm dọn phòng ${taskRoomLabel(updated)} giờ gồm: ${teamNames(updated)}.`
+        : `Đã giao việc dọn phòng ${taskRoomLabel(updated)} cho ${teamNames(updated)}. Phòng chuyển sang «Đang dọn».`,
+    });
     refresh();
   }
 
@@ -153,83 +137,27 @@ export default function HousekeepingPage() {
   function finishBulkAssign({ assigned, failed }) {
     const name = assigningPerson.person.fullName;
     setAssigningPerson(null);
-    const rooms = (tasks) => tasks.map((task) => task.roomNumber).join(', ');
+    const rooms = (tasks) => tasks.map(taskRoomLabel).join(', ');
     if (failed.length === 0) {
       setBanner({ type: 'success', text: `Đã giao ${assigned.length} việc cho ${name}: phòng ${rooms(assigned)}.` });
     } else {
       setBanner({
         type: 'error',
         text: (assigned.length > 0 ? `Đã giao phòng ${rooms(assigned)} cho ${name}. ` : '')
-          + `Không giao được: ${failed.map(({ task, message }) => `phòng ${task.roomNumber} — ${message}`).join('; ')}`,
+          + `Không giao được: ${failed.map(({ task, message }) => `phòng ${taskRoomLabel(task)} — ${message}`).join('; ')}`,
       });
     }
     refresh();
   }
 
-  async function handleConfirmRelease() {
-    const task = releasing;
+  function finishRelease({ task, removedName, emptied }) {
     setReleasing(null);
-    try {
-      await unassignTask(task.id);
-      setBanner({
-        type: 'success',
-        text: `Đã gỡ người khỏi việc dọn phòng ${task.roomNumber}.`
-          + (task.taskType === 'CHECKOUT' ? ' Phòng quay lại «Chờ dọn».' : ''),
-      });
-      refresh();
-    } catch (err) {
-      setBanner({ type: 'error', text: readErrorMessage(err, 'Không gỡ được người khỏi việc dọn.') });
-    }
-  }
-
-  /** S-14 — hủy tay một việc dọn hằng ngày. Phòng không đổi gì (BR-HK-05). */
-  async function handleConfirmCancel() {
-    const task = cancelling;
-    setCancelling(null);
-    try {
-      await cancelTask(task.id);
-      setBanner({ type: 'success', text: `Đã hủy việc dọn hằng ngày của phòng ${task.roomNumber}.` });
-      refresh();
-    } catch (err) {
-      setBanner({ type: 'error', text: readErrorMessage(err, 'Không hủy được việc dọn.') });
-    }
-  }
-
-  /**
-   * Tạo việc dọn hằng ngày cho mọi phòng đang có khách (BR-HK-05 — vẫn là Quản lý chủ động bấm).
-   * Đếm phòng có khách trước để hộp xác nhận nói rõ sẽ tạo cho bao nhiêu phòng.
-   */
-  async function askStayoverBatch() {
-    setBanner(null);
-    try {
-      const summary = await fetchRoomStatusSummary();
-      const occupied = summary?.counts?.OCCUPIED ?? 0;
-      if (occupied === 0) {
-        setBanner({ type: 'info', text: 'Hiện không có phòng nào đang có khách — không có việc dọn hằng ngày nào để tạo.' });
-        return;
-      }
-      setBatchConfirm({ occupied });
-    } catch (err) {
-      setBanner({ type: 'error', text: readErrorMessage(err, 'Không đếm được số phòng đang có khách.') });
-    }
-  }
-
-  async function handleConfirmBatch() {
-    setBatchConfirm(null);
-    try {
-      const result = await createStayoverBatch();
-      setBanner({
-        type: result.created > 0 ? 'success' : 'info',
-        text: result.created > 0
-          ? `Đã tạo ${result.created} việc dọn hằng ngày`
-            + (result.skipped > 0 ? ` (bỏ qua ${result.skipped} phòng đã có việc đang mở)` : '')
-            + '. Các việc nằm ở hàng chờ, sẵn sàng giao.'
-          : `Không tạo thêm việc nào: cả ${result.skipped} phòng đang có khách đều đã có việc dọn hằng ngày đang mở.`,
-      });
-      refresh();
-    } catch (err) {
-      setBanner({ type: 'error', text: readErrorMessage(err, 'Không tạo được việc dọn hằng ngày.') });
-    }
+    setBanner({
+      type: 'success',
+      text: `Đã gỡ ${removedName} khỏi việc dọn phòng ${taskRoomLabel(task)}.`
+        + (emptied ? ' Việc quay lại hàng chờ, phòng quay về «Chờ dọn».' : ' Những người còn lại tiếp tục dọn.'),
+    });
+    refresh();
   }
 
   /**
@@ -237,7 +165,7 @@ export default function HousekeepingPage() {
    * rõ điều gì vừa xảy ra với PHÒNG, chứ không chỉ "đã lưu".
    */
   function finishInspection(record) {
-    const room = inspecting.roomNumber;
+    const room = taskRoomLabel(inspecting);
     setInspecting(null);
     setBanner({
       type: 'success',
@@ -256,27 +184,24 @@ export default function HousekeepingPage() {
     [columns],
   );
 
-  /**
-   * Nút trên mỗi thẻ — chỉ Quản lý chi nhánh có; Giám đốc mở trang này chỉ để xem.
-   * `date`: ngày bảng theo nhân viên đang xem, để hộp thoại phân công mở sẵn đúng ngày đó.
-   */
-  function actionsFor(task, { date } = {}) {
+  /** Nút trên mỗi thẻ — chỉ Quản lý chi nhánh có; Giám đốc mở trang này chỉ để xem. */
+  function actionsFor(task) {
     if (!canManage) return [];
     const actions = [];
 
     if (task.status === 'UNASSIGNED') {
-      actions.push({ key: 'assign', label: 'Phân công', onClick: () => setAssigning({ task, initialDate: date }) });
+      actions.push({ key: 'assign', label: 'Phân công', onClick: () => setAssigning(task) });
     }
     if (task.status === 'IN_PROGRESS') {
+      // Thêm người chỉ cho việc của hôm nay: người mới phải có ca đúng ngày của nhóm, mà ngày đã
+      // qua thì không giao được nữa — việc tồn đọng thì gỡ ra rồi giao lại.
+      if (task.assignedDate === today) {
+        actions.push({ key: 'add', label: 'Thêm người', ghost: true, onClick: () => setAssigning(task) });
+      }
       actions.push({ key: 'unassign', label: 'Gỡ người', danger: true, onClick: () => setReleasing(task) });
     }
     if (task.status === 'PENDING_INSPECTION') {
       actions.push({ key: 'inspect', label: 'Kiểm tra', onClick: () => setInspecting(task) });
-    }
-    // Hủy tay chỉ dành cho việc dọn HẰNG NGÀY đang mở: hủy việc dọn sau trả phòng sẽ để
-    // phòng «Chờ dọn» mà không còn việc nào. Backend cũng chặn, ẩn nút chỉ để khỏi bấm nhầm.
-    if (task.taskType === 'STAYOVER' && COLUMNS.includes(task.status)) {
-      actions.push({ key: 'cancel', label: 'Hủy việc', danger: true, onClick: () => setCancelling(task) });
     }
     return actions;
   }
@@ -292,25 +217,6 @@ export default function HousekeepingPage() {
           <p className="breadcrumb">Vận hành › Công việc dọn phòng</p>
           <h1>Công việc dọn phòng</h1>
         </div>
-        {canManage && (
-          <div className="page__actions">
-            {isManager && (
-              <button type="button" className="btn btn--ghost" onClick={askStayoverBatch}>
-                Dọn hằng ngày cho mọi phòng có khách
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={() => {
-                setStayoverOpen(true);
-                setBanner(null);
-              }}
-            >
-              + Dọn hằng ngày
-            </button>
-          </div>
-        )}
       </div>
 
       {banner && (
@@ -341,7 +247,6 @@ export default function HousekeepingPage() {
           today={today}
           canManage={canManage}
           version={version}
-          staffNames={staffNames}
           actionsFor={actionsFor}
           onAssignToPerson={setAssigningPerson}
           onShowPreviousInspection={setPreviousOf}
@@ -394,7 +299,6 @@ export default function HousekeepingPage() {
                   <TaskCard
                     key={task.id}
                     task={task}
-                    staffName={staffNames[task.assignedStaffId]}
                     today={today}
                     actions={actionsFor(task)}
                     onShowPreviousInspection={setPreviousOf}
@@ -411,24 +315,18 @@ export default function HousekeepingPage() {
         <div>
           <b>Quy định giao việc dọn phòng</b>
           <p>
-            Chỉ giao được cho nhân viên có quyền Dọn dẹp và <b>có ca trong ngày</b> đó; không giới hạn
-            số việc mỗi người. Việc dọn sau khi khách trả phòng chỉ giao trong ngày, vì phòng chuyển
-            sang <b>Đang dọn</b> ngay khi giao. Hết ca chưa xong thì việc <b>tồn đọng</b> sang
-            hôm sau chứ không tự hủy. Người còn việc dọn đang làm trong ngày thì không gỡ, xóa hay
-            dời ca của họ được — gỡ người khỏi các việc đó trước.
+            Việc dọn tự sinh khi khách trả phòng. Chỉ giao được cho nhân viên có quyền Dọn dẹp và{' '}
+            <b>có ca trong ngày</b>; không giới hạn số việc mỗi người. Một phòng giao được cho{' '}
+            <b>nhiều người cùng dọn</b> — một người bấm Hoàn thành là xong cho cả nhóm. Việc chỉ giao
+            trong ngày, vì phòng chuyển sang <b>Đang dọn</b> ngay khi giao. Hết ca chưa xong thì việc{' '}
+            <b>tồn đọng</b> sang hôm sau chứ không tự hủy. Người còn việc dọn đang làm trong ngày thì
+            không gỡ, xóa hay dời ca của họ được — gỡ người khỏi các việc đó trước.
           </p>
         </div>
       </div>
 
       {assigning && (
-        <AssignTaskModal
-          task={assigning.task}
-          initialDate={assigning.initialDate}
-          onClose={() => setAssigning(null)}
-          onAssigned={(updated) =>
-            finishAssign(`Đã giao việc dọn phòng ${updated.roomNumber}.`
-              + (updated.taskType === 'CHECKOUT' ? ' Phòng chuyển sang «Đang dọn».' : ''))}
-        />
+        <AssignTaskModal task={assigning} onClose={() => setAssigning(null)} onAssigned={finishAssign} />
       )}
 
       {assigningPerson && (
@@ -442,68 +340,16 @@ export default function HousekeepingPage() {
         />
       )}
 
-      {stayoverOpen && (
-        <StayoverTaskModal
-          onClose={() => setStayoverOpen(false)}
-          onCreated={(created) => {
-            setStayoverOpen(false);
-            setBanner({ type: 'success', text: `Đã tạo việc dọn hằng ngày cho phòng ${created.roomNumber}.` });
-            refresh();
-            // Tạo xong thường là muốn giao luôn — mở tiếp hộp thoại phân công cho đỡ một bước.
-            setAssigning({ task: created });
-          }}
-        />
+      {releasing && (
+        <ReleaseTaskModal task={releasing} onClose={() => setReleasing(null)} onReleased={finishRelease} />
       )}
 
       {inspecting && (
-        <InspectTaskModal
-          task={inspecting}
-          staffName={staffNames[inspecting.assignedStaffId]}
-          onClose={() => setInspecting(null)}
-          onInspected={finishInspection}
-        />
+        <InspectTaskModal task={inspecting} onClose={() => setInspecting(null)} onInspected={finishInspection} />
       )}
 
       {previousOf && (
         <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />
-      )}
-
-      {batchConfirm && (
-        <ConfirmDialog
-          title={`Tạo việc dọn hằng ngày cho ${batchConfirm.occupied} phòng đang có khách?`}
-          message="Phòng đã có việc dọn hằng ngày đang mở thì bỏ qua. Việc mới vào hàng chờ, chưa giao cho ai; phòng vẫn giữ «Đang sử dụng»."
-          confirmLabel="Tạo việc dọn"
-          confirmTone="primary"
-          onCancel={() => setBatchConfirm(null)}
-          onConfirm={handleConfirmBatch}
-        />
-      )}
-
-      {cancelling && (
-        <ConfirmDialog
-          title={`Hủy việc dọn hằng ngày của phòng ${cancelling.roomNumber}?`}
-          message="Việc dọn đóng lại vĩnh viễn với lý do «Quản lý hủy». Phòng giữ nguyên «Đang sử dụng»."
-          confirmLabel="Hủy việc dọn"
-          onCancel={() => setCancelling(null)}
-          onConfirm={handleConfirmCancel}
-        />
-      )}
-
-      {releasing && (
-        <ConfirmDialog
-          title={`Gỡ người khỏi việc dọn phòng ${releasing.roomNumber}?`}
-          message={
-            <>
-              Việc dọn quay lại hàng chờ phân công.
-              {releasing.taskType === 'CHECKOUT'
-                ? ' Phòng cũng quay về trạng thái «Chờ dọn».'
-                : ' Phòng giữ nguyên «Đang sử dụng».'}
-            </>
-          }
-          confirmLabel="Gỡ người"
-          onCancel={() => setReleasing(null)}
-          onConfirm={handleConfirmRelease}
-        />
       )}
     </div>
   );

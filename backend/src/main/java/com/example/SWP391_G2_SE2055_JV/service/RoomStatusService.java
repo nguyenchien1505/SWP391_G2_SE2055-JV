@@ -68,7 +68,7 @@ public class RoomStatusService {
         }
 
         changeStatus(room, target, source, reason, null);
-        applyTaskConsequences(room, from, target);
+        applyTaskConsequences(room, target);
         log.info("Phòng {}: {} → {} ({})", room.getRoomNumber(), from, target, source);
         return room;
     }
@@ -78,19 +78,14 @@ public class RoomStatusService {
      * với task dọn" của 01-state-machine:
      * <ul>
      *   <li>Vào Không khả dụng → hủy MỌI task đang mở (BR-HK-09).</li>
-     *   <li>Rời Đang sử dụng (check-out) → hủy task dọn hằng ngày đang mở (BR-HK-10). Phải chạy
-     *       TRƯỚC khi sinh task mới — thứ tự do {@link HousekeepingRoomHooks} quy định.</li>
      *   <li>Vào Chờ dọn (check-out, mở khóa về Chờ dọn) → sinh task CHECKOUT (BR-HK-01, BR-HK-09).</li>
      * </ul>
      * Các hàm dành cho Housekeeping bên dưới KHÔNG đi qua đây: bên đó tự lo task của mình.
      */
-    private void applyTaskConsequences(Room room, RoomStatus from, RoomStatus target) {
+    private void applyTaskConsequences(Room room, RoomStatus target) {
         if (target == RoomStatus.UNAVAILABLE) {
             hooks.onRoomBecameUnavailable(room);
             return;
-        }
-        if (from == RoomStatus.OCCUPIED) {
-            hooks.onGuestCheckedOut(room);
         }
         if (target == RoomStatus.DIRTY) {
             hooks.onRoomBecameDirty(room);

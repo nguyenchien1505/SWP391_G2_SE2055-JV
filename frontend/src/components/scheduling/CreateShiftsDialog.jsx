@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
 import { createShifts } from '../../api/scheduling';
 import { durationHours, formatHours, formatLongDate, hhmm, timeRange } from '../../pages/scheduling/scheduleFormat';
-import { PERMISSION_FILTERS, matchesPermissionFilter, personSubtitle } from '../../pages/scheduling/schedulePeople';
+import {
+  PERMISSION_FILTERS,
+  hasReceptionist,
+  matchesPermissionFilter,
+  personSubtitle,
+} from '../../pages/scheduling/schedulePeople';
 import { BlockedAlert, DateHelp, ShiftTimeFields, resolveHours, useCloseOnEscape } from './shiftFields';
 
 /** Khớp giới hạn của CreateShiftBatchRequest ở backend. */
@@ -19,16 +24,20 @@ const MAX_OPEN_SLOTS = 20;
  * Danh sách lọc theo quyền nghiệp vụ; nhân viên đa quyền hiện ở mọi quyền họ có. Mỗi dòng kèm số giờ
  * đã xếp trong tuần (từ lịch đang xem), nên ngày chỉ chọn được trong tuần đó.
  *
+ * Ca THEO MẪU phải có ít nhất 1 lễ tân (chốt 05/10/2026, chặn cứng): người đang có trong ca cộng người
+ * vừa tick mà không ai có quyền Lễ tân thì nút lưu khóa lại kèm lời nhắc — backend cũng chặn y như vậy.
+ *
  * @param days        7 ngày của tuần đang xem
  * @param shifts      mọi ca của tuần đang xem
  * @param people      người giao ca được (đã sắp xếp)
+ * @param peopleById  tra quyền của cả người đang có trong ca (kể cả người không còn giao ca được)
  * @param weekLoad    Map staffId → { hours, days } của tuần đang xem
  * @param templates   mẫu ca đang dùng
  * @param initial     { date, templateId?, mode?: 'template' | 'free', staffIds?, openSlots? }
  * @param onSaved     nhận câu thông báo sau khi lưu xong
  */
 export default function CreateShiftsDialog({
-  locationId, days, shifts, people, weekLoad, maxWeekHours, templates, initial, onClose, onSaved,
+  locationId, days, shifts, people, peopleById, weekLoad, maxWeekHours, templates, initial, onClose, onSaved,
 }) {
   const [date, setDate] = useState(initial.date);
   const [time, setTime] = useState(() => initialTime(templates, initial));
@@ -72,7 +81,17 @@ export default function CreateShiftsDialog({
   const staffIds = people.filter((p) => selected.has(p.id) && !alreadyIn(p.id)).map((p) => p.id);
   const hiddenSelected = staffIds.filter((id) => !visible.some((p) => p.id === id)).length;
   const slots = clampSlots(openSlots);
-  const ready = Boolean(date && hours) && (staffIds.length > 0 || slots > 0);
+
+  // Người đang có trong CHÍNH ca theo mẫu này hôm đó — cùng cách backend gom "một ca".
+  const crew = time.mode === 'template'
+    ? shifts
+      .filter((s) => s.staffId && s.shiftDate === date && s.sourceTemplateId === time.templateId)
+      .map((s) => peopleById.get(s.staffId))
+    : [];
+  const needsReceptionist = time.mode === 'template' && staffIds.length > 0
+    && !hasReceptionist([...crew, ...staffIds.map((id) => peopleById.get(id))]);
+
+  const ready = Boolean(date && hours) && (staffIds.length > 0 || slots > 0) && !needsReceptionist;
   const nameOf = (id) => people.find((p) => p.id === id)?.fullName ?? 'Nhân viên';
 
   function toggle(personId) {
@@ -150,7 +169,7 @@ export default function CreateShiftsDialog({
             <h2 id="assign-shift-title">Giao ca</h2>
             <p className="muted">
               Tick một hoặc nhiều người. Mỗi người là một ca riêng và được kiểm tra quy định riêng; có
-              người vi phạm thì chưa lưu ai.
+              người vi phạm thì chưa lưu ai. Ca theo mẫu phải có ít nhất 1 lễ tân.
             </p>
           </div>
         </header>
@@ -269,6 +288,21 @@ export default function CreateShiftsDialog({
             <span className="field__help">Mở thêm ca chưa có người để giao sau, ví dụ khi ca còn thiếu người.</span>
           </label>
         </section>
+
+        {needsReceptionist && (
+          <div className="alert alert--warn" role="status">
+            <b className="alert__title">Ca này chưa có lễ tân</b>
+            {template ? `«${template.name}»` : 'Ca này'} ngày {formatLongDate(date)} phải có ít nhất 1 lễ tân
+            (người có quyền Lễ tân).{' '}
+            {crew.length > 0 ? 'Những người đang có trong ca đều không phải lễ tân — ' : ''}
+            Chọn thêm một lễ tân rồi lưu.
+            {filter !== 'RECEPTION' && (
+              <button type="button" className="btn btn--ghost btn--sm alert__action" onClick={() => setFilter('RECEPTION')}>
+                Chỉ hiện lễ tân
+              </button>
+            )}
+          </div>
+        )}
 
         <div ref={alertRef}>
           <BlockedAlert message={error?.message} title="Không lưu được">

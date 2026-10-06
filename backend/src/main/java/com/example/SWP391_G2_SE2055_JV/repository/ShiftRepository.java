@@ -41,6 +41,13 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
     List<Shift> findByStaffIdAndShiftDateBetweenOrderByShiftDateAscStartTimeAsc(
         UUID staffId, LocalDate fromDate, LocalDate toDate);
 
+    /**
+     * Mọi slot của MỘT ca theo mẫu trong một ngày ở một khách sạn — ví dụ "Ca sáng 05/10 ở khách sạn
+     * A". Dùng cho quy tắc mỗi ca theo mẫu phải có lễ tân (ReceptionCoverageRule).
+     */
+    List<Shift> findByLocationIdAndShiftDateAndSourceTemplateId(UUID locationId, LocalDate shiftDate,
+                                                               UUID sourceTemplateId);
+
     /** BR-HK-03: chỉ được assign task dọn cho nhân viên đang có ca trong ngày đó. */
     boolean existsByStaffIdAndShiftDate(UUID staffId, LocalDate shiftDate);
 

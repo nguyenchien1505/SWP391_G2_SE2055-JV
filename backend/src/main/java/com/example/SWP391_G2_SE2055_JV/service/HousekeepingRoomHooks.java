@@ -17,7 +17,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Phản ứng của Housekeeping khi PHÒNG đổi trạng thái — BR-HK-01, BR-HK-09, BR-HK-10.
+ * Phản ứng của Housekeeping khi PHÒNG đổi trạng thái — BR-HK-01, BR-HK-09. (BR-HK-10 — hủy việc dọn
+ * hằng ngày khi khách trả phòng — bỏ cùng loại việc đó, V4.)
  *
  * <p>Dành cho module Quản lý phòng gọi (trực tiếp, hoặc bọc trong event listener — chờ hai
  * bên thống nhất), NGAY TRONG transaction đổi trạng thái phòng để phòng và task luôn nhất
@@ -70,33 +71,17 @@ public class HousekeepingRoomHooks {
     /** BR-HK-09: phòng chuyển "Không khả dụng" thì MỌI task đang mở của phòng bị hủy. */
     @Transactional
     public int onRoomBecameUnavailable(Room room) {
-        return cancel(
-            taskRepository.findByRoomIdAndStatusIn(room.getId(), HousekeepingTaskStatus.OPEN_STATUSES),
-            TaskCancelReason.ROOM_UNAVAILABLE);
-    }
-
-    /**
-     * BR-HK-10: khách check-out khi task STAYOVER chưa xong thì task đó bị hủy. Trong cùng
-     * lần check-out, module phòng gọi hàm này TRƯỚC {@link #onRoomBecameDirty}.
-     */
-    @Transactional
-    public int onGuestCheckedOut(Room room) {
-        return cancel(
-            taskRepository.findByRoomIdAndTaskTypeAndStatusIn(
-                room.getId(), HousekeepingTaskType.STAYOVER, HousekeepingTaskStatus.OPEN_STATUSES),
-            TaskCancelReason.GUEST_CHECKED_OUT);
-    }
-
-    private int cancel(List<HousekeepingTask> tasks, TaskCancelReason reason) {
+        List<HousekeepingTask> tasks =
+            taskRepository.findByRoomIdAndStatusIn(room.getId(), HousekeepingTaskStatus.OPEN_STATUSES);
         LocalDateTime now = LocalDateTime.now();
         for (HousekeepingTask task : tasks) {
             task.setStatus(HousekeepingTaskStatus.CANCELLED);
-            task.setCancelReason(reason);
+            task.setCancelReason(TaskCancelReason.ROOM_UNAVAILABLE);
             task.setCancelledAt(now);
         }
         taskRepository.saveAll(tasks);
         if (!tasks.isEmpty()) {
-            log.info("Hủy {} task ({})", tasks.size(), reason);
+            log.info("Hủy {} task vì phòng {} không khả dụng", tasks.size(), room.getRoomNumber());
         }
         return tasks.size();
     }

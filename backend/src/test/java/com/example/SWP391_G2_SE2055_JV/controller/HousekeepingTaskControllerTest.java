@@ -5,7 +5,6 @@ import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
-import com.example.SWP391_G2_SE2055_JV.dto.StayoverBatchResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
@@ -38,6 +37,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -77,7 +77,7 @@ class HousekeepingTaskControllerTest {
         @ValueSource(strings = {"ROLE_DIRECTOR", "ROLE_MANAGER", "ROLE_STAFF,POSITION_HOUSEKEEPING",
                                 "ROLE_STAFF,POSITION_RECEPTION"})
         void shouldListTasksForEveryTenantRole(String authorities) throws Exception {
-            when(housekeepingService.getTasks(any(), any(), any(), any()))
+            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(sampleTask()), PageRequest.of(0, 20), 1));
 
             mockMvc.perform(get("/housekeeping/tasks").with(authorities(authorities)))
@@ -95,7 +95,7 @@ class HousekeepingTaskControllerTest {
         @Test
         @WithMockUser(roles = "MANAGER")
         void shouldPassParsedFiltersToService() throws Exception {
-            when(housekeepingService.getTasks(any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of()));
+            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of()));
 
             mockMvc.perform(get("/housekeeping/tasks")
                     .param("status", "UNASSIGNED")
@@ -104,7 +104,21 @@ class HousekeepingTaskControllerTest {
                 .andExpect(status().isOk());
 
             verify(housekeepingService).getTasks(eq(HousekeepingTaskStatus.UNASSIGNED),
-                eq(HousekeepingTaskType.CHECKOUT), eq(LocalDate.of(2026, 9, 23)), any());
+                eq(HousekeepingTaskType.CHECKOUT), eq(LocalDate.of(2026, 9, 23)), isNull(), isNull(), any());
+        }
+
+        /** Lịch dọn theo tuần: lọc ngày làm theo khoảng from–to. */
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldPassWeekRangeToService() throws Exception {
+            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+            mockMvc.perform(get("/housekeeping/tasks").param("from", "2026-10-05").param("to", "2026-10-11"))
+                .andExpect(status().isOk());
+
+            verify(housekeepingService).getTasks(isNull(), isNull(), isNull(),
+                eq(LocalDate.of(2026, 10, 5)), eq(LocalDate.of(2026, 10, 11)), any());
         }
 
         @Test
@@ -172,41 +186,13 @@ class HousekeepingTaskControllerTest {
         }
     }
 
-    // ── Tạo việc dọn hằng ngày hàng loạt: chỉ Manager ──────────────────────
-
-    @Nested
-    class StayoverBatch {
-
-        @Test
-        @WithMockUser(roles = "MANAGER")
-        void shouldCreateBatchForManager() throws Exception {
-            when(housekeepingService.createStayoverTasksForOccupiedRooms()).thenReturn(
-                StayoverBatchResponse.builder().created(1).skipped(2).tasks(List.of(sampleTask())).build());
-
-            mockMvc.perform(post("/housekeeping/tasks/stayover-batch"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.created").value(1))
-                .andExpect(jsonPath("$.skipped").value(2))
-                .andExpect(jsonPath("$.tasks[0].roomNumber").value("201"));
-        }
-
-        /** Cần một khách sạn cụ thể: Giám đốc và nhân viên đều bị chặn. */
-        @ParameterizedTest
-        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_DIRECTOR"})
-        void shouldForbidNonManager(String authorities) throws Exception {
-            mockMvc.perform(post("/housekeeping/tasks/stayover-batch").with(authorities(authorities)))
-                .andExpect(status().isForbidden());
-            verifyNoInteractions(housekeepingService);
-        }
-    }
-
     // ── Phân công / gỡ người: chỉ Manager ───────────────────────────────────
 
     @Nested
     class AssignAndUnassign {
 
         private static final String ASSIGN_BODY = """
-            {"staffId": "%s", "assignedDate": "2026-09-23"}
+            {"staffIds": ["%s"], "assignedDate": "2026-09-23"}
             """;
 
         @Test
@@ -220,8 +206,26 @@ class HousekeepingTaskControllerTest {
 
             ArgumentCaptor<AssignTaskRequest> request = ArgumentCaptor.forClass(AssignTaskRequest.class);
             verify(housekeepingService).assignTask(eq(TASK_ID), request.capture());
-            assertThat(request.getValue().getStaffId()).isEqualTo(STAFF_ID);
+            assertThat(request.getValue().getStaffIds()).containsExactly(STAFF_ID);
             assertThat(request.getValue().getAssignedDate()).isEqualTo(LocalDate.of(2026, 9, 23));
+        }
+
+        /** Một phòng nhiều người dọn: một lần gửi được cả nhóm. */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldPassWholeTeamToService() throws Exception {
+            UUID second = UUID.randomUUID();
+            when(housekeepingService.assignTask(eq(TASK_ID), any())).thenReturn(sampleTask());
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/assign", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"staffIds": ["%s", "%s"], "assignedDate": "2026-09-23"}
+                        """.formatted(STAFF_ID, second)))
+                .andExpect(status().isOk());
+
+            ArgumentCaptor<AssignTaskRequest> request = ArgumentCaptor.forClass(AssignTaskRequest.class);
+            verify(housekeepingService).assignTask(eq(TASK_ID), request.capture());
+            assertThat(request.getValue().getStaffIds()).containsExactly(STAFF_ID, second);
         }
 
         @ParameterizedTest
@@ -234,15 +238,17 @@ class HousekeepingTaskControllerTest {
             verifyNoInteractions(housekeepingService);
         }
 
-        @Test
+        @ParameterizedTest
+        @ValueSource(strings = {
+            "{\"assignedDate\": \"2026-09-23\"}",
+            "{\"staffIds\": [], \"assignedDate\": \"2026-09-23\"}"
+        })
         @WithMockUser(roles = "MANAGER")
-        void shouldReturnUnprocessableWhenStaffIdMissing() throws Exception {
+        void shouldReturnUnprocessableWhenNobodyChosen(String body) throws Exception {
             mockMvc.perform(patch("/housekeeping/tasks/{id}/assign", TASK_ID)
-                    .contentType(MediaType.APPLICATION_JSON).content("""
-                        {"assignedDate": "2026-09-23"}
-                        """))
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.fieldErrors[0].field").value("staffId"));
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("staffIds"));
             verifyNoInteractions(housekeepingService);
         }
 
@@ -264,19 +270,33 @@ class HousekeepingTaskControllerTest {
         @Test
         @WithMockUser(roles = "MANAGER")
         void shouldReturnNotFoundWhenTaskInAnotherLocation() throws Exception {
-            when(housekeepingService.unassignTask(TASK_ID))
+            when(housekeepingService.unassignTask(TASK_ID, null))
                 .thenThrow(new ResourceNotFoundException("Location", "id", UUID.randomUUID()));
 
             mockMvc.perform(patch("/housekeeping/tasks/{id}/unassign", TASK_ID))
                 .andExpect(status().isNotFound());
         }
 
+        /** Không gửi staffId = gỡ cả nhóm. */
         @Test
         @WithMockUser(roles = "MANAGER")
-        void shouldUnassignTaskForManager() throws Exception {
-            when(housekeepingService.unassignTask(TASK_ID)).thenReturn(sampleTask());
+        void shouldUnassignWholeTeamForManager() throws Exception {
+            when(housekeepingService.unassignTask(TASK_ID, null)).thenReturn(sampleTask());
 
             mockMvc.perform(patch("/housekeeping/tasks/{id}/unassign", TASK_ID)).andExpect(status().isOk());
+
+            verify(housekeepingService).unassignTask(TASK_ID, null);
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldUnassignOnePersonWhenStaffIdGiven() throws Exception {
+            when(housekeepingService.unassignTask(TASK_ID, STAFF_ID)).thenReturn(sampleTask());
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/unassign", TASK_ID).param("staffId", STAFF_ID.toString()))
+                .andExpect(status().isOk());
+
+            verify(housekeepingService).unassignTask(TASK_ID, STAFF_ID);
         }
     }
 
@@ -325,65 +345,14 @@ class HousekeepingTaskControllerTest {
             verifyNoInteractions(housekeepingService);
         }
 
-        /** BR-PERM-05: người không được phân công thì service chặn → 400. */
+        /** BR-PERM-05: người ngoài nhóm dọn thì service chặn → 400. */
         @Test
         @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
-        void shouldReturnBadRequestWhenNotTheAssignedStaff() throws Exception {
+        void shouldReturnBadRequestWhenNotInTeam() throws Exception {
             when(housekeepingService.completeTask(TASK_ID))
-                .thenThrow(new BusinessException("Chỉ nhân viên được phân công mới bấm hoàn thành task này."));
+                .thenThrow(new BusinessException("Chỉ người trong nhóm dọn mới bấm hoàn thành task này."));
 
             mockMvc.perform(patch("/housekeeping/tasks/{id}/complete", TASK_ID))
-                .andExpect(status().isBadRequest());
-        }
-    }
-
-    // ── Tạo task dọn hằng ngày ──────────────────────────────────────────────
-
-    @Nested
-    class CreateStayoverTask {
-
-        private static final String BODY = """
-            {"roomId": "%s"}
-            """;
-
-        @Test
-        @WithMockUser(roles = "MANAGER")
-        void shouldCreateStayoverTaskForManager() throws Exception {
-            when(housekeepingService.createStayoverTask(any())).thenReturn(sampleTask());
-
-            mockMvc.perform(post("/housekeeping/tasks")
-                    .contentType(MediaType.APPLICATION_JSON).content(BODY.formatted(ROOM_ID)))
-                .andExpect(status().isCreated());
-        }
-
-        @ParameterizedTest
-        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_DIRECTOR"})
-        void shouldForbidNonManager(String authorities) throws Exception {
-            mockMvc.perform(post("/housekeeping/tasks")
-                    .contentType(MediaType.APPLICATION_JSON).content(BODY.formatted(ROOM_ID))
-                    .with(authorities(authorities)))
-                .andExpect(status().isForbidden());
-            verifyNoInteractions(housekeepingService);
-        }
-
-        @Test
-        @WithMockUser(roles = "MANAGER")
-        void shouldReturnUnprocessableWhenRoomIdMissing() throws Exception {
-            mockMvc.perform(post("/housekeeping/tasks")
-                    .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.fieldErrors[0].field").value("roomId"));
-        }
-
-        /** BR-HK-05: phòng không có khách thì không tạo được task dọn hằng ngày. */
-        @Test
-        @WithMockUser(roles = "MANAGER")
-        void shouldReturnBadRequestWhenRoomNotOccupied() throws Exception {
-            when(housekeepingService.createStayoverTask(any()))
-                .thenThrow(new BusinessException("Chỉ tạo task dọn hằng ngày cho phòng đang có khách."));
-
-            mockMvc.perform(post("/housekeeping/tasks")
-                    .contentType(MediaType.APPLICATION_JSON).content(BODY.formatted(ROOM_ID)))
                 .andExpect(status().isBadRequest());
         }
     }
@@ -518,61 +487,6 @@ class HousekeepingTaskControllerTest {
                 .thenThrow(new ResourceNotFoundException("InspectionRecord", "taskId", TASK_ID));
 
             mockMvc.perform(get("/housekeeping/tasks/{id}/inspection", TASK_ID))
-                .andExpect(status().isNotFound());
-        }
-    }
-
-    // ── F6: hủy task ────────────────────────────────────
-
-    @Nested
-    class CancelTask {
-
-        @Test
-        @WithMockUser(roles = "MANAGER")
-        void shouldCancelTaskForManager() throws Exception {
-            HousekeepingTaskResponse cancelled = sampleTask();
-            cancelled.setStatus(HousekeepingTaskStatus.CANCELLED);
-            when(housekeepingService.cancelTask(TASK_ID)).thenReturn(cancelled);
-
-            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("CANCELLED"));
-        }
-
-        @ParameterizedTest
-        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_DIRECTOR"})
-        void shouldForbidNonManagerFromCancelling(String authorities) throws Exception {
-            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID)
-                    .with(authorities(authorities)))
-                .andExpect(status().isForbidden());
-            verifyNoInteractions(housekeepingService);
-        }
-
-        @Test
-        void shouldReturnUnauthorizedWithoutLogin() throws Exception {
-            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID))
-                .andExpect(status().isUnauthorized());
-            verifyNoInteractions(housekeepingService);
-        }
-
-        /** Q13: hủy tay việc dọn sau check-out bị chặn ở service → 400 kèm lối đi đúng. */
-        @Test
-        @WithMockUser(roles = "MANAGER")
-        void shouldReturnBadRequestWhenCancellingCheckoutTask() throws Exception {
-            when(housekeepingService.cancelTask(TASK_ID)).thenThrow(new BusinessException(
-                "Muốn dừng việc dọn sau khi khách trả phòng, hãy chuyển phòng sang «Không khả dụng»."));
-
-            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID))
-                .andExpect(status().isBadRequest());
-        }
-
-        @Test
-        @WithMockUser(roles = "MANAGER")
-        void shouldReturnNotFoundWhenTaskOutOfScope() throws Exception {
-            when(housekeepingService.cancelTask(TASK_ID))
-                .thenThrow(new ResourceNotFoundException("HousekeepingTask", "id", TASK_ID));
-
-            mockMvc.perform(patch("/housekeeping/tasks/{id}/cancel", TASK_ID))
                 .andExpect(status().isNotFound());
         }
     }
