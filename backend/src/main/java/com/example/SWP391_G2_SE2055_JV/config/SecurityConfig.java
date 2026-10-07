@@ -73,7 +73,10 @@ public class SecurityConfig {
         "/auth/unauthorized",
         // BR-SAAS-13: Tenant tự đăng ký, chưa có tài khoản nên phải công khai.
         // (Endpoint chưa hiện thực — khai báo sẵn để rule không bị bỏ sót khi làm.)
-        "/auth/register-tenant"
+        "/auth/register-tenant",
+        // Xác thực email sau khi đăng ký — người dùng chưa đăng nhập được nên phải công khai.
+        "/auth/verify-email",
+        "/auth/resend-verification"
     };
 
     /** Origin của frontend. Dev: Vite chạy cổng 3000; đổi khi deploy bằng biến môi trường. */
