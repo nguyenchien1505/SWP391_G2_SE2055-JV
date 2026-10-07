@@ -83,6 +83,8 @@ const NAV_GROUPS = [
       { label: 'Khu vực', visible: isManager },
       // Schedule Policy và Shift Template — Giám đốc (BR-SCH-01, BR-SCH-22).
       { label: 'Quy định & Mẫu ca', visible: isDirector },
+      // Gói đang dùng, hạn dùng, mua gói / mua thêm / gia hạn — BR-SAAS-02..10.
+      { label: 'Gói dịch vụ', to: '/goi-dich-vu', visible: isDirector },
     ],
   },
   // ── Nhóm theo NGHIỆP VỤ của nhân viên ──────────────────────────────────────────────────

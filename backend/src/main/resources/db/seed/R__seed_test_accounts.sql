@@ -10,7 +10,8 @@
 --   trantrungd83@gmail.com  DIRECTOR        -                       Dùng test Google OAuth
 --   manager@swp391.test     MANAGER         -                       Quản lý Location Hà Nội
 --   letan@swp391.test       STAFF           Lễ tân                  Vị trí Lễ tân
---   dondep@swp391.test      STAFF           Dọn dẹp                 Vị trí Buồng phòng
+--   +
+--   STAFF           Dọn dẹp                 Vị trí Buồng phòng
 --   kiemnhiem@swp391.test   STAFF           Lễ tân + Dọn dẹp        Vị trí Lễ tân, tick thêm Dọn dẹp
 --   kythuat@swp391.test     STAFF           (chỉ quyền chung)       Vị trí loại Khác
 --
