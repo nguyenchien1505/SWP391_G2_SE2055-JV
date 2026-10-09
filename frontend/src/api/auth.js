@@ -39,3 +39,22 @@ export async function changePassword(currentPassword, newPassword) {
 export async function logout() {
   await api.post('/auth/logout');
 }
+
+/**
+ * BR-SAAS-13: tự đăng ký doanh nghiệp. Một lần gọi tạo đồng thời Tenant (dùng thử) và tài
+ * khoản Giám đốc đăng nhập bằng chính email này. Endpoint công khai, gửi JSON đúng 5 trường.
+ */
+export async function registerTenant(payload) {
+  const { data } = await api.post('/auth/register-tenant', payload);
+  return data;
+}
+
+/** Xác thực email Giám đốc bằng mã trong link email — tài khoản chuyển sang ACTIVE. */
+export async function verifyEmail(token) {
+  await api.post('/auth/verify-email', { token });
+}
+
+/** Gửi lại email xác thực — backend luôn trả thành công để không lộ email nào đã đăng ký. */
+export async function resendVerification(email) {
+  await api.post('/auth/resend-verification', { email });
+}

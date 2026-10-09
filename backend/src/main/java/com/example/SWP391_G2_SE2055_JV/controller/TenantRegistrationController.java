@@ -2,6 +2,9 @@ package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.RegisterTenantRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RegisterTenantResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.ResendVerificationRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.VerifyEmailRequest;
+import com.example.SWP391_G2_SE2055_JV.service.EmailVerificationService;
 import com.example.SWP391_G2_SE2055_JV.service.TenantRegistrationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,11 +35,32 @@ import org.springframework.web.bind.annotation.RestController;
 public class TenantRegistrationController {
 
     private final TenantRegistrationService tenantRegistrationService;
+    private final EmailVerificationService  emailVerificationService;
 
     @PostMapping("/register-tenant")
     public ResponseEntity<RegisterTenantResponse> registerTenant(
             @Valid @RequestBody RegisterTenantRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(tenantRegistrationService.registerTenant(request));
+    }
+
+    /**
+     * Xác thực email của Giám đốc vừa đăng ký — công khai vì người dùng chưa đăng nhập được.
+     * {@code POST /api/auth/verify-email}: 204 khi thành công; 400 khi mã sai hoặc đã dùng.
+     */
+    @PostMapping("/verify-email")
+    public ResponseEntity<Void> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        emailVerificationService.verify(request.getToken());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Gửi lại email xác thực — công khai. Luôn trả 204 dù email có tồn tại hay không, để không
+     * lộ email nào đã đăng ký.
+     */
+    @PostMapping("/resend-verification")
+    public ResponseEntity<Void> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+        emailVerificationService.resend(request.getEmail());
+        return ResponseEntity.noContent().build();
     }
 }

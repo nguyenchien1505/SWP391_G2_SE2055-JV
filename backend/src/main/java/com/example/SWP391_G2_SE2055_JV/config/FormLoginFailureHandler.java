@@ -1,7 +1,9 @@
 package com.example.SWP391_G2_SE2055_JV.config;
 
 import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.SuspendReason;
+import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.ApiError;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,6 +48,10 @@ public class FormLoginFailureHandler implements AuthenticationFailureHandler {
     public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
                                         AuthenticationException exception) throws IOException {
         String message = tenantBlockedMessage(request, exception);
+        // Giám đốc INACTIVE = chưa xác thực email sau khi đăng ký (EmailVerificationService).
+        if (message == null) {
+            message = unverifiedDirectorMessage(request, exception);
+        }
         if (message == null) {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());   // hành vi cũ
             return;
@@ -88,6 +94,28 @@ public class FormLoginFailureHandler implements AuthenticationFailureHandler {
             return null;
         }
         return messageFor(decision.reason());
+    }
+
+    /**
+     * Giám đốc ở trạng thái INACTIVE nghĩa là chưa bấm link xác thực trong email — không có luồng
+     * nào khác đặt Giám đốc thành INACTIVE. Cũng chỉ báo khi mật khẩu ĐÚNG, cùng lý do như trên.
+     */
+    private String unverifiedDirectorMessage(HttpServletRequest request, AuthenticationException exception) {
+        if (!(exception instanceof DisabledException)) {
+            return null;
+        }
+        String email    = request.getParameter("username");
+        String password = request.getParameter("password");
+        if (email == null || password == null) {
+            return null;
+        }
+
+        User user = userRepository.findByEmail(email.trim()).orElse(null);
+        if (user == null || user.getRole() != Role.DIRECTOR || user.getStatus() != UserStatus.INACTIVE
+                || !passwordEncoder.matches(password, user.getPasswordHash())) {
+            return null;
+        }
+        return "Tài khoản chưa được xác thực. Vui lòng mở email đã đăng ký và bấm \"Xác thực tài khoản\".";
     }
 
     private static String messageFor(SuspendReason reason) {

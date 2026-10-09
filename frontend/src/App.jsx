@@ -22,6 +22,11 @@ import OrganizationCatalogPage from './pages/OrganizationCatalogPage';
 import MyDamageReportsPage from './pages/MyDamageReportsPage';
 import { homePathFor } from './homePath';
 import { canReportDamage } from './permissions';
+import MyDamageReportsPage from './pages/MyDamageReportsPage';
+import RegisterPage from './pages/RegisterPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
+import BillingPage from './pages/BillingPage';
+
 
 /**
  * Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). Quản lý dự bị
@@ -178,6 +183,21 @@ export default function App() {
           )
         }
       />
+      {/* BR-SAAS-13: tự đăng ký doanh nghiệp — công khai; đã đăng nhập thì về trang chủ. */}
+      <Route
+        path="/dang-ky"
+        element={
+          loading ? (
+            <div className="boot-screen">Đang tải…</div>
+          ) : user ? (
+            <Navigate to={homePathFor(user)} replace />
+          ) : (
+            <RegisterPage />
+          )
+        }
+      />
+      {/* Mở từ nút trong email xác thực — công khai vì tài khoản chưa đăng nhập được. */}
+      <Route path="/xac-thuc-email" element={<VerifyEmailPage />} />
       <Route
         path="/doi-mat-khau"
         element={
@@ -217,6 +237,8 @@ export default function App() {
       <Route path="/danh-muc-tai-san" element={inShell(<RequireManagementRole><AssetCategoriesPage /></RequireManagementRole>)} />
       {/* Loại phòng, Phòng ban, Vị trí công việc — BR-ORG-06, BR-ORG-11: chỉ Giám đốc; Manager vào thấy thông báo. */}
       <Route path="/danh-muc" element={inShell(<RequireManagementRole><OrganizationCatalogPage /></RequireManagementRole>)} />
+      {/* Gói dịch vụ — chỉ Giám đốc (trang tự đưa vai trò khác về trang chủ). */}
+      <Route path="/goi-dich-vu" element={inShell(<BillingPage />)} />
 
       {/* Tài sản & dashboard — chỉ Giám đốc / Manager, khớp sidebar. Staff chỉ có quyền báo hỏng
           (BR-ASSET-05), không quản lý tài sản hay tồn kho; gõ thẳng URL thì về trang chủ của mình. */}
