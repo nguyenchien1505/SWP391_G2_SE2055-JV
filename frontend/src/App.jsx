@@ -19,6 +19,7 @@ import MyTasksPage from './pages/rooms/MyTasksPage';
 import ReserveManagerPage from './pages/ReserveManagerPage';
 import AssetCategoriesPage from './pages/AssetCategoriesPage';
 import OrganizationCatalogPage from './pages/OrganizationCatalogPage';
+import MyDamageReportsPage from './pages/MyDamageReportsPage';
 import { homePathFor } from './homePath';
 import { canReportDamage } from './permissions';
 
