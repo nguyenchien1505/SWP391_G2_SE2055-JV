@@ -350,19 +350,6 @@ export default function LocationsPage() {
         </section>
       </div>
 
-      <div className="note">
-        <span aria-hidden="true">ⓘ</span>
-        <div>
-          <b>Quy định thêm khách sạn mới</b>
-          <p>
-            Khách sạn mới luôn ở trạng thái <b>Chưa vận hành</b> và chỉ chuyển sang{' '}
-            <b>Đang hoạt động</b> sau khi được gán một Quản lý chi nhánh. Mỗi khách
-            sạn chỉ có đúng một quản lý. Chỉ Giám đốc được thêm và xóa khách sạn; Quản lý chi
-            nhánh chỉ cập nhật được địa chỉ và số điện thoại liên hệ.
-          </p>
-        </div>
-      </div>
-
       {formOpen && (
         <FormModal onClose={closeForm}>
           <LocationForm

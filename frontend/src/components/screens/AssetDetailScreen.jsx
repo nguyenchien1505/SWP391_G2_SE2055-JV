@@ -446,17 +446,6 @@ export const AssetDetailScreen = ({ assetRef, onNavigate }) => {
               )}
 
             </div>
-
-            {/* Operational Rule Callout */}
-            <div className="p-4 bg-[#eff4ff] rounded-xl border border-[#d1e4ff] text-xs space-y-1.5">
-              <div className="flex items-center gap-2 font-bold text-[#00375e]">
-                <span className="material-symbols-outlined text-[18px] text-[#0e61a1]">verified_user</span>
-                <span>Quy định vận hành tài sản buồng phòng</span>
-              </div>
-              <p className="text-[#5B6472] leading-relaxed">
-                Thiết bị gắn liền với phòng Deluxe chỉ được phép di chuyển sang phòng cùng hạng hoặc kho kỹ thuật khi có phiếu báo hỏng. Mọi thao tác chuyển đổi trạng thái sang <span className="font-semibold text-[#616161]">Đã thanh lý (Disposed)</span> là quyết định cuối cùng của chu trình vòng đời và không thể hoàn tác.
-              </p>
-            </div>
           </div>
         </div>
       </div>

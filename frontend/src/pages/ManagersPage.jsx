@@ -602,25 +602,6 @@ export default function ManagersPage() {
         </section>
       </div>
 
-      <div className="note">
-        <span aria-hidden="true">ⓘ</span>
-        <div>
-          <b>Quy định tài khoản Quản lý</b>
-          <p>
-            Chỉ Giám đốc tạo và quản lý tài khoản Quản lý (BR-PERM-02). Mỗi khách sạn có đúng một
-            Quản lý; khách sạn có Quản lý mới chuyển sang <b>Đang hoạt động</b> (BR-ORG-02). Mật khẩu
-            tạm chỉ hiển thị một lần và phải đổi ở lần đăng nhập đầu (BR-USER-07). Email là tên
-            đăng nhập, không đổi và không dùng lại được kể cả sau khi nghỉ việc (BR-USER-06).
-          </p>
-          <p>
-            Chọn "Khác" khi tạo để có <b>Quản lý dự bị</b> — chưa phụ trách khách sạn, gán sau ở màn sửa.
-            Cho nghỉ việc một Quản lý đang phụ trách khách sạn thì phải bàn giao ngay cho Quản lý dự bị
-            hoặc Quản lý mới. Quản lý đã nghỉ việc mà chưa phát sinh dữ liệu thì xóa vĩnh viễn được
-            (🗑), khi đó email được dùng lại.
-          </p>
-        </div>
-      </div>
-
       {formOpen && (
         <FormModal onClose={closeForm}>
           <ManagerForm

@@ -268,19 +268,6 @@ export default function HousekeepingPage() {
         ))}
       </div>
 
-      <div className="note">
-        <span aria-hidden="true">ⓘ</span>
-        <div>
-          <b>Quy định giao việc dọn phòng</b>
-          <p>
-            Chỉ giao được cho nhân viên dọn phòng <b>có ca trong ngày</b> đó; không giới hạn số
-            việc mỗi người. Việc dọn sau khi khách trả phòng chỉ giao trong ngày, vì phòng chuyển
-            sang <b>Đang dọn</b> ngay khi giao. Hết ca chưa xong thì việc <b>tồn đọng</b> sang
-            hôm sau chứ không tự hủy.
-          </p>
-        </div>
-      </div>
-
       {assigning && (
         <AssignTaskModal
           task={assigning}

@@ -276,22 +276,6 @@ export default function AssetCategoriesPage() {
             onEdit={openForm}
             onViewDetail={(item) => setViewingId(item.id)}
           />
-
-          <div className="bg-[#eff4ff] rounded-xl p-4 sm:p-5 flex items-start gap-4 border border-[#d0e4ff]">
-            <div className="w-10 h-10 rounded-lg bg-[#d0e4ff] text-[#00375e] flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-[24px]">verified_user</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="font-semibold text-sm sm:text-base text-[#1C2330]">
-                Quy tắc nghiệp vụ quản trị cấp Tenant (Toàn chuỗi)
-              </span>
-              <p className="text-xs sm:text-sm text-[#5B6472] mt-1 leading-relaxed">
-                Khi chuyển một danh mục sang <span className="font-bold text-[#EF6C00]">Tạm ngưng (Inactive)</span>, các
-                khách sạn trong chuỗi không thể tạo thêm tài sản mới thuộc danh mục này. Toàn bộ tài sản, tồn kho và lịch
-                sử đã có vẫn được giữ nguyên.
-              </p>
-            </div>
-          </div>
         </>
       )}
 

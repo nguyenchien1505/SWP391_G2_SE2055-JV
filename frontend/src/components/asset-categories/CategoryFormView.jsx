@@ -496,36 +496,6 @@ export default function CategoryFormView({ initialData, categoriesList, onSave, 
               </div>
             </div>
           </div>
-
-          <div className="bg-white rounded-xl p-5 sm:p-6 shadow-sm border border-[#DFE3E8]/80 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#0e61a1] text-[22px]">policy</span>
-              <h4 className="font-bold text-sm text-[#1C2330]">Quy tắc chuẩn hóa hệ thống (Tenant Policy)</h4>
-            </div>
-            <div className="space-y-2.5">
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-[#eff4ff] border border-[#d0e4ff]">
-                <span className="material-symbols-outlined text-[#0e61a1] text-[18px] shrink-0 mt-0.5">sync_saved_locally</span>
-                <p className="text-xs text-[#5B6472] leading-relaxed">
-                  <strong className="text-[#1C2330]">Dùng chung toàn chuỗi:</strong> Danh mục tạo ở cấp Tenant được áp dụng
-                  ngay cho tất cả khách sạn thành viên.
-                </p>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-red-50 text-[#D32F2F] border border-red-200">
-                <span className="material-symbols-outlined text-[#D32F2F] text-[18px] shrink-0 mt-0.5">block</span>
-                <p className="text-xs leading-relaxed">
-                  <strong>Không xóa danh mục đang dùng:</strong> Danh mục đã có tài sản hoặc tồn kho tham chiếu không thể
-                  xóa. Khi không còn nhu cầu, chuyển sang <span className="font-bold underline">Tạm ngưng (Inactive)</span>.
-                </p>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-[#eff4ff] border border-[#d0e4ff]">
-                <span className="material-symbols-outlined text-[#0e61a1] text-[18px] shrink-0 mt-0.5">inventory_2</span>
-                <p className="text-xs text-[#5B6472] leading-relaxed">
-                  <strong className="text-[#1C2330]">Loại tài sản cố định sau khi tạo:</strong> Không thể đổi giữa Tài sản
-                  cố định và Vật tư tiêu hao vì tài sản / tồn kho đã trỏ vào danh mục.
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

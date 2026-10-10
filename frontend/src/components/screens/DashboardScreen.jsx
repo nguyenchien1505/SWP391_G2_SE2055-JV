@@ -356,10 +356,6 @@ export const DashboardScreen = ({ onNavigate }) => {
               </>
             )}
           </div>
-
-          <div className="mt-3 text-[11px] text-[#5B6472] bg-[#eff4ff] p-2 rounded-xl border border-[#d1e4ff]/60">
-            *Quy tắc nghiệp vụ: Quản lý phải đổi trạng thái thiết bị trước khi đánh dấu Đã xử lý phiếu.
-          </div>
         </div>
       </div>
 

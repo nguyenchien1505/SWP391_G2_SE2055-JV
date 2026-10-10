@@ -454,19 +454,6 @@ export default function RoomsPage() {
       )}
       {noteRoom && <RoomNoteModal room={noteRoom} onClose={() => setNoteRoom(null)} onSaved={saveNote} />}
       {locking && <LockRoomModal room={locking} onClose={() => setLocking(null)} onChanged={finishLock} />}
-
-      <div className="note">
-        <span aria-hidden="true">ⓘ</span>
-        <div>
-          <b>Quy định về phòng</b>
-          <p>
-            Chỉ Giám đốc được thêm, sửa, xóa phòng; Quản lý chi nhánh chỉ cập nhật thông tin vận
-            hành. Phòng mới tạo luôn ở trạng thái <b>Chờ dọn</b> và tự sinh việc dọn
-            phòng. Trạng thái phòng chỉ thay đổi theo đúng quy trình: Lễ tân nhận / trả
-            phòng, Quản lý khóa phòng và kiểm tra phòng sau khi dọn.
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

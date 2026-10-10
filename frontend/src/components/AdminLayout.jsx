@@ -13,14 +13,13 @@ import '../pages/Admin_platform/admin.css';
  */
 const NAV_GROUPS = [
   {
-    title: 'Quản trị Tenant',
-    items: [{ to: '/quan-tri/tenant', label: 'Danh sách Tenant' }],
-  },
-  {
-    title: 'Cấu hình & Gói',
+    title: 'Dịch vụ SaaS',
     items: [
+      // Tenant, kích hoạt / tạm ngưng, trạng thái thanh toán và tình trạng sử dụng.
+      { to: '/quan-tri/tenant', label: 'Danh sách Tenant' },
       { to: '/quan-tri/bang-gia', label: 'Gói dịch vụ & Đơn giá' },
-      { to: '/quan-tri/cau-hinh', label: 'Dùng thử & Ân hạn' },
+      // Thông số chung của nền tảng: số ngày dùng thử, ân hạn.
+      { to: '/quan-tri/cau-hinh', label: 'Cấu hình hệ thống' },
     ],
   },
 ];
@@ -53,10 +52,6 @@ export default function AdminLayout() {
             </div>
           ))}
         </nav>
-
-        <div className="shell__nav-foot">
-          <span className="dot dot--online" aria-hidden="true" /> SaaS đa Tenant
-        </div>
       </aside>
 
       <div className="shell__main">
