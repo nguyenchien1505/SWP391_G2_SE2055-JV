@@ -4,6 +4,7 @@ import { fetchAllRooms } from '../../api/rooms';
 import { fetchAllAreas } from '../../api/locations';
 import { useAuth } from '../../context/AuthContext';
 import { PURPOSE_LABEL } from '../asset-categories/categoryLabels';
+import { DamageReportModal } from '../modals/DamageReportModal';
 
 const STATUS_LABEL = {
   Good: 'Tốt (Good)',
@@ -380,7 +381,7 @@ export const AssetDetailScreen = ({ assetRef, onNavigate }) => {
           </div>
 
           {/* Thanh lý tự đóng các phiếu đang chờ → nạp lại khi trạng thái đổi. */}
-          <AssetDamageHistory key={asset.status} assetId={asset.id} onNavigate={onNavigate} />
+          <AssetDamageHistory key={asset.status} assetId={asset.id} onResolved={loadAssetDetail} />
         </div>
 
         {/* Right Column: Identification Profile (7 cols) */}
@@ -722,12 +723,19 @@ const HISTORY_LIMIT = 5;
 
 /**
  * Báo hỏng gần đây của tài sản — để thấy tài sản hỏng lặp lại. Giám đốc/Manager thấy mọi phiếu
- * trong phạm vi; bấm vào phiếu để mở màn xử lý.
+ * trong phạm vi; bấm vào phiếu để mở hộp thoại xử lý.
+ *
+ * @param onResolved gọi khi ĐÓNG hộp thoại sau khi đã xử lý phiếu — trạng thái tài sản có thể đã
+ *                   đổi. Không gọi ngay lúc xử lý: tài sản đổi trạng thái thì khối này dựng lại
+ *                   (key theo trạng thái) và hộp thoại sẽ biến mất trước khi Manager đọc kết quả.
  */
-function AssetDamageHistory({ assetId, onNavigate }) {
+function AssetDamageHistory({ assetId, onResolved }) {
   const [reports, setReports] = useState(null);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState('');
+  const [openId, setOpenId] = useState(null);
+  const [version, setVersion] = useState(0);
+  const [resolvedAny, setResolvedAny] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -742,7 +750,7 @@ function AssetDamageHistory({ assetId, onNavigate }) {
     return () => {
       cancelled = true;
     };
-  }, [assetId]);
+  }, [assetId, version]);
 
   const pending = (reports ?? []).filter((r) => r.ticketStatus === 'New').length;
 
@@ -770,7 +778,7 @@ function AssetDamageHistory({ assetId, onNavigate }) {
             <li key={r.id}>
               <button
                 type="button"
-                onClick={() => onNavigate('incident-detail', r.id)}
+                onClick={() => setOpenId(r.id)}
                 className="w-full text-left p-2.5 rounded-xl border border-[#DFE3E8] hover:bg-[#F7F8FA] cursor-pointer text-xs space-y-0.5"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -788,6 +796,23 @@ function AssetDamageHistory({ assetId, onNavigate }) {
       )}
       {total > HISTORY_LIMIT && (
         <p className="text-[11px] text-[#5B6472]">Hiện {HISTORY_LIMIT} phiếu gần nhất.</p>
+      )}
+
+      {openId && (
+        <DamageReportModal
+          incidentId={openId}
+          onClose={() => {
+            setOpenId(null);
+            if (resolvedAny) {
+              setResolvedAny(false);
+              onResolved?.();
+            }
+          }}
+          onResolved={() => {
+            setVersion((v) => v + 1);
+            setResolvedAny(true);
+          }}
+        />
       )}
     </div>
   );

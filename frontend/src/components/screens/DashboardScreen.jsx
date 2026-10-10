@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { assetService } from '../../services/assetApi';
 import { useAuth } from '../../context/AuthContext';
+import { BatchCreateAssetsModal } from '../modals/BatchCreateAssetsModal';
+import { DamageReportModal } from '../modals/DamageReportModal';
 
 const pct = (part, total) => (total ? ((part / total) * 100).toFixed(1) : '0.0');
 
@@ -33,6 +35,8 @@ export const DashboardScreen = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [stats, setStats] = useState(null);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [openIncidentId, setOpenIncidentId] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -135,7 +139,7 @@ export const DashboardScreen = ({ onNavigate }) => {
             <>
               <div className="w-px h-6 bg-[#DFE3E8] mx-1"></div>
               <button
-                onClick={() => onNavigate('batch-create')}
+                onClick={() => setBatchOpen(true)}
                 className="px-3.5 py-2 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                 type="button"
               >
@@ -436,7 +440,7 @@ export const DashboardScreen = ({ onNavigate }) => {
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <button
-                        onClick={() => onNavigate('incident-detail', inc.id)}
+                        onClick={() => setOpenIncidentId(inc.id)}
                         className="px-3 py-1.5 rounded-lg bg-[#00375e] text-white hover:bg-[#1f4e78] font-semibold text-xs shadow-xs inline-flex items-center gap-1 cursor-pointer transition-colors"
                         type="button"
                       >
@@ -471,6 +475,16 @@ export const DashboardScreen = ({ onNavigate }) => {
           <span>{loading ? 'Đang tải...' : 'Làm mới'}</span>
         </button>
       </div>
+      {openIncidentId && (
+        <DamageReportModal
+          incidentId={openIncidentId}
+          onClose={() => setOpenIncidentId(null)}
+          onResolved={loadData}
+        />
+      )}
+      {batchOpen && (
+        <BatchCreateAssetsModal onClose={() => setBatchOpen(false)} onCreated={loadData} />
+      )}
     </div>
   );
 };

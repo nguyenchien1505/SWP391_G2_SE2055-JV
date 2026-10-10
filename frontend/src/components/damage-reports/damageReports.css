@@ -28,6 +28,12 @@
   gap: 4px;
   min-width: 0;
 }
+.asset-report-row__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .asset-report-row__name {
   font-size: 16px;
   font-weight: 600;
@@ -40,6 +46,14 @@
   flex-wrap: wrap;
   font-size: 13.5px;
   color: var(--muted);
+}
+/* Cột cuối dòng (nút "Xem báo hỏng"…): luôn nằm sát phải, không co. */
+.asset-report-row__extra {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.asset-report-row__extra:empty {
+  display: none;
 }
 .asset-report-row__action {
   min-height: 44px;

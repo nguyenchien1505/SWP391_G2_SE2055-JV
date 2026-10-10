@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { assetService } from '../../services/assetApi';
+import { DamageReportModal } from '../modals/DamageReportModal';
 
 const PAGE_SIZE = 10;
 
@@ -21,7 +23,8 @@ const TICKET_BADGE = {
  * (BR-ASSET-06). DM-16: không có thông báo đẩy, màn này chính là "hộp thư" — mặc định mở tab
  * phiếu đang chờ. Phân trang ở server.
  */
-export const DamageReportListScreen = ({ onNavigate }) => {
+export const DamageReportListScreen = ({ initialIncidentId }) => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isDirector = user?.role === 'DIRECTOR';
 
@@ -30,6 +33,8 @@ export const DamageReportListScreen = ({ onNavigate }) => {
   const [data, setData] = useState({ items: [], total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  // Phiếu đang mở trong hộp thoại xử lý; mở thẳng khi vào bằng link cũ /bao-hong/:id.
+  const [openId, setOpenId] = useState(initialIncidentId ?? null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,7 +133,7 @@ export const DamageReportListScreen = ({ onNavigate }) => {
                   <tr
                     key={inc.id}
                     className="hover:bg-[#F7F8FA] transition-colors cursor-pointer"
-                    onClick={() => onNavigate('incident-detail', inc.id)}
+                    onClick={() => setOpenId(inc.id)}
                   >
                     <td className="py-3 px-4">
                       <div className="font-semibold text-[#1C2330]">{inc.assetName}</div>
@@ -183,6 +188,16 @@ export const DamageReportListScreen = ({ onNavigate }) => {
           </div>
         )}
       </div>
+      {openId && (
+        <DamageReportModal
+          incidentId={openId}
+          onClose={() => {
+            setOpenId(null);
+            if (initialIncidentId) navigate('/bao-hong', { replace: true });
+          }}
+          onResolved={load}
+        />
+      )}
     </div>
   );
 };

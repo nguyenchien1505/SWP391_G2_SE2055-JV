@@ -25,15 +25,57 @@ const STATUS_CHOICES = [
   { value: 'Disposed', label: 'Thanh lý', hint: 'Không sửa được — không quay lại được' },
 ];
 
+/** Khung hộp thoại: nền mờ + hộp trắng có tiêu đề và nút đóng. */
+function Shell({ title, badge, onClose, busy, children }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-4 bg-[#001D35]/40 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="damage-report-title"
+      onClick={() => !busy && onClose()}
+    >
+      <div
+        className="w-full max-w-5xl my-auto bg-[#F7F8FA] rounded-2xl shadow-xl border border-[#DFE3E8]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 px-6 py-4 bg-white border-b border-[#DFE3E8] rounded-t-2xl">
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+            <h2 id="damage-report-title" className="text-lg font-bold text-[#00375e] tracking-tight break-words">
+              {title}
+            </h2>
+            {badge}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="p-1.5 rounded text-[#5B6472] hover:text-[#1C2330] hover:bg-[#F7F8FA] transition-colors cursor-pointer disabled:opacity-50"
+            aria-label="Đóng"
+          >
+            <span className="material-symbols-outlined text-[20px] leading-none">close</span>
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 /**
- * Chi tiết một báo hỏng — BR-ASSET-06, BR-ASSET-11.
+ * Hộp thoại chi tiết / xử lý một báo hỏng — BR-ASSET-06, BR-ASSET-11. Mở từ danh sách báo hỏng,
+ * Dashboard, hồ sơ tài sản và bảng chi tiết khu vực.
  *
  * Manager đóng phiếu, tùy chọn kèm trạng thái mới cho tài sản và ghi chú; backend làm cả hai
  * trong CÙNG một transaction. Giám đốc chỉ xem. Báo hỏng không bao giờ tự đổi trạng thái phòng.
+ * Bấm một "báo hỏng khác của tài sản này" thì chuyển sang phiếu đó ngay trong hộp thoại.
+ *
+ * @param onResolved gọi với phiếu vừa đóng để màn bên dưới nạp lại dữ liệu
  */
-export const DamageReportScreen = ({ incidentId, onNavigate }) => {
+export const DamageReportModal = ({ incidentId: initialId, onClose, onResolved }) => {
   const { user } = useAuth();
   const isManager = user?.role === 'MANAGER';
+  const [incidentId, setIncidentId] = useState(initialId);
 
   const [incident, setIncident] = useState(null);
   const [related, setRelated] = useState([]);
@@ -61,6 +103,11 @@ export const DamageReportScreen = ({ incidentId, onNavigate }) => {
     let cancelled = false;
     setLoading(true);
     setLoadError('');
+    // Chuyển sang phiếu khác: form xử lý làm lại từ đầu.
+    setNewAssetStatus('');
+    setNote('');
+    setConfirmDispose(false);
+    setFormError('');
     assetService
       .getDamageReportById(incidentId)
       .then((data) => {
@@ -83,6 +130,13 @@ export const DamageReportScreen = ({ incidentId, onNavigate }) => {
     };
   }, [incidentId, loadRelated]);
 
+  // Esc để đóng, trừ lúc đang lưu — tránh đóng giữa chừng rồi không biết kết quả.
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && !submitting && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [submitting, onClose]);
+
   const handleResolve = async (e) => {
     e.preventDefault();
     if (newAssetStatus === 'Disposed' && !confirmDispose) {
@@ -98,6 +152,7 @@ export const DamageReportScreen = ({ incidentId, onNavigate }) => {
       });
       setIncident(updated);
       loadRelated(updated.assetId);
+      onResolved?.(updated);
       setToast('Đã đóng báo hỏng.');
       setTimeout(() => setToast(''), 4000);
     } catch (err) {
@@ -109,30 +164,34 @@ export const DamageReportScreen = ({ incidentId, onNavigate }) => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <Shell title="Báo hỏng" onClose={onClose}>
+      <div className="flex items-center justify-center min-h-[300px]">
         <div className="flex flex-col items-center gap-3">
           <div className="w-9 h-9 border-3 border-[#00375e] border-t-transparent rounded-full animate-spin"></div>
           <span className="text-sm font-medium text-[#5B6472]">Đang tải báo hỏng…</span>
         </div>
       </div>
+      </Shell>
     );
   }
 
   if (!incident) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <Shell title="Báo hỏng" onClose={onClose}>
+      <div className="flex items-center justify-center min-h-[300px]">
         <div className="text-center space-y-3">
           <span className="material-symbols-outlined text-[48px] text-[#D32F2F]">error</span>
           <p className="text-sm font-medium text-[#1C2330]">{loadError}</p>
           <button
             type="button"
-            onClick={() => onNavigate('issue-reports')}
+            onClick={onClose}
             className="text-xs text-[#0e61a1] hover:underline font-semibold cursor-pointer"
           >
-            Quay lại danh sách báo hỏng
+            Đóng
           </button>
         </div>
       </div>
+      </Shell>
     );
   }
 
@@ -141,42 +200,28 @@ export const DamageReportScreen = ({ incidentId, onNavigate }) => {
   const choices = STATUS_CHOICES.filter((c) => c.value === '' || c.value !== incident.assetStatus);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <Shell
+      title={`${incident.shortId} · ${incident.assetName} · ${incident.room}`}
+      busy={submitting}
+      onClose={onClose}
+      badge={
+        <span
+          className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+            isProcessed
+              ? 'bg-[#E8F5E9] text-[#2E7D32] border-[#2E7D32]/30'
+              : 'bg-[#FFF3E0] text-[#EF6C00] border-[#EF6C00]/30'
+          }`}
+        >
+          {incident.ticketStatusLabel}
+        </span>
+      }
+    >
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#00375e] text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-6 right-6 z-[60] bg-[#00375e] text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-bottom-3 duration-200">
           <span className="material-symbols-outlined text-[18px]">check_circle</span>
           <span>{toast}</span>
         </div>
       )}
-
-      {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-[#DFE3E8] shadow-[0_1px_8px_rgba(0,0,0,0.02)]">
-        <div className="flex items-center gap-2 text-xs text-[#5B6472] mb-1">
-          <button
-            type="button"
-            onClick={() => onNavigate('issue-reports')}
-            className="text-[#0e61a1] hover:underline cursor-pointer"
-          >
-            Báo hỏng
-          </button>
-          <span>/</span>
-          <span className="font-mono font-bold text-[#00375e]">{incident.shortId}</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="text-xl font-bold text-[#00375e] tracking-tight break-words">
-            {incident.assetName} · {incident.room}
-          </h1>
-          <span
-            className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-              isProcessed
-                ? 'bg-[#E8F5E9] text-[#2E7D32] border-[#2E7D32]/30'
-                : 'bg-[#FFF3E0] text-[#EF6C00] border-[#EF6C00]/30'
-            }`}
-          >
-            {incident.ticketStatusLabel}
-          </span>
-        </div>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Cột trái: nội dung báo hỏng + xử lý */}
@@ -357,13 +402,12 @@ export const DamageReportScreen = ({ incidentId, onNavigate }) => {
                 <span className="material-symbols-outlined text-[16px] text-[#0e61a1]">info</span>
                 Tài sản
               </h3>
-              <button
-                type="button"
-                onClick={() => onNavigate('asset-detail', incident.assetId)}
-                className="text-xs text-[#0e61a1] hover:underline font-semibold cursor-pointer"
+              <Link
+                to={`/tai-san/${incident.assetId}`}
+                className="text-xs text-[#0e61a1] hover:underline font-semibold"
               >
                 Hồ sơ tài sản
-              </button>
+              </Link>
             </div>
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between gap-3 py-1 border-b border-[#eff4ff]">
@@ -406,7 +450,7 @@ export const DamageReportScreen = ({ incidentId, onNavigate }) => {
                   <li key={r.id}>
                     <button
                       type="button"
-                      onClick={() => onNavigate('incident-detail', r.id)}
+                      onClick={() => setIncidentId(r.id)}
                       className="w-full text-left p-2.5 rounded-xl border border-[#DFE3E8] hover:bg-[#F7F8FA] cursor-pointer text-xs space-y-0.5"
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -424,6 +468,6 @@ export const DamageReportScreen = ({ incidentId, onNavigate }) => {
           </div>
         </div>
       </div>
-    </div>
+    </Shell>
   );
 };

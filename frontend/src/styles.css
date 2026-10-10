@@ -462,6 +462,30 @@ a.nav-item {
   text-overflow: ellipsis;
   max-width: 40vw;
 }
+/* Email Quản lý của khách sạn (chỉ Staff), nằm cạnh tên khách sạn — cùng kiểu thẻ bo góc. */
+.topbar__manager {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+  background: #eef3f9;
+  border-radius: 999px;
+  padding: 4px 12px;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30vw;
+}
+.topbar__manager:hover {
+  background: #e3edf8;
+  text-decoration: underline;
+}
+/* Điện thoại: thanh trên chật — bỏ email quản lý, giữ tên khách sạn. */
+@media (max-width: 640px) {
+  .topbar__manager {
+    display: none;
+  }
+}
 .topbar__burger {
   display: none;
   background: none;
@@ -765,6 +789,64 @@ a.nav-item {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 16px;
+}
+
+/* ── Kiểm kê tài sản (phòng / khu vực) — AssetAuditModal ─────────── */
+.asset-audit {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+.asset-audit .modal__body {
+  color: var(--text);
+}
+.asset-audit .alert {
+  margin-top: 0;
+}
+.asset-audit .btn {
+  min-height: 48px;
+}
+.asset-audit__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.asset-audit__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.asset-audit__row:last-child {
+  border-bottom: 0;
+}
+/* Dòng đã đổi tình trạng — nhìn là biết sẽ lưu những dòng nào. */
+.asset-audit__row.is-changed {
+  background: #fff8e6;
+}
+.asset-audit__info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.asset-audit__info b {
+  overflow-wrap: anywhere;
+}
+.asset-audit__info small {
+  color: var(--muted);
+}
+.asset-audit__row select {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: #fff;
+  font: inherit;
 }
 
 /* ── Hộp thoại ─────────────────────────────────────────────────────── */

@@ -1,23 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { hasPermission } from '../../permissions';
 import { readErrorMessage } from '../../api/client';
-import { cancelTask, createStayoverTask, fetchTasks, unassignTask } from '../../api/housekeeping';
-import { fetchAllRooms, fetchRoom } from '../../api/rooms';
+import { fetchTasks } from '../../api/housekeeping';
+import { createRoom, deleteRoom, fetchAllRooms, fetchRoom, updateRoom } from '../../api/rooms';
 import { fetchStaffDirectory } from '../../api/users';
+import AssetAuditModal from '../../components/AssetAuditModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import FormModal from '../../components/FormModal';
+import { BatchCreateAssetsModal } from '../../components/modals/BatchCreateAssetsModal';
+import { DamageReportModal } from '../../components/modals/DamageReportModal';
+import { groupReportsBy } from '../../components/damage-reports/ViewReportButton';
+import { assetService } from '../../services/assetApi';
 import AssignTaskModal from '../../components/rooms/AssignTaskModal';
-import InspectTaskModal from '../../components/rooms/InspectTaskModal';
 import LockRoomModal from '../../components/rooms/LockRoomModal';
-import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import RoomActionDialog from '../../components/rooms/RoomActionDialog';
 import RoomBoardPanel from '../../components/rooms/RoomBoardPanel';
 import RoomCard from '../../components/rooms/RoomCard';
+import RoomForm from '../../components/rooms/RoomForm';
+import RoomListView from '../../components/rooms/RoomListView';
 import RoomNoteModal from '../../components/rooms/RoomNoteModal';
 import RoomStatusFilter from '../../components/rooms/RoomStatusFilter';
 import { formatClock } from './format';
-import { LOCK, statusChangedMessage } from './roomActions';
+import { DELETE_ROOM_WARNING, LOCK, roomActionsFor, statusChangedMessage } from './roomActions';
 import {
   countByStatus,
   groupByFloor,
@@ -28,7 +35,7 @@ import {
 } from './roomBoard';
 import { ROOM_STATUS_ORDER, roomStatusMeta } from './roomLabels';
 import { useRoomAction } from './useRoomAction';
-import { useTenantLocations } from './useRoomLookups';
+import { useRoomTypes, useTenantLocations } from './useRoomLookups';
 import './rooms.css';
 
 /** Từ khổ này bảng chi tiết nằm HẲN bên phải lưới; nhỏ hơn thì mở đè lên (ngăn kéo / trượt từ dưới). */
@@ -38,18 +45,6 @@ const WIDE_QUERY = '(min-width: 1200px)';
 const OPEN_TASK_STATUSES = ['UNASSIGNED', 'IN_PROGRESS', 'PENDING_INSPECTION'];
 
 const NO_FILTER = { status: '', floor: '', roomType: '', search: '' };
-
-function useMediaQuery(query) {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    const onChange = () => setMatches(mql.matches);
-    mql.addEventListener('change', onChange);
-    onChange();
-    return () => mql.removeEventListener('change', onChange);
-  }, [query]);
-  return matches;
-}
 
 /**
  * S-06 Sơ đồ phòng / S-15 Sơ đồ phòng của Lễ tân — toàn bộ phòng của MỘT khách sạn dạng lưới thẻ
@@ -87,23 +82,45 @@ export default function RoomBoardPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [updatedAt, setUpdatedAt] = useState(null);
-  const [banner, setBanner] = useState(null); // { type, text }
+  // Xóa phòng ở trang chi tiết (S-04) xong thì quay về đây kèm câu báo (react-router state).
+  const { state: navigationState, pathname } = useLocation();
+  const navigate = useNavigate();
+  const [banner, setBanner] = useState(navigationState?.banner ?? null); // { type, text }
+
+  // Kiểu xem nằm trên URL (?view=list) để quay lại từ trang chi tiết vẫn đúng dạng đang xem.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = searchParams.get('view') === 'list' && (isDirector || isManager) ? 'list' : 'grid';
+  // Dạng danh sách không có bảng chi tiết bên cạnh (bảng chiếm hết chiều ngang) → bỏ phòng đang chọn.
+  const setView = (next) => {
+    setSelectedId(null);
+    setSearchParams(next === 'list' ? { view: 'list' } : {}, { replace: true });
+  };
+  // Bảng chi tiết phòng chỉ đi cùng dạng sơ đồ.
+  const showPanel = view === 'grid';
+
+  // Giám đốc: thêm / sửa phòng (form S-03 trong hộp thoại) và xóa phòng ngay trên danh sách.
+  const roomTypes = useRoomTypes(isDirector);
+  const [roomForm, setRoomForm] = useState(null); // null | { mode: 'create' } | { mode: 'edit', room }
+  const [deleting, setDeleting] = useState(null);
 
   const [filters, setFilters] = useState(NO_FILTER);
   const [collapsedFloors, setCollapsedFloors] = useState(() => new Set());
   const [selectedId, setSelectedId] = useState(null);
   const [historyKey, setHistoryKey] = useState(0);
+  // Tăng sau mỗi lần kiểm kê → bảng chi tiết nạp lại danh sách tài sản của phòng.
+  const [assetsKey, setAssetsKey] = useState(0);
 
   // Chỉ Quản lý chi nhánh: việc dọn đang mở theo phòng + tên người làm (DTO chỉ có id).
   const [tasksByRoom, setTasksByRoom] = useState({});
   const [staffNames, setStaffNames] = useState({});
 
   const [assigning, setAssigning] = useState(null);
-  const [inspecting, setInspecting] = useState(null);
-  const [releasing, setReleasing] = useState(null);
-  const [cancelling, setCancelling] = useState(null);
   const [noteRoom, setNoteRoom] = useState(null);
-  const [previousOf, setPreviousOf] = useState(null);
+  const [auditing, setAuditing] = useState(null);
+  const [addingAssetTo, setAddingAssetTo] = useState(null);
+  // Chỉ Quản lý chi nhánh: báo hỏng theo phòng (roomId → danh sách) + phiếu đang mở trong hộp thoại.
+  const [reportsByRoom, setReportsByRoom] = useState({});
+  const [openReportId, setOpenReportId] = useState(null);
 
   const replaceRoom = useCallback((updated) => {
     setRooms((prev) => prev.map((room) => (room.id === updated.id ? updated : room)));
@@ -120,6 +137,16 @@ export default function RoomBoardPage() {
       setTasksByRoom(indexOpenTasks(pages.flatMap((page) => page.content ?? [])));
     } catch {
       setTasksByRoom({});
+    }
+  }, [isManager]);
+
+  /** Báo hỏng của cả khách sạn, một lần gọi — lỗi thì chỉ thiếu nút "Xem báo hỏng", sơ đồ vẫn dùng được. */
+  const loadReports = useCallback(async () => {
+    if (!isManager) return;
+    try {
+      setReportsByRoom(groupReportsBy(await assetService.getAllDamageReports(), 'roomId'));
+    } catch {
+      setReportsByRoom({});
     }
   }, [isManager]);
 
@@ -140,6 +167,7 @@ export default function RoomBoardPage() {
       const [list] = await Promise.all([
         fetchAllRooms({ locationId: isDirector ? locationId : undefined }),
         loadTasks(),
+        loadReports(),
       ]);
       setRooms(list);
       setUpdatedAt(new Date());
@@ -148,7 +176,7 @@ export default function RoomBoardPage() {
     } finally {
       setLoading(false);
     }
-  }, [waitingForLocation, isDirector, locationId, loadTasks]);
+  }, [waitingForLocation, isDirector, locationId, loadTasks, loadReports]);
 
   useEffect(() => {
     load();
@@ -195,6 +223,11 @@ export default function RoomBoardPage() {
     [replaceRoom, afterChange],
   );
 
+  // Đọc câu báo một lần rồi bỏ khỏi lịch sử duyệt, để F5 không hiện lại thông báo cũ.
+  useEffect(() => {
+    if (navigationState?.banner) navigate(pathname + window.location.search, { replace: true });
+  }, [navigationState, pathname, navigate]);
+
   const showError = useCallback((text) => setBanner({ type: 'error', text }), []);
   const action = useRoomAction({ onChanged: handleStatusChanged, onError: showError });
 
@@ -227,71 +260,79 @@ export default function RoomBoardPage() {
     afterChange();
   }
 
-  function finishInspection(record) {
-    const task = inspecting;
-    setInspecting(null);
-    setBanner({
-      type: 'success',
-      text: record.result === 'PASS'
-        ? `Phòng ${task.roomNumber} đã Sẵn sàng.`
-        : `Đã tạo việc dọn lại cho phòng ${task.roomNumber}. Phòng quay về «Chờ dọn».`,
-    });
-    refreshRoom(task.roomId);
-    afterChange();
-  }
-
-  async function confirmRelease() {
-    const task = releasing;
-    setReleasing(null);
-    try {
-      await unassignTask(task.id);
-      setBanner({
-        type: 'success',
-        text: `Đã gỡ người khỏi việc dọn phòng ${task.roomNumber}.`
-          + (task.taskType === 'CHECKOUT' ? ' Phòng quay về «Chờ dọn».' : ''),
-      });
-      refreshRoom(task.roomId);
-      afterChange();
-    } catch (err) {
-      showError(readErrorMessage(err, 'Không gỡ được người khỏi việc dọn.'));
-    }
-  }
-
-  /** Hủy tay một việc dọn hằng ngày — phòng không đổi gì, vẫn «Đang sử dụng» (BR-HK-05). */
-  async function confirmCancel() {
-    const task = cancelling;
-    setCancelling(null);
-    try {
-      await cancelTask(task.id);
-      setBanner({ type: 'success', text: `Đã hủy việc dọn hằng ngày của phòng ${task.roomNumber}.` });
-      afterChange();
-    } catch (err) {
-      showError(readErrorMessage(err, 'Không hủy được việc dọn.'));
-    }
-  }
-
-  /** BR-HK-05 — tạo việc dọn hằng ngày rồi mở luôn hộp thoại phân công, đỡ một bước. */
-  async function createStayover(room) {
-    setBanner(null);
-    try {
-      const created = await createStayoverTask(room.id);
-      setBanner({ type: 'success', text: `Đã tạo việc dọn hằng ngày cho phòng ${room.roomNumber}.` });
-      loadTasks();
-      setAssigning(created);
-    } catch (err) {
-      showError(readErrorMessage(err, 'Không tạo được việc dọn hằng ngày.'));
-    }
-  }
-
   function saveNote(updated) {
     setNoteRoom(null);
     replaceRoom(updated);
     setBanner({ type: 'success', text: `Đã lưu ghi chú vận hành của phòng ${updated.roomNumber}.` });
   }
 
+  /**
+   * RM-02 / RM-03 — Giám đốc thêm / sửa phòng. Trả câu lỗi cho form tự hiện, hoặc `null` khi thành
+   * công; câu lỗi của backend đã nêu rõ vi phạm gì (trùng số phòng, hết hạn mức…).
+   */
+  async function submitRoomForm(payload) {
+    const editing = roomForm?.mode === 'edit' ? roomForm.room : null;
+    try {
+      const saved = editing ? await updateRoom(editing.id, payload) : await createRoom(payload);
+      setRoomForm(null);
+      setBanner({
+        type: 'success',
+        text: editing
+          ? `Đã cập nhật phòng ${saved.roomNumber}.`
+          : `Đã thêm phòng ${saved.roomNumber}. Phòng đang ở trạng thái «Chờ dọn» và đã có một `
+            + 'việc dọn phòng chờ phân công.',
+      });
+      load();
+      return null;
+    } catch (err) {
+      return readErrorMessage(err, editing ? 'Không lưu được thông tin phòng.' : 'Không tạo được phòng.');
+    }
+  }
+
+  /** RM-05 — bị backend chặn (còn việc dọn, còn tài sản…) thì hiện nguyên văn câu lỗi. */
+  async function confirmDelete() {
+    const room = deleting;
+    setDeleting(null);
+    try {
+      await deleteRoom(room.id);
+      setBanner({ type: 'success', text: `Đã xóa phòng ${room.roomNumber}.` });
+      if (selectedId === room.id) setSelectedId(null);
+      load();
+    } catch (err) {
+      showError(readErrorMessage(err, 'Không xóa được phòng.'));
+    }
+  }
+
+  /** Nút thao tác trên từng dòng của dạng danh sách — cùng bộ với màn Danh sách phòng cũ. */
+  const rowActions = {
+    isDirector,
+    isManager,
+    onEdit: (room) => {
+      setBanner(null);
+      setRoomForm({ mode: 'edit', room });
+    },
+    onDelete: setDeleting,
+    onEditNote: setNoteRoom,
+    // Khóa / mở khóa đi qua cùng luồng với bảng chi tiết (hộp thoại S-08).
+    onLock: (room) => {
+      setBanner(null);
+      action.start(room, roomActionsFor(room).find((item) => item.flow === LOCK));
+    },
+  };
+
+  function finishAudit(room, changedCount) {
+    setAuditing(null);
+    setAssetsKey((key) => key + 1);
+    setBanner({
+      type: 'success',
+      text: `Đã lưu kiểm kê phòng ${room.roomNumber}: cập nhật tình trạng ${changedCount} tài sản.`,
+    });
+  }
+
   const selectedRoom = rooms.find((room) => room.id === selectedId) ?? null;
   const modalOpen = Boolean(
-    assigning || inspecting || releasing || cancelling || noteRoom || previousOf || action.pending,
+    assigning || noteRoom || auditing || addingAssetTo || openReportId || roomForm || deleting
+      || action.pending,
   );
 
   // Esc đóng bảng chi tiết khi nó đang đè lên trang — trừ lúc có hộp thoại mở (Esc là của hộp thoại).
@@ -317,8 +358,8 @@ export default function RoomBoardPage() {
     role,
     locationName,
     tasks: tasksByRoom[selectedRoom.id] ?? [],
-    staffNames,
     historyKey,
+    assetsKey,
     busy: action.running,
     onClose: () => setSelectedId(null),
     onAction: (picked) => {
@@ -326,29 +367,36 @@ export default function RoomBoardPage() {
       action.start(selectedRoom, picked);
     },
     onAssign: setAssigning,
-    onInspect: setInspecting,
-    onUnassign: setReleasing,
-    onCancel: setCancelling,
-    onCreateStayover: createStayover,
     onEditNote: setNoteRoom,
-    onShowPreviousInspection: setPreviousOf,
+    // Hộp thoại thêm tài sản hàng loạt, chọn sẵn phòng này làm vị trí đặt.
+    onAddAsset: setAddingAssetTo,
+    reports: reportsByRoom[selectedRoom.id] ?? [],
+    onOpenReport: (report) => setOpenReportId(report.id),
+    onAuditAssets: (room) => {
+      setBanner(null);
+      setAuditing(room);
+    },
   };
 
   return (
     <div className="page room-board">
       <div className="page__head board-head">
-        <div>
-          <p className="breadcrumb">Vận hành › Sơ đồ phòng</p>
+        <div className="board-head__main">
+          {/* Đường dẫn bên trái, thông tin tóm tắt dồn về cuối cùng hàng. */}
+          <div className="board-head__crumbs">
+            <p className="breadcrumb">Vận hành › Sơ đồ phòng</p>
+            <p className="board-head__sub">
+              {rooms.length} phòng
+              {locationName ? ` · ${locationName}` : ''}
+              {updatedAt ? ` · cập nhật lúc ${formatClock(updatedAt)}` : ''}
+            </p>
+          </div>
           <h1>Sơ đồ phòng</h1>
-          <p className="board-head__sub">
-            {rooms.length} phòng
-            {locationName ? ` · ${locationName}` : ''}
-            {updatedAt ? ` · cập nhật lúc ${formatClock(updatedAt)}` : ''}
-          </p>
         </div>
 
-        <div className="board-head__tools">
-          {isDirector && (locations?.length ?? 0) > 0 && (
+        {/* Giám đốc chọn khách sạn ở đầu trang; các công cụ khác nằm trên thanh lọc bên dưới. */}
+        {isDirector && (locations?.length ?? 0) > 0 && (
+          <div className="board-head__tools">
             <select
               className="board-select"
               value={locationId}
@@ -361,44 +409,11 @@ export default function RoomBoardPage() {
                 </option>
               ))}
             </select>
-          )}
-          <label className="board-search">
-            <span className="material-symbols-outlined" aria-hidden="true">search</span>
-            <input
-              type="search"
-              value={filters.search}
-              onChange={(e) => setFilter('search', e.target.value)}
-              onKeyDown={(e) => e.key === 'Escape' && setFilter('search', '')}
-              placeholder="Tìm số phòng…"
-              aria-label="Tìm theo số phòng"
-            />
-          </label>
-          {/* Danh sách phòng (S-02) chỉ dành cho Giám đốc / Quản lý — nhân viên không có lối vào đó. */}
-          {(isDirector || isManager) && (
-            <div className="view-switch" role="group" aria-label="Kiểu xem">
-              <span className="view-switch__item is-active" aria-current="page">
-                <span className="material-symbols-outlined" aria-hidden="true">grid_view</span>
-                Sơ đồ
-              </span>
-              <Link className="view-switch__item" to="/phong">
-                <span className="material-symbols-outlined" aria-hidden="true">view_list</span>
-                Danh sách
-              </Link>
-            </div>
-          )}
-          <button
-            type="button"
-            className="btn btn--ghost board-refresh"
-            onClick={load}
-            disabled={loading}
-            aria-label="Làm mới sơ đồ"
-            title="Làm mới sơ đồ"
-          >
-            <span className={`material-symbols-outlined ${loading ? 'is-spinning' : ''}`} aria-hidden="true">
-              refresh
-            </span>
-          </button>
-        </div>
+            <button type="button" className="btn btn--primary" onClick={() => setRoomForm({ mode: 'create' })}>
+              + Thêm phòng
+            </button>
+          </div>
+        )}
       </div>
 
       {banner && (
@@ -421,8 +436,32 @@ export default function RoomBoardPage() {
         onSelect={(status) => setFilter('status', status)}
       />
 
-      {rooms.length > 0 && (
-        <div className="board-filters">
+      {/* Một hàng: Sơ đồ / Danh sách → lọc tầng, loại phòng → tìm số phòng. */}
+      <div className="board-filters">
+        {/* Dạng danh sách (có nút sửa / xóa / khóa trên từng dòng) chỉ dành cho Giám đốc / Quản lý. */}
+        {(isDirector || isManager) && (
+          <div className="view-switch" role="group" aria-label="Kiểu xem">
+            <button
+              type="button"
+              className={`view-switch__item ${view === 'grid' ? 'is-active' : ''}`}
+              aria-pressed={view === 'grid'}
+              onClick={() => setView('grid')}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">grid_view</span>
+              Sơ đồ
+            </button>
+            <button
+              type="button"
+              className={`view-switch__item ${view === 'list' ? 'is-active' : ''}`}
+              aria-pressed={view === 'list'}
+              onClick={() => setView('list')}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">view_list</span>
+              Danh sách
+            </button>
+          </div>
+        )}
+        {rooms.length > 0 && (
           <div className="floor-tabs" role="group" aria-label="Lọc theo tầng">
             <button
               type="button"
@@ -444,28 +483,39 @@ export default function RoomBoardPage() {
               </button>
             ))}
           </div>
-          {typeNames.length > 1 && (
-            <select
-              className="board-select"
-              value={filters.roomType}
-              onChange={(e) => setFilter('roomType', e.target.value)}
-              aria-label="Lọc theo loại phòng"
-            >
-              <option value="">Loại phòng: Tất cả</option>
-              {typeNames.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          )}
-          {hasFilter && (
-            <button type="button" className="btn btn--ghost" onClick={() => setFilters(NO_FILTER)}>
-              Xóa bộ lọc
-            </button>
-          )}
-        </div>
-      )}
+        )}
+        {typeNames.length > 1 && (
+          <select
+            className="board-select"
+            value={filters.roomType}
+            onChange={(e) => setFilter('roomType', e.target.value)}
+            aria-label="Lọc theo loại phòng"
+          >
+            <option value="">Loại phòng: Tất cả</option>
+            {typeNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        )}
+        <label className="board-search">
+          <span className="material-symbols-outlined" aria-hidden="true">search</span>
+          <input
+            type="search"
+            value={filters.search}
+            onChange={(e) => setFilter('search', e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && setFilter('search', '')}
+            placeholder="Tìm số phòng…"
+            aria-label="Tìm theo số phòng"
+          />
+        </label>
+        {hasFilter && (
+          <button type="button" className="btn btn--ghost" onClick={() => setFilters(NO_FILTER)}>
+            Xóa bộ lọc
+          </button>
+        )}
+      </div>
 
       {loadError && (
         <div className="alert alert--error" role="alert">
@@ -473,7 +523,9 @@ export default function RoomBoardPage() {
         </div>
       )}
 
-      <div className={`board-layout ${wide ? 'board-layout--with-panel' : ''}`}>
+      <div
+        className={`board-layout ${wide && showPanel ? 'board-layout--with-panel' : ''}`}
+      >
         <div className="board-main">
           {loading && rooms.length === 0 && <p className="state">Đang tải dữ liệu…</p>}
 
@@ -486,7 +538,7 @@ export default function RoomBoardPage() {
           {!loading && !loadError && !waitingForLocation && rooms.length === 0 && (
             <div className="state state--empty">
               <p>Khách sạn chưa có phòng nào.</p>
-              <p className="muted">Phòng do Giám đốc tạo ở màn Danh sách phòng.</p>
+              <p className="muted">Giám đốc thêm phòng bằng nút «Thêm phòng» ở đầu trang.</p>
             </div>
           )}
 
@@ -499,7 +551,16 @@ export default function RoomBoardPage() {
             </div>
           )}
 
-          {visibleFloors.map(({ floor, rooms: floorRooms }) => {
+          {view === 'list' && visibleFloors.length > 0 && (
+            <RoomListView
+              rooms={visibleFloors.flatMap((group) => group.rooms)}
+              selectedId={selectedId}
+              onSelect={(picked) => navigate(`/phong/${picked.id}`)}
+              rowActions={rowActions}
+            />
+          )}
+
+          {view === 'grid' && visibleFloors.map(({ floor, rooms: floorRooms }) => {
             const collapsed = collapsedFloors.has(floor);
             const gridId = `floor-grid-${floor}`;
             return (
@@ -543,7 +604,7 @@ export default function RoomBoardPage() {
           })}
         </div>
 
-        {wide && (selectedRoom ? (
+        {wide && showPanel && (selectedRoom ? (
           <RoomBoardPanel {...panelProps} />
         ) : (
           <aside className="board-panel board-panel--empty">
@@ -553,7 +614,7 @@ export default function RoomBoardPage() {
         ))}
       </div>
 
-      {!wide && selectedRoom && (
+      {!wide && showPanel && selectedRoom && (
         <div className="board-overlay" onClick={() => setSelectedId(null)}>
           <div
             className="board-overlay__sheet"
@@ -584,41 +645,56 @@ export default function RoomBoardPage() {
       {assigning && (
         <AssignTaskModal task={assigning} onClose={() => setAssigning(null)} onAssigned={finishAssign} />
       )}
-      {inspecting && (
-        <InspectTaskModal
-          task={inspecting}
-          staffName={staffNames[inspecting.assignedStaffId]}
-          onClose={() => setInspecting(null)}
-          onInspected={finishInspection}
-        />
+      {roomForm && (
+        <FormModal onClose={() => setRoomForm(null)}>
+          {/* key: đổi phòng đang sửa (hoặc chuyển sang thêm mới) thì form nạp lại từ đầu. */}
+          <RoomForm
+            key={roomForm.mode === 'edit' ? roomForm.room.id : 'create'}
+            editing={roomForm.mode === 'edit' ? roomForm.room : null}
+            locations={locations}
+            roomTypes={roomTypes}
+            onSubmit={submitRoomForm}
+            onCancel={() => setRoomForm(null)}
+          />
+        </FormModal>
       )}
-      {releasing && (
+      {deleting && (
         <ConfirmDialog
-          title={`Gỡ người khỏi việc dọn phòng ${releasing.roomNumber}?`}
-          message={
-            <>
-              Việc dọn quay lại hàng chờ phân công.
-              {releasing.taskType === 'CHECKOUT'
-                ? ' Phòng cũng quay về trạng thái «Chờ dọn».'
-                : ' Phòng giữ nguyên «Đang sử dụng».'}
-            </>
-          }
-          confirmLabel="Gỡ người"
-          onCancel={() => setReleasing(null)}
-          onConfirm={confirmRelease}
-        />
-      )}
-      {cancelling && (
-        <ConfirmDialog
-          title={`Hủy việc dọn hằng ngày của phòng ${cancelling.roomNumber}?`}
-          message="Việc dọn đóng lại vĩnh viễn với lý do «Quản lý hủy». Phòng giữ nguyên «Đang sử dụng»."
-          confirmLabel="Hủy việc dọn"
-          onCancel={() => setCancelling(null)}
-          onConfirm={confirmCancel}
+          title={`Xóa phòng ${deleting.roomNumber}?`}
+          message={DELETE_ROOM_WARNING}
+          confirmLabel="Xóa phòng"
+          onCancel={() => setDeleting(null)}
+          onConfirm={confirmDelete}
         />
       )}
       {noteRoom && <RoomNoteModal room={noteRoom} onClose={() => setNoteRoom(null)} onSaved={saveNote} />}
-      {previousOf && <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />}
+      {openReportId && (
+        <DamageReportModal
+          incidentId={openReportId}
+          onClose={() => setOpenReportId(null)}
+          onResolved={() => {
+            // Đóng phiếu có thể đổi trạng thái tài sản → nạp lại báo hỏng và danh sách tài sản.
+            loadReports();
+            setAssetsKey((key) => key + 1);
+          }}
+        />
+      )}
+      {addingAssetTo && (
+        <BatchCreateAssetsModal
+          initialRoomId={addingAssetTo.id}
+          onClose={() => setAddingAssetTo(null)}
+          onCreated={() => setAssetsKey((key) => key + 1)}
+        />
+      )}
+      {auditing && (
+        <AssetAuditModal
+          scope={{ roomId: auditing.id }}
+          title={`Kiểm kê tài sản phòng ${auditing.roomNumber}`}
+          emptyText="Phòng này chưa có tài sản cố định nào."
+          onClose={() => setAuditing(null)}
+          onSaved={(changedCount) => finishAudit(auditing, changedCount)}
+        />
+      )}
     </div>
   );
 }

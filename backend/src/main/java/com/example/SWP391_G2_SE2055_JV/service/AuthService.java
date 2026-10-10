@@ -3,6 +3,8 @@ package com.example.SWP391_G2_SE2055_JV.service;
 import com.example.SWP391_G2_SE2055_JV.dto.ChangePasswordRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
@@ -64,6 +66,21 @@ public class AuthService {
         }
         return locationRepository.findByIdAndTenantId(locationId, tenantId)
             .map(Location::getName)
+            .orElse(null);
+    }
+
+    /**
+     * Email Quản lý đang phụ trách khách sạn — hiển thị trên thanh tiêu đề để nhân viên biết liên
+     * hệ ai. Staff không gọi được {@code GET /users} nên email phải đi kèm {@code /auth/me}. Khách
+     * sạn chưa có Quản lý đang hoạt động thì trả {@code null}.
+     */
+    @Transactional(readOnly = true)
+    public String findLocationManagerEmail(UUID locationId) {
+        if (locationId == null) {
+            return null;
+        }
+        return userRepository.findFirstByLocationIdAndRoleAndStatus(locationId, Role.MANAGER, UserStatus.ACTIVE)
+            .map(User::getEmail)
             .orElse(null);
     }
 }

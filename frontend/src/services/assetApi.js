@@ -430,6 +430,9 @@ export const assetService = {
     };
   },
 
+  /** Toàn bộ báo hỏng (cả đang chờ lẫn đã xử lý) trong phạm vi người dùng, mới nhất trước. */
+  getAllDamageReports: async () => (await fetchAllDamageReportsRaw()).map(mapDamageReport),
+
   getDamageReportById: async (id) => {
     return mapDamageReport(await apiClient.get(`/assets/damage-reports/${id}`));
   },

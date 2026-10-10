@@ -43,8 +43,6 @@ export default function RoomDetailPage() {
   const navigate = useNavigate();
   const isDirector = user?.role === 'DIRECTOR';
   const isManager = user?.role === 'MANAGER';
-  // Danh sách phòng (S-02) dành cho Giám đốc/Manager; Staff quay về sơ đồ phòng.
-  const canSeeList = isDirector || user?.role === 'MANAGER';
 
   const locations = useTenantLocations(isDirector);
   // Danh mục loại phòng chỉ cần khi Giám đốc mở form sửa; Staff gọi API này sẽ nhận 403.
@@ -118,14 +116,14 @@ export default function RoomDetailPage() {
   }
 
   /**
-   * RM-05 — xóa phòng. Xóa xong thì không còn gì để xem ở trang này nữa, nên quay về danh sách
+   * RM-05 — xóa phòng. Xóa xong thì không còn gì để xem ở trang này nữa, nên quay về sơ đồ phòng
    * và mang theo câu báo. Bị backend chặn thì ở lại và hiện nguyên văn câu lỗi.
    */
   async function handleConfirmDelete() {
     setPendingDelete(false);
     try {
       await deleteRoom(room.id);
-      navigate('/phong', { state: { banner: { type: 'success', text: `Đã xóa phòng ${room.roomNumber}.` } } });
+      navigate('/so-do-phong', { state: { banner: { type: 'success', text: `Đã xóa phòng ${room.roomNumber}.` } } });
     } catch (err) {
       setBanner({ type: 'error', text: readErrorMessage(err, 'Không xóa được phòng.') });
     }
@@ -141,8 +139,8 @@ export default function RoomDetailPage() {
 
   return (
     <div className="page">
-      <Link className="back-link" to={canSeeList ? '/phong' : '/so-do-phong'}>
-        ‹ Quay lại {canSeeList ? 'danh sách phòng' : 'sơ đồ phòng'}
+      <Link className="back-link" to="/so-do-phong">
+        ‹ Quay lại sơ đồ phòng
       </Link>
 
       {loading && <p className="state">Đang tải dữ liệu…</p>}

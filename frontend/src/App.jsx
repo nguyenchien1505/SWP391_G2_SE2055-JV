@@ -11,7 +11,6 @@ import TenantsPage from './pages/Admin_platform/TenantsPage';
 import TenantDetailPage from './pages/Admin_platform/TenantDetailPage';
 import PricingPage from './pages/Admin_platform/PricingPage';
 import SystemConfigPage from './pages/Admin_platform/SystemConfigPage';
-import RoomsPage from './pages/rooms/RoomsPage';
 import RoomDetailPage from './pages/rooms/RoomDetailPage';
 import RoomBoardPage from './pages/rooms/RoomBoardPage';
 import HousekeepingPage from './pages/rooms/HousekeepingPage';
@@ -113,10 +112,9 @@ function inShell(page) {
 import { DashboardScreen } from './components/screens/DashboardScreen';
 import { AssetManagementScreen } from './components/screens/AssetManagementScreen';
 import { AssetDetailScreen } from './components/screens/AssetDetailScreen';
-import { BatchCreateAssetsScreen } from './components/screens/BatchCreateAssetsScreen';
 import { ConsumableInventoryScreen } from './components/screens/ConsumableInventoryScreen';
-import { DamageReportScreen } from './components/screens/DamageReportScreen';
 import { DamageReportListScreen } from './components/screens/DamageReportListScreen';
+import { AreaManagementScreen } from './components/screens/AreaManagementScreen';
 import { useNavigate, useParams } from 'react-router-dom';
 
 function useAssetNavigate() {
@@ -125,10 +123,8 @@ function useAssetNavigate() {
     if (path === 'overview') navigate('/tong-quan');
     if (path === 'fixed-assets') navigate('/tai-san');
     if (path === 'asset-detail') navigate(`/tai-san/${param}`);
-    if (path === 'batch-create') navigate('/tai-san/batch');
     if (path === 'consumables') navigate('/vat-tu');
     if (path === 'issue-reports') navigate('/bao-hong');
-    if (path === 'incident-detail') navigate(`/bao-hong/${param}`);
   };
 }
 
@@ -138,19 +134,21 @@ function OverviewWrapper() {
 function FixedAssetWrapper() {
   return <AssetManagementScreen onNavigate={useAssetNavigate()} />;
 }
-/** Chỉ Manager tạo tài sản trong khách sạn của mình (BR-ASSET-09) — vai trò khác về danh sách. */
-function BatchCreateWrapper() {
-  const { user } = useAuth();
-  const onNavigate = useAssetNavigate();
-  if (user?.role !== 'MANAGER') return <Navigate to="/tai-san" replace />;
-  return <BatchCreateAssetsScreen onNavigate={onNavigate} />;
-}
 /** Tồn kho tiêu hao chỉ mở cho Giám đốc (xem) và Manager (sửa) — Staff không đụng tới (BR-PERM). */
 function ConsumableWrapper() {
   const { user } = useAuth();
   const onNavigate = useAssetNavigate();
   if (user?.role !== 'DIRECTOR' && user?.role !== 'MANAGER') return <Navigate to={homePathFor(user)} replace />;
   return <ConsumableInventoryScreen onNavigate={onNavigate} />;
+}
+/**
+ * Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12) — chỉ Manager, khớp sidebar; vai trò khác
+ * về trang chủ. Chỉ là lớp giao diện; quyền thật do backend quyết định.
+ */
+function AreaWrapper() {
+  const { user } = useAuth();
+  if (user?.role !== 'MANAGER') return <Navigate to={homePathFor(user)} replace />;
+  return <AreaManagementScreen userRole={user.role} />;
 }
 function DetailWrapper() {
   const { ref } = useParams();
@@ -159,10 +157,10 @@ function DetailWrapper() {
 function IncidentListWrapper() {
   return <DamageReportListScreen onNavigate={useAssetNavigate()} />;
 }
-/** `key` theo id: chuyển sang phiếu khác (mục "báo hỏng khác") thì form xử lý làm lại từ đầu. */
+/** Link cũ tới một báo hỏng: mở danh sách báo hỏng kèm hộp thoại xử lý phiếu đó. */
 function IncidentWrapper() {
   const { id } = useParams();
-  return <DamageReportScreen key={id} incidentId={id} onNavigate={useAssetNavigate()} />;
+  return <DamageReportListScreen key={id} initialIncidentId={id} onNavigate={useAssetNavigate()} />;
 }
 
 export default function App() {
@@ -221,8 +219,9 @@ export default function App() {
       <Route path="/quan-ly" element={inShell(<RequireManagementRole><ManagersPage /></RequireManagementRole>)} />
       {/* Quản lý tài khoản nhân viên — BR-PERM-03: Manager CRUD Staff trong khách sạn của mình. */}
       <Route path="/nhan-vien" element={inShell(<RequireManagementRole><StaffPage /></RequireManagementRole>)} />
-      {/* Quản lý phòng — BR-ROOM-*. S-02 dành cho Giám đốc/Manager; chi tiết và sơ đồ phòng mọi vai trò. */}
-      <Route path="/phong" element={inShell(<RequireManagementRole><RoomsPage /></RequireManagementRole>)} />
+      {/* Quản lý phòng — BR-ROOM-*. Danh sách phòng (S-02) đã gộp vào Sơ đồ phòng (nút "Danh sách");
+          link cũ /phong chuyển sang dạng danh sách của sơ đồ. Chi tiết và sơ đồ phòng mọi vai trò. */}
+      <Route path="/phong" element={<Navigate to="/so-do-phong?view=list" replace />} />
       <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />
       <Route path="/so-do-phong" element={inShell(<RoomBoardPage />)} />
       {/* Dọn phòng — BR-HK-*. Bảng lịch dọn chỉ cho Quản lý chi nhánh; "việc của tôi" không
@@ -252,10 +251,12 @@ export default function App() {
       >
         <Route path="/tong-quan" element={<OverviewWrapper />} />
         <Route path="/tai-san" element={<FixedAssetWrapper />} />
-        <Route path="/tai-san/batch" element={<BatchCreateWrapper />} />
+        {/* Thêm tài sản giờ là hộp thoại; link cũ tới màn riêng về danh sách tài sản. */}
+        <Route path="/tai-san/batch" element={<Navigate to="/tai-san" replace />} />
         {/* :ref là id tài sản; mã tài sản (link cũ) vẫn được nhận. */}
         <Route path="/tai-san/:ref" element={<DetailWrapper />} />
         <Route path="/vat-tu" element={<ConsumableWrapper />} />
+        <Route path="/khu-vuc" element={<AreaWrapper />} />
         <Route path="/bao-hong" element={<IncidentListWrapper />} />
         <Route path="/bao-hong/:id" element={<IncidentWrapper />} />
       </Route>

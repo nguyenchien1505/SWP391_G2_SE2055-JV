@@ -82,7 +82,7 @@ const NAV_GROUPS = [
       // Phòng ban, Vị trí, Loại phòng — Giám đốc (BR-ORG-06, BR-ORG-11).
       { label: 'Phòng ban, Vị trí & Loại phòng', to: '/danh-muc', visible: isDirector },
       // Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12).
-      { label: 'Khu vực', visible: isManager },
+      { label: 'Khu vực', to: '/khu-vuc', visible: isManager },
       { label: 'Manager & Nhân sự', to: '/quan-ly', visible: isDirector },
       { label: 'Nhân viên chi nhánh', to: '/nhan-vien', visible: isManager },
     ],
@@ -102,7 +102,6 @@ const NAV_GROUPS = [
     title: 'Quản lý phòng',
     items: [
       { label: 'Sơ đồ phòng', to: '/so-do-phong', visible: isManagement },
-      { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
       // Sơ đồ phòng có nút đặt / hủy đặt phòng, check-in, check-out cho người có quyền Lễ tân (BR-PERM-04).
       { label: 'Nhận / trả phòng', to: '/so-do-phong', visible: (user) => isStaff(user) && isReception(user) },
       // Không có quyền Lễ tân vẫn xem được tình trạng phòng, chỉ không có nút thao tác.
@@ -206,6 +205,17 @@ export default function AppLayout({ children }) {
             <span className="topbar__location" title="Khách sạn đang làm việc">
               🏨 {user.locationName}
             </span>
+          )}
+          {/* Email Quản lý của khách sạn — cho nhân viên biết liên hệ ai. Manager chính là người đó
+              (email đã hiện ở góc phải) nên không lặp lại. */}
+          {user?.role === 'STAFF' && user.locationManagerEmail && (
+            <a
+              className="topbar__manager"
+              href={`mailto:${user.locationManagerEmail}`}
+              title="Email quản lý khách sạn"
+            >
+              👤 Quản lý: {user.locationManagerEmail}
+            </a>
           )}
           <span className="spacer" />
           <div className="topbar__user">

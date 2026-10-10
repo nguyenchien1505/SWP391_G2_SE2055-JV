@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { BatchCreateAssetsModal } from '../modals/BatchCreateAssetsModal';
 import { assetService } from '../../services/assetApi';
 import { useAuth } from '../../context/AuthContext';
 import { PURPOSE_LABEL } from '../asset-categories/categoryLabels';
@@ -39,6 +40,7 @@ export const AssetManagementScreen = ({ onNavigate }) => {
 
   const [toast, setToast] = useState(null); // { message, error }
   const [copiedCode, setCopiedCode] = useState('');
+  const [batchOpen, setBatchOpen] = useState(false);
 
   const loadAssets = async () => {
     setLoading(true);
@@ -220,7 +222,7 @@ export const AssetManagementScreen = ({ onNavigate }) => {
 
           {canManage && (
             <button
-              onClick={() => onNavigate('batch-create')}
+              onClick={() => setBatchOpen(true)}
               className="px-4 py-2 rounded-xl bg-[#00375e] text-white hover:bg-[#1f4e78] text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
               type="button"
             >
@@ -445,6 +447,9 @@ export const AssetManagementScreen = ({ onNavigate }) => {
           </div>
         )}
       </div>
+      {batchOpen && (
+        <BatchCreateAssetsModal onClose={() => setBatchOpen(false)} onCreated={loadAssets} />
+      )}
     </div>
   );
 };
