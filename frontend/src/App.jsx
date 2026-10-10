@@ -22,7 +22,6 @@ import OrganizationCatalogPage from './pages/OrganizationCatalogPage';
 import MyDamageReportsPage from './pages/MyDamageReportsPage';
 import { homePathFor } from './homePath';
 import { canReportDamage } from './permissions';
-import MyDamageReportsPage from './pages/MyDamageReportsPage';
 import RegisterPage from './pages/RegisterPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import BillingPage from './pages/BillingPage';
