@@ -52,7 +52,8 @@ const worksAtLocation = (user) => user?.role === 'MANAGER' || user?.role === 'ST
  * trạng thái vô hiệu thay vì ẩn đi — giữ đúng bố cục thiết kế và cho thấy lộ trình còn lại.
  *
  * Nhóm điều hướng theo 5 mục tính năng chính: Dịch vụ SaaS (2.1), Quản lý chung (2.2), Lịch làm
- * việc & dọn dẹp (2.3), Quản lý phòng (2.4), Tài sản vật chất (2.5) — cộng nhóm Tổng quan ở đầu.
+ * việc & dọn dẹp (2.3), Quản lý phòng & khu vực (2.4), Tài sản vật chất (2.5) — cộng nhóm Tổng quan
+ * ở đầu (thông tin khách sạn và nhân viên chi nhánh của Manager).
  * Nhân viên không có nhóm riêng theo nghiệp vụ: mục của Lễ tân / Dọn dẹp nằm trong đúng nhóm tính
  * năng tương ứng.
  *
@@ -64,7 +65,11 @@ const worksAtLocation = (user) => user?.role === 'MANAGER' || user?.role === 'ST
 const NAV_GROUPS = [
   {
     title: 'Tổng quan',
-    items: [{ label: 'Dashboard tổng quan', to: '/tong-quan', visible: isManagement }],
+    items: [
+      // Khách sạn mình phụ trách và nhân viên ở đó — Manager mở thường xuyên nên để lên đầu.
+      { label: 'Thông tin khách sạn', to: '/khach-san', visible: isManager },
+      { label: 'Nhân viên chi nhánh', to: '/nhan-vien', visible: isManager },
+    ],
   },
   {
     title: 'Dịch vụ SaaS',
@@ -76,15 +81,11 @@ const NAV_GROUPS = [
   {
     title: 'Quản lý chung',
     items: [
-      // Cùng một màn: Giám đốc CRUD cả chuỗi, Manager chỉ có khách sạn của mình.
+      // Cùng màn với "Thông tin khách sạn" của Manager (nhóm Tổng quan): Giám đốc CRUD cả chuỗi.
       { label: 'Danh sách khách sạn', to: '/khach-san', visible: isDirector },
-      { label: 'Thông tin khách sạn', to: '/khach-san', visible: isManager },
       // Phòng ban, Vị trí, Loại phòng — Giám đốc (BR-ORG-06, BR-ORG-11).
       { label: 'Phòng ban, Vị trí & Loại phòng', to: '/danh-muc', visible: isDirector },
-      // Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12).
-      { label: 'Khu vực', to: '/khu-vuc', visible: isManager },
       { label: 'Manager & Nhân sự', to: '/quan-ly', visible: isDirector },
-      { label: 'Nhân viên chi nhánh', to: '/nhan-vien', visible: isManager },
     ],
   },
   {
@@ -99,18 +100,22 @@ const NAV_GROUPS = [
     ],
   },
   {
-    title: 'Quản lý phòng',
+    title: 'Quản lý phòng, khu vực',
     items: [
       { label: 'Sơ đồ phòng', to: '/so-do-phong', visible: isManagement },
       // Sơ đồ phòng có nút đặt / hủy đặt phòng, check-in, check-out cho người có quyền Lễ tân (BR-PERM-04).
       { label: 'Nhận / trả phòng', to: '/so-do-phong', visible: (user) => isStaff(user) && isReception(user) },
       // Không có quyền Lễ tân vẫn xem được tình trạng phòng, chỉ không có nút thao tác.
       { label: 'Sơ đồ phòng (xem)', to: '/so-do-phong', visible: (user) => isStaff(user) && !isReception(user) },
+      // Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12).
+      { label: 'Khu vực', to: '/khu-vuc', visible: isManager },
     ],
   },
   {
     title: 'Tài sản vật chất',
     items: [
+      // Dashboard số liệu tài sản, báo hỏng, vật tư (S-ASSET).
+      { label: 'Tổng quan tài sản', to: '/tong-quan', visible: isManagement },
       { label: 'Quản lý tài sản', to: '/tai-san', visible: isManagement },
       { label: 'Vật tư tiêu hao', to: '/vat-tu', visible: isManagement },
       // Màn xử lý báo hỏng của Manager (Giám đốc xem); nhân viên gửi báo hỏng ở mục riêng bên dưới.
