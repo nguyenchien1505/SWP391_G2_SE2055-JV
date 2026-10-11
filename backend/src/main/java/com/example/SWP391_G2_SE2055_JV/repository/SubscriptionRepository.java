@@ -36,4 +36,10 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
      * {@code WHERE is_trial = true AND trial_ends_at <= ?}.
      */
     List<Subscription> findByTrialTrueAndTrialEndsAtLessThanEqual(LocalDate date);
+
+    /**
+     * Gói đã trả phí mà ngày đến hạn không muộn hơn {@code date} — chưa gia hạn kịp. Đầu vào của job
+     * quá hạn thanh toán (BR-SAAS-10).
+     */
+    List<Subscription> findByTrialFalseAndNextBillingDateLessThanEqual(LocalDate date);
 }

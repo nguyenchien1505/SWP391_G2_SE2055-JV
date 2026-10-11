@@ -34,6 +34,9 @@ public class TenantDetailResponse {
     /** NULL nếu Tenant chưa có Subscription (không xảy ra với dữ liệu hợp lệ — DM-09). */
     private SubscriptionSummary subscription;
 
+    /** Giám đốc đã bấm link xác thực email chưa — {@code TenantAdminService} điền sau khi map. */
+    private boolean directorVerified;
+
     /** Tóm tắt Subscription — DM-09, BR-SAAS-05. Các mức giá là snapshot lúc chốt gói. */
     @Data
     @Builder
