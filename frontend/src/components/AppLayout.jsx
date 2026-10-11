@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { STAFF_PERMISSIONS, hasPermission } from '../permissions';
+import { STAFF_PERMISSIONS, canReportDamage, hasPermission } from '../permissions';
 import Logo from './Logo';
 
 const ROLE_LABEL = {
@@ -38,18 +38,24 @@ const isDirector = (user) => user?.role === 'DIRECTOR';
 /** Manager CRUD tài khoản nhân viên trong khách sạn của mình — BR-PERM-03. */
 const isManager = (user) => user?.role === 'MANAGER';
 
-/** Nhân viên có quyền Lễ tân hoặc Dọn dẹp được báo hỏng tài sản; không có quyền nào thì không — BR-ASSET-05, BR-PERM-06. */
-const canReportDamage = (user) => user?.role === 'STAFF' && (isReception(user) || isHousekeeper(user));
-
 /**
  * Có ca làm việc: check-in/out, xem lịch cá nhân, xin nghỉ — chỉ nhân viên (BR-PERM-04..06). Quản lý
  * khách sạn không có ca (chốt 05/10/2026), Giám đốc cũng không.
  */
 const hasShifts = (user) => user?.role === 'STAFF';
 
+/** Manager và Staff thuộc đúng một khách sạn — hiện tên khách sạn trên thanh tiêu đề. */
+const worksAtLocation = (user) => user?.role === 'MANAGER' || user?.role === 'STAFF';
+
 /**
  * Khung màn hình sau đăng nhập. Các mục điều hướng chưa có màn hình tương ứng được để ở
  * trạng thái vô hiệu thay vì ẩn đi — giữ đúng bố cục thiết kế và cho thấy lộ trình còn lại.
+ *
+ * Nhóm điều hướng theo 5 mục tính năng chính: Dịch vụ SaaS (2.1), Quản lý chung (2.2), Lịch làm
+ * việc & dọn dẹp (2.3), Quản lý phòng & khu vực (2.4), Tài sản vật chất (2.5) — cộng nhóm Tổng quan
+ * ở đầu (thông tin khách sạn và nhân viên chi nhánh của Manager).
+ * Nhân viên không có nhóm riêng theo nghiệp vụ: mục của Lễ tân / Dọn dẹp nằm trong đúng nhóm tính
+ * năng tương ứng.
  *
  * Mục đã có màn hình khai báo `to` (đường dẫn). Mỗi mục khai báo `visible(user)` theo bảng phân
  * quyền BR-PERM-02..06, kể cả mục đang vô hiệu — không mục nào hiện cho vai trò không có quyền
@@ -58,66 +64,69 @@ const hasShifts = (user) => user?.role === 'STAFF';
  */
 const NAV_GROUPS = [
   {
-    title: 'Vận hành chuỗi',
+    title: 'Tổng quan',
     items: [
-      { label: 'Dashboard tổng quan', to: '/tong-quan', visible: isManagement },
-      // Nhân viên có mục sơ đồ phòng riêng trong nhóm nghiệp vụ của mình (bên dưới).
-      { label: 'Sơ đồ phòng', to: '/so-do-phong', visible: isManagement },
-      { label: 'Danh sách phòng', to: '/phong', visible: isManagement },
+      // Khách sạn mình phụ trách và nhân viên ở đó — Manager mở thường xuyên nên để lên đầu.
+      { label: 'Thông tin khách sạn', to: '/khach-san', visible: isManager },
+      { label: 'Nhân viên chi nhánh', to: '/nhan-vien', visible: isManager },
+    ],
+  },
+  {
+    title: 'Dịch vụ SaaS',
+    items: [
+      // Gói đang dùng, hạn dùng, mua gói / mua thêm / gia hạn — BR-SAAS-02..10.
+      { label: 'Gói dịch vụ', to: '/goi-dich-vu', visible: isDirector },
+    ],
+  },
+  {
+    title: 'Quản lý chung',
+    items: [
+      // Cùng màn với "Thông tin khách sạn" của Manager (nhóm Tổng quan): Giám đốc CRUD cả chuỗi.
+      { label: 'Danh sách khách sạn', to: '/khach-san', visible: isDirector },
+      // Phòng ban, Vị trí, Loại phòng — Giám đốc (BR-ORG-06, BR-ORG-11).
+      { label: 'Phòng ban, Vị trí & Loại phòng', to: '/danh-muc', visible: isDirector },
+      { label: 'Manager & Nhân sự', to: '/quan-ly', visible: isDirector },
+    ],
+  },
+  {
+    title: 'Lịch làm việc & dọn dẹp',
+    items: [
+      // Schedule Policy và Shift Template — Giám đốc (BR-SCH-01, BR-SCH-22).
+      { label: 'Quy định & Mẫu ca', to: '/quy-dinh-ca', visible: isDirector },
       { label: 'Xếp lịch làm việc', to: '/xep-lich', visible: isBranchManager },
       { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
       { label: 'Lịch dọn phòng', to: '/lich-don-phong', visible: isBranchManager },
+      { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: (user) => isStaff(user) && isHousekeeper(user) },
+      { label: 'Lịch dọn của tôi', to: '/lich-don-phong', visible: (user) => isStaff(user) && isHousekeeper(user) },
+      { label: 'Lịch cá nhân & Chấm công', visible: hasShifts },
+    ],
+  },
+  {
+    title: 'Quản lý phòng, khu vực',
+    items: [
+      { label: 'Sơ đồ phòng', to: '/so-do-phong', visible: isManagement },
+      // Sơ đồ phòng có nút đặt / hủy đặt phòng, check-in, check-out cho người có quyền Lễ tân (BR-PERM-04).
+      { label: 'Nhận / trả phòng', to: '/so-do-phong', visible: (user) => isStaff(user) && isReception(user) },
+      // Không có quyền Lễ tân vẫn xem được tình trạng phòng, chỉ không có nút thao tác.
+      { label: 'Sơ đồ phòng (xem)', to: '/so-do-phong', visible: (user) => isStaff(user) && !isReception(user) },
+      // Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12).
+      { label: 'Khu vực', to: '/khu-vuc', visible: isManager },
+    ],
+  },
+  {
+    title: 'Tài sản vật chất',
+    items: [
+      // Dashboard số liệu tài sản, báo hỏng, vật tư (S-ASSET).
+      { label: 'Tổng quan tài sản', to: '/tong-quan', visible: isManagement },
       { label: 'Quản lý tài sản', to: '/tai-san', visible: isManagement },
       { label: 'Vật tư tiêu hao', to: '/vat-tu', visible: isManagement },
       // Màn xử lý báo hỏng của Manager (Giám đốc xem); nhân viên gửi báo hỏng ở mục riêng bên dưới.
       { label: 'Báo hỏng', to: '/bao-hong', visible: isManagement },
-    ],
-  },
-  {
-    title: 'Quản trị & hệ thống',
-    items: [
-      { label: 'Danh sách khách sạn', to: '/khach-san', visible: isManagement },
-      { label: 'Manager & Nhân sự', to: '/quan-ly', visible: isDirector },
-      { label: 'Nhân viên chi nhánh', to: '/nhan-vien', visible: isManager },
+      // Lễ tân / Dọn dẹp — BR-ASSET-05. Tài sản trong phòng báo ở chi tiết phòng; trang này có
+      // tài sản khu vực và các phiếu đã gửi.
+      { label: 'Báo hỏng của tôi', to: '/bao-hong/cua-toi', visible: canReportDamage },
       // Danh mục tài sản cố định + tiêu hao — Giám đốc CRUD, Manager chỉ xem (BR-ASSET-08, BR-ASSET-09).
       { label: 'Danh mục tài sản', to: '/danh-muc-tai-san', visible: isManagement },
-      // Phòng ban, Vị trí, Loại phòng — Giám đốc (BR-ORG-06, BR-ORG-11).
-      { label: 'Phòng ban, Vị trí & Loại phòng', to: '/danh-muc', visible: isDirector },
-      // Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12).
-      { label: 'Khu vực', visible: isManager },
-      // Schedule Policy và Shift Template — Giám đốc (BR-SCH-01, BR-SCH-22).
-      { label: 'Quy định & Mẫu ca', to: '/quy-dinh-ca', visible: isDirector },
-    ],
-  },
-  // ── Nhóm theo NGHIỆP VỤ của nhân viên ──────────────────────────────────────────────────
-  // Mỗi quyền Manager đã tick hiện thêm một nhóm — nhân viên đa nhiệm (Lễ tân + Dọn dẹp) thấy cả
-  // hai nhóm, không phụ thuộc vị trí của họ là gì.
-  {
-    title: 'Lễ tân',
-    items: [
-      // Sơ đồ phòng có nút đặt / hủy đặt phòng, check-in, check-out cho người có quyền Lễ tân (BR-PERM-04).
-      { label: 'Nhận / trả phòng', to: '/so-do-phong', visible: (user) => isStaff(user) && isReception(user) },
-    ],
-  },
-  {
-    title: 'Dọn dẹp',
-    items: [
-      { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: (user) => isStaff(user) && isHousekeeper(user) },
-      { label: 'Lịch dọn của tôi', to: '/lich-don-phong', visible: (user) => isStaff(user) && isHousekeeper(user) },
-    ],
-  },
-  {
-    title: 'Tra cứu',
-    items: [
-      // Không có quyền Lễ tân vẫn xem được tình trạng phòng, chỉ không có nút thao tác.
-      { label: 'Sơ đồ phòng (xem)', to: '/so-do-phong', visible: (user) => isStaff(user) && !isReception(user) },
-    ],
-  },
-  {
-    title: 'Cá nhân',
-    items: [
-      { label: 'Gửi báo hỏng tài sản', visible: canReportDamage },
-      { label: 'Lịch cá nhân & Chấm công', visible: hasShifts },
     ],
   },
 ];
@@ -199,6 +208,22 @@ export default function AppLayout({ children }) {
             ☰
           </button>
           <span className="topbar__clock">🕘 {formatToday()}</span>
+          {worksAtLocation(user) && user.locationName && (
+            <span className="topbar__location" title="Khách sạn đang làm việc">
+              🏨 {user.locationName}
+            </span>
+          )}
+          {/* Email Quản lý của khách sạn — cho nhân viên biết liên hệ ai. Manager chính là người đó
+              (email đã hiện ở góc phải) nên không lặp lại. */}
+          {user?.role === 'STAFF' && user.locationManagerEmail && (
+            <a
+              className="topbar__manager"
+              href={`mailto:${user.locationManagerEmail}`}
+              title="Email quản lý khách sạn"
+            >
+              👤 Quản lý: {user.locationManagerEmail}
+            </a>
+          )}
           <span className="spacer" />
           <div className="topbar__user">
             <div>

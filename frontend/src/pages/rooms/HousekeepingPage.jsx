@@ -310,21 +310,6 @@ export default function HousekeepingPage() {
         </>
       )}
 
-      <div className="note">
-        <span aria-hidden="true">ⓘ</span>
-        <div>
-          <b>Quy định giao việc dọn phòng</b>
-          <p>
-            Việc dọn tự sinh khi khách trả phòng. Chỉ giao được cho nhân viên có quyền Dọn dẹp và{' '}
-            <b>có ca trong ngày</b>; không giới hạn số việc mỗi người. Một phòng giao được cho{' '}
-            <b>nhiều người cùng dọn</b> — một người bấm Hoàn thành là xong cho cả nhóm. Việc chỉ giao
-            trong ngày, vì phòng chuyển sang <b>Đang dọn</b> ngay khi giao. Hết ca chưa xong thì việc{' '}
-            <b>tồn đọng</b> sang hôm sau chứ không tự hủy. Người còn việc dọn đang làm trong ngày thì
-            không gỡ, xóa hay dời ca của họ được — gỡ người khỏi các việc đó trước.
-          </p>
-        </div>
-      </div>
-
       {assigning && (
         <AssignTaskModal task={assigning} onClose={() => setAssigning(null)} onAssigned={finishAssign} />
       )}

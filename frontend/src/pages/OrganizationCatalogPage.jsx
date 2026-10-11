@@ -565,20 +565,6 @@ export default function OrganizationCatalogPage() {
         </div>
       </section>
 
-      <div className="note">
-        <span aria-hidden="true">ⓘ</span>
-        <div>
-          <b>Quy định danh mục toàn chuỗi</b>
-          <p>
-            Danh mục dùng chung cho mọi khách sạn trong chuỗi, chỉ Giám đốc tạo và sửa. Tên không được trùng trong
-            chuỗi. Mỗi vị trí thuộc đúng một phòng ban và không đổi phòng ban sau khi tạo. Không xóa được mục đang
-            được dùng (tính cả nhân viên đã nghỉ việc và phòng đã xóa) — hãy ẩn để bỏ khỏi các danh sách chọn. Ẩn một
-            phòng ban thì mọi vị trí bên trong cũng không chọn được nữa. Loại vị trí chỉ để tick sẵn quyền nghiệp vụ khi
-            tạo nhân viên. Bấm vào tên một mục để xem những phòng, vị trí, nhân viên đang dùng nó.
-          </p>
-        </div>
-      </div>
-
       {usageOf && (
         <FormModal wide onClose={() => setUsageOf(null)}>
           <CatalogUsageView

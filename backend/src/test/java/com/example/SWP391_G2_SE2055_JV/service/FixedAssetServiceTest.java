@@ -57,10 +57,8 @@ class FixedAssetServiceTest {
     private FixedAssetService service;
 
     /**
-     * {@code damageReportService} để null có chủ đích: nó chỉ được gọi khi đổi trạng thái
-     * sang DISPOSED, không nằm trên luồng tạo. Mock một CLASS (không phải interface) cần
-     * bytecode instrumentation mà Mockito của bản Spring Boot này chưa làm được trên JDK
-     * đang dùng, nên tự dựng service bằng constructor thay vì {@code @InjectMocks}.
+     * {@code damageReportRepository} để null có chủ đích: nó chỉ được gọi khi đổi trạng thái
+     * sang DISPOSED, không nằm trên luồng tạo.
      */
     @BeforeEach
     void setUp() {

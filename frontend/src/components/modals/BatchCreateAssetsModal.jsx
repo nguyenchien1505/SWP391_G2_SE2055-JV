@@ -33,11 +33,17 @@ const initials = (s, max) =>
     .slice(0, max);
 
 /**
- * Khai báo hàng loạt tài sản cố định — mã `[Mã-DM]-[Vị-Trí]-[STT]`. STT nối tiếp số lớn
+ * Hộp thoại khai báo hàng loạt tài sản cố định — mã `[Mã-DM]-[Vị-Trí]-[STT]`. STT nối tiếp số lớn
  * nhất đang dùng cho cùng tiền tố (BR-ASSET-12: mã duy nhất trong khách sạn), nên chạy
  * nhiều lần cho cùng phòng không đâm trùng mã. Chỉ dùng danh mục/vị trí thật từ backend.
+ *
+ * Mở từ Danh sách tài sản, Dashboard, Sơ đồ phòng và Quản lý khu vực — chỉ Manager (BR-ASSET-09).
+ *
+ * @param initialRoomId mở từ nút "Thêm tài sản" trên sơ đồ phòng — chọn sẵn phòng đó làm vị trí
+ * @param initialAreaId mở từ nút "Thêm tài sản" ở màn Quản lý khu vực — chọn sẵn khu vực đó
+ * @param onCreated     gọi sau mỗi lần tạo thành công để màn bên dưới nạp lại dữ liệu
  */
-export const BatchCreateAssetsScreen = ({ onNavigate }) => {
+export const BatchCreateAssetsModal = ({ initialRoomId, initialAreaId, onClose, onCreated }) => {
   const { user } = useAuth();
 
   const [categoriesData, setCategoriesData] = useState([]);
@@ -47,8 +53,8 @@ export const BatchCreateAssetsScreen = ({ onNavigate }) => {
   const [loadError, setLoadError] = useState('');
 
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
-  const [positionType, setPositionType] = useState('ROOM'); // 'ROOM' | 'AREA'
-  const [selectedPositionId, setSelectedPositionId] = useState('');
+  const [positionType, setPositionType] = useState(initialAreaId ? 'AREA' : 'ROOM'); // 'ROOM' | 'AREA'
+  const [selectedPositionId, setSelectedPositionId] = useState(initialAreaId ?? initialRoomId ?? '');
   const [quantity, setQuantity] = useState(5);
   const [nextSeq, setNextSeq] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -102,6 +108,13 @@ export const BatchCreateAssetsScreen = ({ onNavigate }) => {
     }
     load();
   }, [user?.locationId]);
+
+  // Esc để đóng, trừ lúc đang tạo — tránh đóng giữa chừng rồi không biết kết quả.
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && !isSubmitting && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isSubmitting, onClose]);
 
   const currentPositionList = positionType === 'ROOM' ? roomsData : areasData;
 
@@ -172,6 +185,7 @@ export const BatchCreateAssetsScreen = ({ onNavigate }) => {
         quantity: previewCodes.length,
       });
       setSuccessResult(res);
+      onCreated?.(res);
     } catch (e) {
       console.error('Batch creation failed', e);
       setSubmitError(e.message || 'Lỗi khởi tạo tài sản hàng loạt. Vui lòng kiểm tra lại.');
@@ -185,32 +199,39 @@ export const BatchCreateAssetsScreen = ({ onNavigate }) => {
     'w-full p-2.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#1C2330] font-medium focus:outline-none focus:border-[#0e61a1] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60';
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Top Banner */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-white p-5 rounded-2xl border border-[#DFE3E8] shadow-[0_1px_8px_rgba(0,0,0,0.02)]">
+    <div
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-4 bg-[#001D35]/40 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="batch-create-title"
+      onClick={() => !isSubmitting && onClose()}
+    >
+      <div
+        className="w-full max-w-5xl my-auto bg-[#F7F8FA] rounded-2xl shadow-xl border border-[#DFE3E8]"
+        onClick={(e) => e.stopPropagation()}
+      >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 px-6 py-4 bg-white border-b border-[#DFE3E8] rounded-t-2xl">
         <div>
-          <div className="flex items-center gap-2 text-xs text-[#5B6472] mb-1">
-            <span className="font-semibold text-[#00375e]">TÀI SẢN VẬT TƯ</span>
-            <span>/</span>
-            <button
-              onClick={() => onNavigate('fixed-assets')}
-              className="text-[#0e61a1] hover:underline cursor-pointer"
-              type="button"
-            >
-              TÀI SẢN CÁ THỂ
-            </button>
-            <span>/</span>
-            <span className="text-[#1C2330]">Khai Báo Hàng Loạt</span>
-          </div>
-          <h1 className="text-xl font-bold text-[#00375e] tracking-tight">
-            Khai Báo Tài Sản Cố Định Hàng Loạt
-          </h1>
+          <h2 id="batch-create-title" className="text-lg font-bold text-[#00375e] tracking-tight">
+            Thêm tài sản cố định
+          </h2>
           <p className="text-xs text-[#5B6472] mt-0.5">
             Tự động sinh mã định danh duy nhất theo cấu trúc chuẩn: <code className="font-mono text-[#00375e] font-bold">[Mã-DM]-[Vị-Trí]-[STT]</code>
           </p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isSubmitting}
+          className="p-1.5 rounded text-[#5B6472] hover:text-[#1C2330] hover:bg-[#F7F8FA] transition-colors cursor-pointer disabled:opacity-50"
+          aria-label="Đóng"
+        >
+          <span className="material-symbols-outlined text-[20px] leading-none">close</span>
+        </button>
       </div>
 
+      <div className="p-5 space-y-5">
       {loadError && (
         <div className="p-3 rounded-xl bg-[#FFEBEE] text-[#D32F2F] text-xs border border-[#D32F2F]/30">
           {loadError}
@@ -243,11 +264,11 @@ export const BatchCreateAssetsScreen = ({ onNavigate }) => {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => onNavigate('fixed-assets')}
+              onClick={onClose}
               className="px-4 py-2 bg-[#2E7D32] text-white text-xs font-semibold rounded-xl hover:bg-[#1b5e20] transition-colors cursor-pointer shadow-xs"
               type="button"
             >
-              Xem danh sách tài sản
+              Đóng
             </button>
             <button
               onClick={() => setSuccessResult(null)}
@@ -471,7 +492,6 @@ export const BatchCreateAssetsScreen = ({ onNavigate }) => {
             <div className="flex items-center justify-between border-b border-[#DFE3E8] pb-3 mb-4">
               <div>
                 <h2 className="font-bold text-sm text-[#00375e] flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[18px] text-[#0e61a1]">qr_code_2</span>
                   Danh Sách Mã Sẽ Tạo
                 </h2>
                 <span className="text-[11px] text-[#5B6472]">Bản xem trước theo thời gian thực</span>
@@ -494,9 +514,6 @@ export const BatchCreateAssetsScreen = ({ onNavigate }) => {
                   className="p-3 bg-[#F7F8FA] hover:bg-[#eff4ff] border border-[#DFE3E8] rounded-xl flex items-center justify-between transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-white border border-[#DFE3E8] flex items-center justify-center text-[#00375e] shadow-xs">
-                      <span className="material-symbols-outlined text-[18px]">qr_code</span>
-                    </div>
                     <div>
                       <div className="font-mono font-bold text-xs text-[#00375e]">{code}</div>
                       <div className="text-[10px] text-[#5B6472]">
@@ -526,7 +543,8 @@ export const BatchCreateAssetsScreen = ({ onNavigate }) => {
           {/* Action Footer */}
           <div className="pt-3 border-t border-[#DFE3E8] flex items-center justify-between gap-3">
             <button
-              onClick={() => onNavigate('fixed-assets')}
+              onClick={onClose}
+              disabled={isSubmitting}
               className="px-4 py-2.5 rounded-xl border border-[#DFE3E8] text-xs font-semibold text-[#5B6472] hover:bg-[#F7F8FA] transition-colors cursor-pointer"
               type="button"
             >
@@ -553,6 +571,8 @@ export const BatchCreateAssetsScreen = ({ onNavigate }) => {
             </button>
           </div>
         </div>
+      </div>
+      </div>
       </div>
     </div>
   );
