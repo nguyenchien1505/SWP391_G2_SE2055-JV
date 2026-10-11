@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import { fetchRoomHistory } from '../../api/rooms';
 import { useAuth } from '../../context/AuthContext';
-import { canReportDamage } from '../../permissions';
+import { canReportDamage, canViewAssetDetail } from '../../permissions';
 import { assetService } from '../../services/assetApi';
 import { formatDateTime } from '../../pages/rooms/format';
 import { LOCK, roomActionsFor } from '../../pages/rooms/roomActions';
@@ -209,6 +209,7 @@ export default function RoomBoardPanel({
             roomId={room.id}
             reportsByAsset={role.isManager ? groupReportsBy(reports, 'assetId') : {}}
             onOpenReport={onOpenReport}
+            linkToDetail={canViewAssetDetail(user)}
           />
           {/* BR-ASSET-05: Lễ tân / Dọn dẹp báo hỏng ở tab tài sản của chi tiết phòng. */}
           {canReportDamage(user) && (
@@ -230,8 +231,11 @@ export default function RoomBoardPanel({
   );
 }
 
-/** Tài sản cố định đang vận hành trong phòng (không gồm đã thanh lý — BR-ASSET-14), chỉ xem. */
-function RoomAssets({ roomId, reportsByAsset, onOpenReport }) {
+/**
+ * Tài sản cố định đang vận hành trong phòng (không gồm đã thanh lý — BR-ASSET-14), chỉ xem. Giám
+ * đốc / Manager bấm tên tài sản để sang màn Chi tiết tài sản.
+ */
+function RoomAssets({ roomId, reportsByAsset, onOpenReport, linkToDetail }) {
   const [assets, setAssets] = useState(null); // null = đang tải
   const [error, setError] = useState('');
 
@@ -252,6 +256,7 @@ function RoomAssets({ roomId, reportsByAsset, onOpenReport }) {
     <AssetReportList
       assets={assets}
       compact
+      linkToDetail={linkToDetail}
       rowAction={(asset) => <ViewReportButton reports={reportsByAsset[asset.id]} onOpen={onOpenReport} />}
       emptyText="Phòng này chưa có tài sản cố định nào."
     />

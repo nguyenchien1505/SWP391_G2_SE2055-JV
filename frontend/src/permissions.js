@@ -37,3 +37,11 @@ export function hasPermission(user, permission) {
 export function canReportDamage(user) {
   return user?.role === 'STAFF' && (hasPermission(user, 'RECEPTION') || hasPermission(user, 'HOUSEKEEPING'));
 }
+
+/**
+ * Mở màn Chi tiết tài sản (/tai-san/:id): Giám đốc / Manager — khớp RequireManagementRole ở
+ * App.jsx. Staff chỉ báo hỏng, không vào được màn quản lý tài sản.
+ */
+export function canViewAssetDetail(user) {
+  return Boolean(user) && user.role !== 'STAFF';
+}

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { assetStatusOf } from './damageReportLabels';
 import './damageReports.css';
 
@@ -9,8 +10,9 @@ import './damageReports.css';
  *                 BR-ASSET-05); để trống là danh sách chỉ xem (Giám đốc/Manager)
  * @param nameAddon (asset) => nội dung đặt ngay cạnh tên tài sản, ví dụ nút "Xem báo hỏng"
  * @param rowAction (asset) => nội dung ở cột cuối dòng (bên phải), ví dụ nút "Xem báo hỏng"
- * @param compact   một dòng mỗi tài sản: trạng thái nằm cạnh tên, bỏ dòng mã tài sản — cho bảng
- *                  chi tiết phòng trên sơ đồ, nơi chỉ cần nhìn nhanh tình trạng
+ * @param compact   một dòng mỗi tài sản: mã tài sản đứng trước tên, trạng thái nằm cạnh tên — cho
+ *                  bảng chi tiết phòng trên sơ đồ, nơi chỉ cần nhìn nhanh tình trạng
+ * @param linkToDetail bấm tên tài sản → màn Chi tiết tài sản (chỉ Giám đốc/Manager mở được)
  */
 export default function AssetReportList({
   assets,
@@ -18,6 +20,7 @@ export default function AssetReportList({
   nameAddon,
   rowAction,
   compact = false,
+  linkToDetail = false,
   emptyText = 'Chưa có tài sản cố định nào.',
 }) {
   if (assets.length === 0) {
@@ -36,7 +39,18 @@ export default function AssetReportList({
           <li key={asset.id} className="asset-report-row">
             <div className="asset-report-row__info">
               <span className="asset-report-row__title">
-                <span className="asset-report-row__name">{asset.name}</span>
+                {compact && <span className="asset-report-row__code">{asset.code}</span>}
+                {linkToDetail ? (
+                  <Link
+                    className="asset-report-row__name asset-report-row__name--link"
+                    to={`/tai-san/${asset.id}`}
+                    title="Xem chi tiết tài sản"
+                  >
+                    {asset.name}
+                  </Link>
+                ) : (
+                  <span className="asset-report-row__name">{asset.name}</span>
+                )}
                 {compact && <span className={`badge ${status.badge}`}>{status.label}</span>}
                 {nameAddon?.(asset)}
               </span>

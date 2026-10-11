@@ -39,6 +39,21 @@
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+.asset-report-row__name--link {
+  color: var(--primary);
+  text-decoration: none;
+}
+.asset-report-row__name--link:hover,
+.asset-report-row__name--link:focus-visible {
+  text-decoration: underline;
+}
+/* Mã tài sản đứng trước tên ở dạng compact (bảng chi tiết phòng). */
+.asset-report-row__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
 .asset-report-row__meta {
   display: flex;
   align-items: center;
