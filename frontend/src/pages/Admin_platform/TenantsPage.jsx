@@ -200,6 +200,10 @@ export default function TenantsPage() {
                             {SUSPEND_REASON_LABEL[tenant.suspendReason] ?? tenant.suspendReason}
                           </small>
                         )}
+                        {/* Giám đốc chưa bấm link xác thực email — job tự xóa sau 7 ngày. */}
+                        {!tenant.directorVerified && (
+                          <span className="badge badge--orange">Chưa xác thực</span>
+                        )}
                       </div>
                     </td>
                     <td className="cell-actions">

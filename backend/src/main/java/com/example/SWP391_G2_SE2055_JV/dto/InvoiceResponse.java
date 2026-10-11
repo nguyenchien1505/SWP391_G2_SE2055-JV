@@ -2,7 +2,6 @@ package com.example.SWP391_G2_SE2055_JV.dto;
 
 import com.example.SWP391_G2_SE2055_JV.entity.Invoice;
 import com.example.SWP391_G2_SE2055_JV.enums.InvoiceStatus;
-import com.example.SWP391_G2_SE2055_JV.enums.InvoiceType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,8 +14,11 @@ import java.util.UUID;
 @Builder
 public class InvoiceResponse {
 
+    /** Nghĩa nghiệp vụ: mua gói và gia hạn cùng là PERIODIC trong DB, backend phân biệt sẵn. */
+    public enum Kind { MUA_GOI, GIA_HAN, MUA_THEM }
+
     private UUID          id;
-    private InvoiceType   invoiceType;
+    private Kind          kind;
     private LocalDate     periodStart;
     private LocalDate     periodEnd;
     private int           quotaLocation;
@@ -25,13 +27,11 @@ public class InvoiceResponse {
     private Long          amount;
     private InvoiceStatus status;
     private LocalDateTime issuedAt;
-    private LocalDateTime paidAt;
-    private LocalDate     graceUntil;
 
-    public static InvoiceResponse fromEntity(Invoice invoice) {
+    public static InvoiceResponse fromEntity(Invoice invoice, Kind kind) {
         return InvoiceResponse.builder()
             .id(invoice.getId())
-            .invoiceType(invoice.getInvoiceType())
+            .kind(kind)
             .periodStart(invoice.getPeriodStart())
             .periodEnd(invoice.getPeriodEnd())
             .quotaLocation(invoice.getQuotaLocationSnapshot())
@@ -40,8 +40,6 @@ public class InvoiceResponse {
             .amount(invoice.getAmount())
             .status(invoice.getStatus())
             .issuedAt(invoice.getIssuedAt())
-            .paidAt(invoice.getPaidAt())
-            .graceUntil(invoice.getGraceUntil())
             .build();
     }
 }
