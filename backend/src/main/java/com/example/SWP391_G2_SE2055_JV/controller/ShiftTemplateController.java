@@ -25,8 +25,8 @@ import java.util.UUID;
  * Mẫu ca — Giám đốc định nghĩa (BR-SCH-04): bộ mẫu chung của chuỗi và bộ mẫu riêng từng chi nhánh;
  * mỗi chi nhánh dùng đúng một bộ (V6). Manager chỉ đọc bộ chi nhánh mình đang dùng để chọn khi xếp ca.
  *
- * <p>Không có {@code DELETE}: BR-SCH-22 quy định chỉ vô hiệu hóa, dùng
- * {@code PATCH /{id}/active}.
+ * <p>Mẫu ngừng dùng thì vô hiệu hóa bằng {@code PATCH /{id}/active} (BR-SCH-22). {@code DELETE} chỉ
+ * xóa hẳn được mẫu đã tắt mà chưa ca nào dùng (chốt 09/10/2026).
  */
 @RestController
 @RequestMapping("/scheduling/shift-templates")
@@ -80,6 +80,14 @@ public class ShiftTemplateController {
             @PathVariable UUID id,
             @Valid @RequestBody SetActiveRequest request) {
         return ResponseEntity.ok(shiftTemplateService.setActive(id, request.getActive()));
+    }
+
+    /** Xóa hẳn mẫu đã tắt và chưa ca nào dùng — mẫu đã dùng thì chỉ tắt được (chốt 09/10/2026). */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR')")
+    public ResponseEntity<Void> deleteTemplate(@PathVariable UUID id) {
+        shiftTemplateService.deleteTemplate(id);
+        return ResponseEntity.noContent().build();
     }
 
     /** Chi nhánh dùng bộ mẫu chung hay bộ mẫu riêng của nó (V6, chốt 06/10/2026). */
