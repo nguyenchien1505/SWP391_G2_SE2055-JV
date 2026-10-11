@@ -122,6 +122,22 @@ export function roomActionsFor(room) {
 }
 
 /**
+ * Trạng thái mà phòng còn xóa được (BR-ROOM-08) — chỉ để ẨN nút cho đỡ vướng. Backend vẫn kiểm
+ * tra đủ ba điều kiện (trạng thái, việc dọn đang mở, tài sản gắn vào) và trả lỗi nếu gọi thẳng API.
+ */
+const DELETABLE_STATUSES = ['AVAILABLE', 'UNAVAILABLE'];
+
+export function canDeleteRoom(room) {
+  return DELETABLE_STATUSES.includes(room?.status);
+}
+
+/** Câu hỏi lại trước khi xóa phòng — dùng chung cho S-02 Danh sách phòng và S-04 Chi tiết phòng. */
+export const DELETE_ROOM_WARNING =
+  'Thao tác này không hoàn tác được. Hệ thống sẽ từ chối nếu phòng đang có khách hoặc đang trong '
+  + 'quy trình dọn, còn việc dọn phòng chưa kết thúc, hoặc còn tài sản cố định gắn vào. Phòng đã '
+  + 'xóa vẫn tính vào hạn mức của gói dịch vụ.';
+
+/**
  * Câu báo thành công sau khi đổi trạng thái. Nêu luôn HỆ QUẢ mà người dùng không nhìn thấy trên
  * màn hình này (task dọn bị hủy / được sinh — BR-HK-01, BR-HK-09, BR-HK-10), vì đó là thứ hay
  * gây bất ngờ nhất.

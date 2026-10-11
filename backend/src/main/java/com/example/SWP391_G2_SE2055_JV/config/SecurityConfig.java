@@ -73,7 +73,10 @@ public class SecurityConfig {
         "/auth/unauthorized",
         // BR-SAAS-13: Tenant tự đăng ký, chưa có tài khoản nên phải công khai.
         // (Endpoint chưa hiện thực — khai báo sẵn để rule không bị bỏ sót khi làm.)
-        "/auth/register-tenant"
+        "/auth/register-tenant",
+        // Xác thực email sau khi đăng ký — người dùng chưa đăng nhập được nên phải công khai.
+        "/auth/verify-email",
+        "/auth/resend-verification"
     };
 
     /** Origin của frontend. Dev: Vite chạy cổng 3000; đổi khi deploy bằng biến môi trường. */
@@ -211,11 +214,12 @@ public class SecurityConfig {
                 // (rule đó mở GET tới STAFF) — nếu không Staff vẫn xem được kho.
                 .requestMatchers("/assets/consumables/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
-                // Cả Lễ tân và Dọn dẹp đều báo hỏng được (BR-ASSET-05).
+                // CHỈ nhân viên có quyền Lễ tân hoặc Dọn dẹp báo hỏng (BR-ASSET-05). Manager là
+                // người nhận báo hỏng — thấy tài sản hỏng thì đổi trạng thái thẳng, không tự báo
+                // cho mình; Admin đứng ngoài mọi Location nên không có tài sản để báo.
                 .requestMatchers(HttpMethod.POST, "/assets/damage-reports")
                     .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
-                        hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + MANAGER,
-                            "POSITION_RECEPTION", "POSITION_HOUSEKEEPING")))
+                        hasAnyAuthority(authn, "POSITION_RECEPTION", "POSITION_HOUSEKEEPING")))
                 .requestMatchers(HttpMethod.GET, "/assets/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers("/assets/**")

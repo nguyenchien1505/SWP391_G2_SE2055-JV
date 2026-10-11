@@ -587,19 +587,6 @@ export default function StaffPage() {
         </div>
       </section>
 
-      <div className="note">
-        <span aria-hidden="true">ⓘ</span>
-        <div>
-          <b>Quy định tài khoản nhân viên</b>
-          <p>
-            Manager tạo và quản lý nhân viên trong khách sạn của mình. Mật khẩu tạm chỉ hiển thị một lần
-            và phải đổi ở lần đăng nhập đầu. Vị trí do Giám đốc định nghĩa; phòng ban tự suy ra từ vị trí.
-            Cho nghỉ việc không cần Giám đốc duyệt; email của người đã nghỉ không dùng lại được. Số nhân
-            viên bị giới hạn bởi gói dịch vụ của chuỗi.
-          </p>
-        </div>
-      </div>
-
       {formOpen && (
         <FormModal onClose={closeForm}>
           <StaffForm

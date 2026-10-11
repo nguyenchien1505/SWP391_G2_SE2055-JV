@@ -5,6 +5,8 @@ import com.example.SWP391_G2_SE2055_JV.enums.DamageReportStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,29 +18,33 @@ import java.util.UUID;
  *
  * <p>Ba phạm vi nhìn khác nhau theo vai trò: Giám đốc toàn Tenant (chỉ đọc), Manager
  * toàn Location, Staff chỉ báo cáo do CHÍNH MÌNH tạo (để biết đã được xử lý chưa).
- * Mỗi phạm vi có 2 biến thể — có lọc {@code status} hoặc không — để phục vụ DM-16
- * (mặc định lọc {@code NEW}, có thể bỏ lọc để xem cả lịch sử {@code RESOLVED}).
  */
 @Repository
 public interface DamageReportRepository extends JpaRepository<DamageReport, UUID> {
 
-    // ── Phạm vi Tenant — Giám đốc (chỉ đọc) ──────────────────────────────────
-    Page<DamageReport> findByTenantId(UUID tenantId, Pageable pageable);
-
-    Page<DamageReport> findByTenantIdAndStatus(UUID tenantId, DamageReportStatus status, Pageable pageable);
-
-    // ── Phạm vi Location — Manager ────────────────────────────────────────────
-    Page<DamageReport> findByTenantIdAndLocationId(UUID tenantId, UUID locationId, Pageable pageable);
-
-    Page<DamageReport> findByTenantIdAndLocationIdAndStatus(
-        UUID tenantId, UUID locationId, DamageReportStatus status, Pageable pageable);
-
-    // ── Phạm vi cá nhân — Staff chỉ xem báo cáo do chính mình tạo ────────────
-    Page<DamageReport> findByTenantIdAndLocationIdAndReporterId(
-        UUID tenantId, UUID locationId, UUID reporterId, Pageable pageable);
-
-    Page<DamageReport> findByTenantIdAndLocationIdAndReporterIdAndStatus(
-        UUID tenantId, UUID locationId, UUID reporterId, DamageReportStatus status, Pageable pageable);
+    /**
+     * Danh sách có lọc. Tham số nào {@code null} thì bỏ qua điều kiện đó, riêng
+     * {@code tenantId} luôn bắt buộc. Service ép {@code locationId}/{@code reporterId} theo
+     * vai trò — client không tự mở rộng phạm vi được.
+     *
+     * @param status       DM-16: thường là {@code NEW} ("danh sách đang chờ xử lý");
+     *                     {@code null} để xem cả lịch sử {@code RESOLVED}
+     * @param fixedAssetId lịch sử báo hỏng của một tài sản (màn chi tiết tài sản / phiếu)
+     */
+    @Query("""
+        SELECT d FROM DamageReport d
+        WHERE d.tenantId = :tenantId
+          AND (:locationId   IS NULL OR d.locationId   = :locationId)
+          AND (:reporterId   IS NULL OR d.reporterId   = :reporterId)
+          AND (:fixedAssetId IS NULL OR d.fixedAssetId = :fixedAssetId)
+          AND (:status       IS NULL OR d.status       = :status)
+        """)
+    Page<DamageReport> search(@Param("tenantId") UUID tenantId,
+                              @Param("locationId") UUID locationId,
+                              @Param("reporterId") UUID reporterId,
+                              @Param("fixedAssetId") UUID fixedAssetId,
+                              @Param("status") DamageReportStatus status,
+                              Pageable pageable);
 
     // ── Đọc đơn lẻ ─────────────────────────────────────────────────────────
     Optional<DamageReport> findByIdAndTenantId(UUID id, UUID tenantId);
@@ -48,6 +54,6 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
     Optional<DamageReport> findByIdAndTenantIdAndLocationIdAndReporterId(
         UUID id, UUID tenantId, UUID locationId, UUID reporterId);
 
-    /** Auto-resolve khi tài sản chuyển sang DISPOSED — xem {@code FixedAssetService}. */
+    /** Tự đóng khi tài sản chuyển sang DISPOSED — xem {@code FixedAssetService.updateStatus}. */
     List<DamageReport> findByFixedAssetIdAndStatus(UUID fixedAssetId, DamageReportStatus status);
 }

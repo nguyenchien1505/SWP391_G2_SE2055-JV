@@ -175,7 +175,7 @@ ON DUPLICATE KEY UPDATE shifts.id = shifts.id;
 
 -- ── Việc dọn — BR-HK-06/11/12; mỗi phòng tối đa 1 việc đang mở ─────────────────
 -- Việc «Chờ kiểm tra» chưa có completed_at: app chỉ điền khi Manager kiểm tra xong (BR-HK-06).
--- Người dọn nằm ở bảng housekeeping_task_assignees bên dưới (một việc có thể nhiều người — V4).
+-- Người dọn nằm ở bảng housekeeping_task_assignees bên dưới (một việc có thể nhiều người — V5).
 INSERT INTO housekeeping_tasks (id, tenant_id, location_id, room_id, task_type, status,
                                 assigned_date, assigned_by, assigned_at,
                                 completed_at, created_source, created_at)

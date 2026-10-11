@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { readErrorMessage } from '../api/client';
-import { startGoogleLogin } from '../api/auth';
+import { resendVerification, startGoogleLogin } from '../api/auth';
+import { homePathFor } from '../homePath';
 import Logo from '../components/Logo';
 
 const REMEMBERED_EMAIL_KEY = 'saomai.rememberedEmail';
@@ -16,6 +17,10 @@ const REDIRECT_MESSAGES = {
 
 const REDIRECT_NOTICES = {
   password_changed: 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại bằng mật khẩu mới.',
+  registered: 'Đăng ký thành công. Vui lòng đăng nhập bằng email vừa đăng ký.',
+  verify_email:
+    'Đăng ký thành công. Vui lòng mở email vừa đăng ký và bấm "Xác thực tài khoản" trước khi đăng nhập.',
+  email_verified: 'Xác thực tài khoản thành công. Bạn có thể đăng nhập.',
 };
 
 export default function LoginPage() {
@@ -31,6 +36,7 @@ export default function LoginPage() {
   const [error, setError] = useState(REDIRECT_MESSAGES[searchParams.get('error')] ?? '');
   const [hint, setHint] = useState(REDIRECT_NOTICES[searchParams.get('notice')] ?? '');
   const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -67,6 +73,22 @@ export default function LoginPage() {
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // Backend (FormLoginFailureHandler) trả câu này cho Giám đốc chưa bấm link xác thực email.
+  const needsVerification = error.includes('chưa được xác thực');
+
+  async function handleResendVerification() {
+    setResending(true);
+    try {
+      await resendVerification(email.trim());
+      setError('');
+      setHint('Nếu tài khoản tồn tại và chưa xác thực, email xác thực đã được gửi lại. Vui lòng kiểm tra hộp thư.');
+    } catch (err) {
+      setError(readErrorMessage(err, 'Không gửi lại được email xác thực.'));
+    } finally {
+      setResending(false);
     }
   }
 
@@ -162,6 +184,19 @@ export default function LoginPage() {
             {error && (
               <div className="alert alert--error" role="alert">
                 {error}
+                {needsVerification && (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={handleResendVerification}
+                      disabled={resending}
+                    >
+                      {resending ? 'Đang gửi…' : 'Gửi lại email xác thực'}
+                    </button>
+                  </>
+                )}
               </div>
             )}
             {hint && !error && (
@@ -195,6 +230,11 @@ export default function LoginPage() {
           <p className="field__help">
             <span aria-hidden="true">ⓘ</span> Chỉ dùng được với email đã được cấp tài khoản trong
             hệ thống.
+          </p>
+
+          <p className="muted">
+            Doanh nghiệp chưa có tài khoản?{' '}
+            <Link to="/dang-ky" className="link-button">Đăng ký dùng thử miễn phí</Link>
           </p>
 
           <div className="support-box">

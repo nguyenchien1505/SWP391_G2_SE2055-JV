@@ -5,35 +5,49 @@ import com.example.SWP391_G2_SE2055_JV.enums.FixedAssetStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Tài sản cố định — cá thể, gắn cứng vào một Location (BR-ASSET-01, BR-ASSET-13).
  *
- * <p>Có hai cặp method đọc song song vì phạm vi nhìn khác nhau theo vai trò: Giám đốc
- * đứng trên nhiều Location nên lọc theo Tenant, còn Manager và Staff bị giới hạn trong
- * Location của mình.
+ * <p>Phạm vi nhìn khác nhau theo vai trò: Giám đốc đứng trên nhiều Location nên lọc theo
+ * Tenant, còn Manager và Staff bị giới hạn trong Location của mình.
  */
 @Repository
 public interface FixedAssetRepository extends JpaRepository<FixedAsset, UUID> {
 
-    // ── Phạm vi Tenant — Giám đốc ────────────────────────────────────────────
-    Page<FixedAsset> findByTenantId(UUID tenantId, Pageable pageable);
-
-    Page<FixedAsset> findByTenantIdAndStatusNotIn(
-        UUID tenantId, Collection<FixedAssetStatus> statuses, Pageable pageable);
+    /**
+     * Danh sách có lọc. Tham số nào {@code null} thì bỏ qua điều kiện đó, riêng
+     * {@code tenantId} luôn bắt buộc. {@code locationId} do service quyết định theo vai trò:
+     * Giám đốc để trống (toàn Tenant), Manager/Staff luôn bị ép về Location của mình.
+     *
+     * <p>{@code roomId}/{@code areaId} phục vụ nhân viên chọn tài sản để báo hỏng
+     * (BR-ASSET-05) — trang chi tiết phòng chỉ cần tài sản của đúng phòng đó.
+     *
+     * @param excludedStatus {@code null} để lấy mọi trạng thái; thường là {@code DISPOSED}
+     *                       để ẩn tài sản đã thanh lý khỏi danh sách vận hành (BR-ASSET-14)
+     */
+    @Query("""
+        SELECT f FROM FixedAsset f
+        WHERE f.tenantId = :tenantId
+          AND (:locationId     IS NULL OR f.locationId = :locationId)
+          AND (:roomId         IS NULL OR f.roomId     = :roomId)
+          AND (:areaId         IS NULL OR f.areaId     = :areaId)
+          AND (:excludedStatus IS NULL OR f.status    <> :excludedStatus)
+        """)
+    Page<FixedAsset> search(@Param("tenantId") UUID tenantId,
+                            @Param("locationId") UUID locationId,
+                            @Param("roomId") UUID roomId,
+                            @Param("areaId") UUID areaId,
+                            @Param("excludedStatus") FixedAssetStatus excludedStatus,
+                            Pageable pageable);
 
     Optional<FixedAsset> findByIdAndTenantId(UUID id, UUID tenantId);
-
-    // ── Phạm vi Location — Manager, Staff ────────────────────────────────────
-    Page<FixedAsset> findByTenantIdAndLocationId(UUID tenantId, UUID locationId, Pageable pageable);
-
-    Page<FixedAsset> findByTenantIdAndLocationIdAndStatusNotIn(
-        UUID tenantId, UUID locationId, Collection<FixedAssetStatus> statuses, Pageable pageable);
 
     Optional<FixedAsset> findByIdAndTenantIdAndLocationId(UUID id, UUID tenantId, UUID locationId);
 

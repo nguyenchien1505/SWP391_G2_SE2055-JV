@@ -2,17 +2,15 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import { fetchRoomHistory } from '../../api/rooms';
-import { formatDate, formatDateTime, formatShortDateTime, todayIso } from '../../pages/rooms/format';
-import { roomActionsFor } from '../../pages/rooms/roomActions';
-import { isOverdue, whyNoRoomActions } from '../../pages/rooms/roomBoard';
-import {
-  changeSourceLabel,
-  roomStatusMeta,
-  taskSourceLabel,
-  taskTypeLabel,
-  teamNames,
-  unassignedReasonLabel,
-} from '../../pages/rooms/roomLabels';
+import { useAuth } from '../../context/AuthContext';
+import { canReportDamage } from '../../permissions';
+import { assetService } from '../../services/assetApi';
+import { formatDateTime } from '../../pages/rooms/format';
+import { LOCK, roomActionsFor } from '../../pages/rooms/roomActions';
+import { whyNoRoomActions } from '../../pages/rooms/roomBoard';
+import { changeSourceLabel, roomStatusMeta, taskTypeLabel } from '../../pages/rooms/roomLabels';
+import AssetReportList from '../damage-reports/AssetReportList';
+import ViewReportButton, { groupReportsBy } from '../damage-reports/ViewReportButton';
 import RoomStatusBadge from './RoomStatusBadge';
 import TaskStatusBadge from './TaskStatusBadge';
 
@@ -25,15 +23,24 @@ const HISTORY_PREVIEW = 5;
  * ngón cái với tới được (design.md mục 2). Trang cha quyết định cách bọc; component này chỉ vẽ
  * nội dung.
  *
- * Thứ tự các khối theo mức khẩn: THAO TÁC lên đầu (Lễ tân cần 1–2 chạm), rồi việc dọn đang mở
- * (Quản lý chi nhánh), rồi thông tin, ghi chú, lịch sử.
+ * Thứ tự các khối theo mức khẩn: THAO TÁC lên đầu (Lễ tân cần 1–2 chạm), rồi thông tin + ghi chú,
+ * tài sản trong phòng, lịch sử.
+ *
+ * Quản lý chi nhánh: đầu bảng báo "Chưa phân công" + nút Phân công khi phòng có việc dọn chưa có
+ * người làm; ngay dưới nút đổi trạng thái là hàng công cụ Khóa / Mở khóa phòng, Thêm tài sản, Kiểm
+ * kê. Các thao tác khác trên việc dọn (kiểm tra phòng, thêm / gỡ người dọn) ở màn Công việc dọn phòng.
  *
  * Nút đổi trạng thái vẽ từ `room.allowedTargets` do backend tính (F2) — không có dãy nút "chuyển
  * nhanh sang trạng thái bất kỳ": Đang dọn / Chờ kiểm tra chỉ đổi qua việc dọn (BR-ROOM-02).
  *
  * @param role      { isDirector, isManager, isReception } — chỉ để ẨN/HIỆN cho dễ dùng
- * @param tasks     việc dọn ĐANG MỞ của phòng (chỉ Quản lý chi nhánh có dữ liệu này)
+ * @param tasks     việc dọn ĐANG MỞ của phòng (chỉ Quản lý chi nhánh có dữ liệu này) — dùng để
+ *                  biết việc nào chưa phân công
  * @param historyKey đổi giá trị để nạp lại lịch sử sau mỗi lần phòng đổi trạng thái
+ * @param assetsKey  đổi giá trị để nạp lại danh sách tài sản sau khi kiểm kê
+ * @param reports    báo hỏng của tài sản trong phòng (chỉ Quản lý chi nhánh) — có thì hiện nút
+ *                   "Xem báo hỏng" cạnh tên tài sản
+ * @param onOpenReport bấm "Xem báo hỏng" → hộp thoại xử lý báo hỏng
  */
 export default function RoomBoardPanel({
   room,
@@ -41,30 +48,53 @@ export default function RoomBoardPanel({
   locationName,
   tasks = [],
   historyKey = 0,
+  assetsKey = 0,
   busy = false,
   autoFocusClose = false,
   onClose,
   onAction,
   onAssign,
-  onInspect,
-  onUnassign,
   onEditNote,
-  onShowPreviousInspection,
+  onAddAsset,
+  onAuditAssets,
+  reports = [],
+  onOpenReport,
 }) {
+  const { user } = useAuth();
   const meta = roomStatusMeta(room.status);
   const actions = roomActionsFor(room);
+  // Khóa / mở khóa nằm ở hàng công cụ của Quản lý, cạnh Thêm tài sản và Kiểm kê.
+  const statusActions = actions.filter((action) => action.flow !== LOCK);
+  const lockAction = actions.find((action) => action.flow === LOCK);
+  // Việc dọn chưa có người làm → nút "Phân công" ở đầu bảng (tối đa 1 việc mở mỗi loại — BR-HK-11).
+  const unassigned = role.isManager ? tasks.filter((task) => task.status === 'UNASSIGNED') : [];
 
   return (
     <aside className="board-panel" aria-labelledby="board-panel-title">
       <header className={`board-panel__head room-tone--${meta.tone}`}>
         <span className="board-panel__tile" aria-hidden="true">{room.roomNumber}</span>
         <div className="board-panel__title">
-          <h2 id="board-panel-title">Phòng {room.roomNumber}</h2>
-          <RoomStatusBadge status={room.status} />
+          <div className="board-panel__title-row">
+            <h2 id="board-panel-title">Phòng {room.roomNumber}</h2>
+            <RoomStatusBadge status={room.status} />
+            {/* Việc dọn chưa có người làm: báo ngay cạnh trạng thái phòng, nút Phân công ở bên phải. */}
+            {unassigned.length > 0 && <TaskStatusBadge status="UNASSIGNED" />}
+          </div>
           <p className="muted">
             Tầng {room.floor} · {room.roomTypeName ?? 'Chưa rõ loại'} · {room.capacity} người
           </p>
         </div>
+        {unassigned.length > 0 && (
+          <div className="board-panel__head-actions">
+            {unassigned.map((task) => (
+              <button key={task.id} type="button" className="btn btn--primary" onClick={() => onAssign(task)}>
+                <span className="material-symbols-outlined" aria-hidden="true">person_add</span>
+                {/* Hai việc chờ cùng lúc (sau trả phòng + hằng ngày) thì ghi rõ loại để khỏi nhầm. */}
+                {unassigned.length > 1 ? `Phân công · ${taskTypeLabel(task.taskType)}` : 'Phân công'}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           type="button"
           className="board-panel__close"
@@ -78,9 +108,9 @@ export default function RoomBoardPanel({
 
       <div className="board-panel__body">
         <section className="board-panel__section" aria-label="Thao tác">
-          {actions.length > 0 ? (
+          {statusActions.length > 0 && (
             <div className="board-panel__actions">
-              {actions.map((action) => (
+              {statusActions.map((action) => (
                 <button
                   key={action.key}
                   type="button"
@@ -92,11 +122,37 @@ export default function RoomBoardPanel({
                 </button>
               ))}
             </div>
-          ) : (
+          )}
+          {actions.length === 0 && (
             <p className="board-panel__why">
               <span className="material-symbols-outlined" aria-hidden="true">info</span>
               {whyNoRoomActions(room, role)}
             </p>
+          )}
+          {role.isManager && (
+            <div className="board-panel__tools">
+              {lockAction && (
+                <button
+                  type="button"
+                  className={`btn board-tool ${lockAction.danger ? 'btn--danger' : 'btn--primary'}`}
+                  disabled={busy}
+                  onClick={() => onAction(lockAction)}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    {lockAction.danger ? 'lock' : 'lock_open'}
+                  </span>
+                  {lockAction.label}
+                </button>
+              )}
+              <button type="button" className="btn btn--ghost board-tool" onClick={() => onAddAsset(room)}>
+                <span className="material-symbols-outlined" aria-hidden="true">add_box</span>
+                Thêm tài sản
+              </button>
+              <button type="button" className="btn btn--ghost board-tool" onClick={() => onAuditAssets(room)}>
+                <span className="material-symbols-outlined" aria-hidden="true">fact_check</span>
+                Kiểm kê
+              </button>
+            </div>
           )}
         </section>
 
@@ -105,23 +161,6 @@ export default function RoomBoardPanel({
             <b>Lý do không khả dụng</b>
             <p>{room.unavailableReason || '—'}</p>
           </div>
-        )}
-
-        {role.isManager && (
-          <section className="board-panel__section">
-            <h3 className="board-panel__heading">Việc dọn đang mở</h3>
-            {tasks.length === 0 && <p className="muted">Không có việc dọn nào đang mở.</p>}
-            {tasks.map((task) => (
-              <BoardTask
-                key={task.id}
-                task={task}
-                onAssign={onAssign}
-                onInspect={onInspect}
-                onUnassign={onUnassign}
-                onShowPreviousInspection={onShowPreviousInspection}
-              />
-            ))}
-          </section>
         )}
 
         <section className="board-panel__section">
@@ -163,6 +202,22 @@ export default function RoomBoardPanel({
         </section>
 
         <section className="board-panel__section">
+          <h3 className="board-panel__heading">Tài sản trong phòng</h3>
+          <RoomAssets
+            key={`${room.id}-${assetsKey}`}
+            roomId={room.id}
+            reportsByAsset={role.isManager ? groupReportsBy(reports, 'assetId') : {}}
+            onOpenReport={onOpenReport}
+          />
+          {/* BR-ASSET-05: Lễ tân / Dọn dẹp báo hỏng ở tab tài sản của chi tiết phòng. */}
+          {canReportDamage(user) && (
+            <Link className="board-panel__more" to={`/phong/${room.id}`} state={{ tab: 'assets' }}>
+              Báo hỏng tài sản ›
+            </Link>
+          )}
+        </section>
+
+        <section className="board-panel__section">
           <h3 className="board-panel__heading">Đổi trạng thái gần đây</h3>
           <RecentHistory key={`${room.id}-${historyKey}`} roomId={room.id} />
           <Link className="board-panel__more" to={`/phong/${room.id}`} state={{ tab: 'history' }}>
@@ -174,67 +229,31 @@ export default function RoomBoardPanel({
   );
 }
 
-/**
- * Một việc dọn đang mở của phòng, kèm đúng nút mà trạng thái của việc đó cho phép (F5, F6). Việc đang
- * làm HÔM NAY thêm được người dọn cùng (`onAssign` mở hộp thoại ở chế độ thêm người).
- */
-function BoardTask({ task, onAssign, onInspect, onUnassign, onShowPreviousInspection }) {
+/** Tài sản cố định đang vận hành trong phòng (không gồm đã thanh lý — BR-ASSET-14), chỉ xem. */
+function RoomAssets({ roomId, reportsByAsset, onOpenReport }) {
+  const [assets, setAssets] = useState(null); // null = đang tải
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    assetService
+      .getReportableAssets({ roomId })
+      .then((rows) => !cancelled && setAssets(rows))
+      .catch((err) => !cancelled && setError(err?.message || 'Không tải được tài sản trong phòng.'));
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
+
+  if (error) return <p className="muted">{error}</p>;
+  if (assets === null) return <p className="muted">Đang tải tài sản…</p>;
   return (
-    <div className="board-task">
-      <div className="board-task__head">
-        <b>{taskTypeLabel(task.taskType)}</b>
-        <TaskStatusBadge status={task.status} />
-      </div>
-      <p className="board-task__meta">{taskSourceLabel(task.createdSource)}</p>
-
-      {(task.assignees?.length ?? 0) > 0 && (
-        <p className="board-task__meta">
-          Người dọn: <b>{teamNames(task)}</b>
-          {task.assignedDate ? ` · ngày ${formatDate(task.assignedDate)}` : ''}
-        </p>
-      )}
-      {task.status === 'IN_PROGRESS' && task.assignedAt && (
-        <p className="board-task__meta">Giao lúc {formatShortDateTime(task.assignedAt)}</p>
-      )}
-      {task.status === 'PENDING_INSPECTION' && task.completedAt && (
-        <p className="board-task__meta">Báo xong lúc {formatShortDateTime(task.completedAt)}</p>
-      )}
-      {isOverdue(task) && (
-        <p className="board-task__flag">Tồn đọng từ {formatDate(task.assignedDate)}</p>
-      )}
-      {task.status === 'UNASSIGNED' && unassignedReasonLabel(task.unassignedReason) && (
-        <p className="board-task__meta">{unassignedReasonLabel(task.unassignedReason)}</p>
-      )}
-      {/* BR-HK-12: việc dọn lại phải xem được lý do không đạt ở biên bản của việc gốc. */}
-      {task.parentTaskId && (
-        <button type="button" className="link-btn" onClick={() => onShowPreviousInspection(task)}>
-          Xem lần kiểm tra trước
-        </button>
-      )}
-
-      <div className="board-task__actions">
-        {task.status === 'UNASSIGNED' && (
-          <button type="button" className="btn btn--primary" onClick={() => onAssign(task)}>
-            Phân công
-          </button>
-        )}
-        {task.status === 'PENDING_INSPECTION' && (
-          <button type="button" className="btn btn--primary" onClick={() => onInspect(task)}>
-            Kiểm tra phòng
-          </button>
-        )}
-        {task.status === 'IN_PROGRESS' && task.assignedDate === todayIso() && (
-          <button type="button" className="btn btn--ghost" onClick={() => onAssign(task)}>
-            Thêm người
-          </button>
-        )}
-        {task.status === 'IN_PROGRESS' && (
-          <button type="button" className="btn btn--ghost" onClick={() => onUnassign(task)}>
-            Gỡ người
-          </button>
-        )}
-      </div>
-    </div>
+    <AssetReportList
+      assets={assets}
+      compact
+      rowAction={(asset) => <ViewReportButton reports={reportsByAsset[asset.id]} onOpen={onOpenReport} />}
+      emptyText="Phòng này chưa có tài sản cố định nào."
+    />
   );
 }
 

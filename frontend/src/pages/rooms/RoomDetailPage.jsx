@@ -9,9 +9,10 @@ import RoomActionDialog from '../../components/rooms/RoomActionDialog';
 import RoomForm from '../../components/rooms/RoomForm';
 import RoomNoteModal from '../../components/rooms/RoomNoteModal';
 import RoomHistoryList from '../../components/rooms/RoomHistoryList';
+import RoomAssetsPanel from '../../components/damage-reports/RoomAssetsPanel';
 import RoomStatusBadge from '../../components/rooms/RoomStatusBadge';
 import { formatDateTime } from './format';
-import { LOCK, roomActionsFor, statusChangedMessage } from './roomActions';
+import { DELETE_ROOM_WARNING, LOCK, canDeleteRoom, roomActionsFor, statusChangedMessage } from './roomActions';
 import { useRoomAction } from './useRoomAction';
 import { useRoomTypes, useTenantLocations } from './useRoomLookups';
 import './rooms.css';
@@ -19,13 +20,9 @@ import './rooms.css';
 const TABS = [
   { key: 'info', label: 'Thông tin phòng' },
   { key: 'history', label: 'Lịch sử trạng thái' },
+  // Nhân viên Lễ tân / Dọn dẹp báo hỏng tài sản ngay tại đây (BR-ASSET-05); vai trò khác chỉ xem.
+  { key: 'assets', label: 'Tài sản trong phòng' },
 ];
-
-/**
- * Trạng thái mà phòng còn xóa được — chỉ dùng để ẨN nút cho đỡ vướng. Backend vẫn kiểm tra đủ
- * ba điều kiện (trạng thái, việc dọn đang mở, tài sản gắn vào) và trả lỗi nếu gọi thẳng API.
- */
-const DELETABLE_STATUSES = ['AVAILABLE', 'UNAVAILABLE'];
 
 /**
  * S-04 Chi tiết phòng — mọi vai trò trong Tenant xem được, trong phạm vi Location của mình
@@ -46,8 +43,6 @@ export default function RoomDetailPage() {
   const navigate = useNavigate();
   const isDirector = user?.role === 'DIRECTOR';
   const isManager = user?.role === 'MANAGER';
-  // Danh sách phòng (S-02) dành cho Giám đốc/Manager; Staff quay về sơ đồ phòng.
-  const canSeeList = isDirector || user?.role === 'MANAGER';
 
   const locations = useTenantLocations(isDirector);
   // Danh mục loại phòng chỉ cần khi Giám đốc mở form sửa; Staff gọi API này sẽ nhận 403.
@@ -59,7 +54,9 @@ export default function RoomDetailPage() {
 
   // Sơ đồ phòng mở thẳng tab lịch sử qua react-router state ("Xem chi tiết và toàn bộ lịch sử").
   const { state: navigationState } = useLocation();
-  const [tab, setTab] = useState(navigationState?.tab === 'history' ? 'history' : 'info');
+  const [tab, setTab] = useState(
+    TABS.some((item) => item.key === navigationState?.tab) ? navigationState.tab : 'info',
+  );
   const [banner, setBanner] = useState(null); // { type, text }
   // Tăng lên sau mỗi lần đổi trạng thái → RoomHistoryList dựng lại, nạp từ trang đầu.
   const [historyVersion, setHistoryVersion] = useState(0);
@@ -119,14 +116,14 @@ export default function RoomDetailPage() {
   }
 
   /**
-   * RM-05 — xóa phòng. Xóa xong thì không còn gì để xem ở trang này nữa, nên quay về danh sách
+   * RM-05 — xóa phòng. Xóa xong thì không còn gì để xem ở trang này nữa, nên quay về sơ đồ phòng
    * và mang theo câu báo. Bị backend chặn thì ở lại và hiện nguyên văn câu lỗi.
    */
   async function handleConfirmDelete() {
     setPendingDelete(false);
     try {
       await deleteRoom(room.id);
-      navigate('/phong', { state: { banner: { type: 'success', text: `Đã xóa phòng ${room.roomNumber}.` } } });
+      navigate('/so-do-phong', { state: { banner: { type: 'success', text: `Đã xóa phòng ${room.roomNumber}.` } } });
     } catch (err) {
       setBanner({ type: 'error', text: readErrorMessage(err, 'Không xóa được phòng.') });
     }
@@ -138,12 +135,12 @@ export default function RoomDetailPage() {
     onChanged: handleStatusChanged,
     onError: (text) => setBanner({ type: 'error', text }),
   });
-  const canDelete = isDirector && DELETABLE_STATUSES.includes(room?.status);
+  const canDelete = isDirector && canDeleteRoom(room);
 
   return (
     <div className="page">
-      <Link className="back-link" to={canSeeList ? '/phong' : '/so-do-phong'}>
-        ‹ Quay lại {canSeeList ? 'danh sách phòng' : 'sơ đồ phòng'}
+      <Link className="back-link" to="/so-do-phong">
+        ‹ Quay lại sơ đồ phòng
       </Link>
 
       {loading && <p className="state">Đang tải dữ liệu…</p>}
@@ -255,6 +252,7 @@ export default function RoomDetailPage() {
             {!editing && tab === 'history' && (
               <RoomHistoryList key={`${room.id}-${historyVersion}`} roomId={room.id} />
             )}
+            {!editing && tab === 'assets' && <RoomAssetsPanel roomId={room.id} />}
           </section>
 
           {statusAction.pending?.action.flow === LOCK && (
@@ -280,13 +278,7 @@ export default function RoomDetailPage() {
           {pendingDelete && (
             <ConfirmDialog
               title={`Xóa phòng ${room.roomNumber}?`}
-              message={
-                <>
-                  Thao tác này không hoàn tác được. Hệ thống sẽ từ chối nếu phòng đang có khách
-                  hoặc đang trong quy trình dọn, còn việc dọn phòng chưa kết thúc, hoặc còn tài sản
-                  cố định gắn vào. Phòng đã xóa vẫn tính vào hạn mức của gói dịch vụ.
-                </>
-              }
+              message={DELETE_ROOM_WARNING}
               confirmLabel="Xóa phòng"
               onCancel={() => setPendingDelete(false)}
               onConfirm={handleConfirmDelete}

@@ -12,10 +12,10 @@
 --   Ca đêm     22:00 – 06:00  Qua đêm: 8 giờ tính trọn vào ngày bắt đầu (BR-SCH-03)
 --
 -- Cả ba là mẫu CHUNG (location_id NULL — dùng ở mọi chi nhánh). Mẫu riêng một chi nhánh thì
--- Giám đốc tự tạo ở màn "Quy tắc xếp lịch" (V5).
+-- Giám đốc tự tạo ở màn "Quy tắc xếp lịch" (V6).
 --
 -- "ON DUPLICATE KEY UPDATE id = id" cũng bỏ qua khi Tenant đã tự tạo mẫu chung trùng tên
--- (unique tenant_id + scope_key + name — V5), không ghi đè mẫu của người dùng.
+-- (unique tenant_id + scope_key + name — V6), không ghi đè mẫu của người dùng.
 -- =============================================================================
 
 SET NAMES utf8mb4;
