@@ -6,7 +6,6 @@ import { hasPermission } from '../../permissions';
 import { readErrorMessage } from '../../api/client';
 import { fetchTasks } from '../../api/housekeeping';
 import { createRoom, deleteRoom, fetchAllRooms, fetchRoom, updateRoom } from '../../api/rooms';
-import { fetchStaffDirectory } from '../../api/users';
 import AssetAuditModal from '../../components/AssetAuditModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import FormModal from '../../components/FormModal';
@@ -33,7 +32,7 @@ import {
   roomCardHint,
   roomTypeNamesOf,
 } from './roomBoard';
-import { ROOM_STATUS_ORDER, roomStatusMeta } from './roomLabels';
+import { ROOM_STATUS_ORDER, roomStatusMeta, taskRoomLabel, teamNames } from './roomLabels';
 import { useRoomAction } from './useRoomAction';
 import { useRoomTypes, useTenantLocations } from './useRoomLookups';
 import './rooms.css';
@@ -57,7 +56,8 @@ const NO_FILTER = { status: '', floor: '', roomType: '', search: '' };
  *
  * Bấm thẻ → bảng chi tiết (`RoomBoardPanel`): thao tác đổi trạng thái lấy từ `room.allowedTargets`
  * (Quản lý khóa / mở khóa — F2; Lễ tân đặt / nhận / trả phòng — F4). Riêng Quản lý chi nhánh thấy
- * thêm việc dọn đang mở của phòng để phân công, kiểm tra, gỡ người ngay tại sơ đồ (F5, F6).
+ * thêm nút Phân công khi phòng có việc dọn chưa có người làm (F5); kiểm tra phòng, thêm / gỡ người
+ * dọn làm ở màn Công việc dọn phòng (F6).
  *
  * Đổi trạng thái xong chỉ thay đúng thẻ đó bằng phòng trong response — không tải lại cả sơ đồ,
  * để Lễ tân đang xếp khách không bị mất chỗ đang xem.
@@ -110,9 +110,8 @@ export default function RoomBoardPage() {
   // Tăng sau mỗi lần kiểm kê → bảng chi tiết nạp lại danh sách tài sản của phòng.
   const [assetsKey, setAssetsKey] = useState(0);
 
-  // Chỉ Quản lý chi nhánh: việc dọn đang mở theo phòng + tên người làm (DTO chỉ có id).
+  // Chỉ Quản lý chi nhánh: việc dọn đang mở theo phòng (kèm tên nhóm dọn).
   const [tasksByRoom, setTasksByRoom] = useState({});
-  const [staffNames, setStaffNames] = useState({});
 
   const [assigning, setAssigning] = useState(null);
   const [noteRoom, setNoteRoom] = useState(null);
@@ -182,24 +181,9 @@ export default function RoomBoardPage() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (!isManager) return undefined;
-    let cancelled = false;
-    fetchStaffDirectory()
-      .then((data) => {
-        if (cancelled) return;
-        const list = data.content ?? data ?? [];
-        setStaffNames(Object.fromEntries(list.map((person) => [person.id, person.fullName])));
-      })
-      .catch(() => !cancelled && setStaffNames({}));
-    return () => {
-      cancelled = true;
-    };
-  }, [isManager]);
-
   /**
    * Sau mỗi thao tác: tải lại việc dọn (đổi trạng thái phòng có thể sinh / hủy việc — BR-HK-01,
-   * BR-HK-09, BR-HK-10) và lịch sử trong bảng chi tiết. Màn hẹp thì đóng bảng chi tiết để câu
+   * BR-HK-09) và lịch sử trong bảng chi tiết. Màn hẹp thì đóng bảng chi tiết để câu
    * báo kết quả và thẻ vừa đổi màu hiện ra ngay trước mắt.
    */
   const afterChange = useCallback(() => {
@@ -250,11 +234,13 @@ export default function RoomBoardPage() {
   }
 
   function finishAssign(updated) {
+    const wasAdding = assigning?.status === 'IN_PROGRESS';
     setAssigning(null);
     setBanner({
       type: 'success',
-      text: `Đã giao việc dọn phòng ${updated.roomNumber}.`
-        + (updated.taskType === 'CHECKOUT' ? ' Phòng chuyển sang «Đang dọn».' : ''),
+      text: wasAdding
+        ? `Nhóm dọn phòng ${taskRoomLabel(updated)} giờ gồm: ${teamNames(updated)}.`
+        : `Đã giao việc dọn phòng ${taskRoomLabel(updated)} cho ${teamNames(updated)}. Phòng chuyển sang «Đang dọn».`,
     });
     refreshRoom(updated.roomId);
     afterChange();
@@ -592,7 +578,7 @@ export default function RoomBoardPage() {
                       <RoomCard
                         key={room.id}
                         room={room}
-                        hint={roomCardHint(room, tasksByRoom[room.id], staffNames)}
+                        hint={roomCardHint(room, tasksByRoom[room.id])}
                         selected={room.id === selectedId}
                         onSelect={(picked) => setSelectedId(picked.id)}
                       />

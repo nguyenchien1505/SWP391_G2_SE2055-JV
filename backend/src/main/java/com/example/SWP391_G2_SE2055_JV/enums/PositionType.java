@@ -1,19 +1,20 @@
 package com.example.SWP391_G2_SE2055_JV.enums;
 
 /**
- * Loại Position — BR-ORG-08.
+ * Loại Position — BR-ORG-08 (bản sửa, xem docs/THAY_DOI_BR.docx).
  *
- * <p>Tên Position do Giám đốc đặt tùy ý và có thể có nhiều Position cùng Loại;
- * quyền nghiệp vụ đặc thù gán theo LOẠI này, không theo tên.
+ * <p>Tên Position do Giám đốc đặt tùy ý và có thể có nhiều Position cùng Loại. Loại KHÔNG cấp
+ * quyền: quyền nghiệp vụ là {@link StaffPermission}, Manager tick cho từng nhân viên. Loại chỉ
+ * quyết định ô nào được tick sẵn khi chọn Position này — xem {@link StaffPermission#defaultFor}.
  */
 public enum PositionType {
 
-    /** Lễ tân — cập nhật trạng thái phòng khi khách check-in/check-out (BR-PERM-04). */
+    /** Lễ tân — tick sẵn quyền Lễ tân. */
     RECEPTION,
 
-    /** Dọn dẹp — nhận và hoàn thành task dọn phòng (BR-PERM-05). */
+    /** Dọn dẹp — tick sẵn quyền Dọn dẹp. */
     HOUSEKEEPING,
 
-    /** Khác — chỉ có quyền chung, không có quyền nghiệp vụ đặc thù (BR-ORG-09, BR-PERM-06). */
+    /** Khác — không tick sẵn quyền nào; người giữ chỉ có quyền chung nếu Manager không tick thêm. */
     OTHER
 }

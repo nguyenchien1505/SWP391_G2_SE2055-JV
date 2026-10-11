@@ -6,6 +6,7 @@ import lombok.Getter;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @Builder
@@ -18,10 +19,21 @@ public class ApiError {
     private final String path;
     private final List<FieldError> fieldErrors;
 
+    /** Lý do từng nhân viên bị chặn khi giao một ca cho nhiều người — xem {@link ShiftBatchRejectedException}. */
+    private final List<StaffViolation> violations;
+
     @Getter
     @Builder
     public static class FieldError {
         private final String field;
+        private final String message;
+    }
+
+    @Getter
+    @Builder
+    public static class StaffViolation {
+        private final UUID   staffId;
+        private final String fullName;
         private final String message;
     }
 }

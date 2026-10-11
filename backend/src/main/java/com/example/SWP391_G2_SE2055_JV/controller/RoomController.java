@@ -54,7 +54,8 @@ public class RoomController {
 
     /**
      * Khớp rule URL của {@code PATCH /rooms/*}{@code /status}: Manager (khóa/mở khóa — BR-ROOM-03)
-     * và Position loại Lễ tân (BR-PERM-04). Giám đốc, Dọn dẹp, Position Khác bị chặn từ đây.
+     * và nhân viên có quyền Lễ tân (BR-PERM-04). Giám đốc và nhân viên không có quyền Lễ tân bị
+     * chặn từ đây.
      */
     private static final String CAN_CHANGE_STATUS =
         "hasAnyRole('PLATFORM_ADMIN','MANAGER') or hasAuthority('POSITION_RECEPTION')";

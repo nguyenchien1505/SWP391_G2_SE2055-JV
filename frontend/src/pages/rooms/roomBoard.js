@@ -3,7 +3,7 @@
 // liệu khách: hệ thống không lưu thông tin khách lưu trú (BR-ROOM-09, DM-06).
 
 import { formatDate, formatShortDateTime, todayIso } from './format';
-import { compareNatural } from './roomLabels';
+import { compareNatural, teamNames } from './roomLabels';
 
 /**
  * Gom phòng theo tầng, tầng và số phòng đều sắp kiểu "tự nhiên" (2 trước 10; tầng là chữ nên
@@ -51,16 +51,13 @@ export function matchesBoardFilter(room, { status, floor, roomType, search }) {
 }
 
 /**
- * Việc dọn ĐANG MỞ theo phòng: { [roomId]: task[] }, việc dọn sau trả phòng đứng trước.
- * Mỗi phòng tối đa 1 việc mở cho mỗi loại (BR-HK-11), nên mỗi mảng dài nhất 2 phần tử.
+ * Việc dọn ĐANG MỞ theo phòng: { [roomId]: task[] }. Mỗi phòng tối đa 1 việc mở (BR-HK-11), nên
+ * thường mỗi mảng chỉ một phần tử — vẫn để mảng cho dữ liệu cũ khỏi bị khuất.
  */
 export function indexOpenTasks(tasks) {
   const byRoom = {};
   for (const task of tasks) {
     (byRoom[task.roomId] ??= []).push(task);
-  }
-  for (const list of Object.values(byRoom)) {
-    list.sort((a, b) => (a.taskType === 'CHECKOUT' ? -1 : 0) - (b.taskType === 'CHECKOUT' ? -1 : 0));
   }
   return byRoom;
 }
@@ -77,14 +74,14 @@ export function isOverdue(task) {
  *
  * @returns {{ text: string, attention: boolean } | null} `attention` = cần Quản lý xử lý
  */
-export function roomCardHint(room, tasks = [], staffNames = {}) {
+export function roomCardHint(room, tasks = []) {
   if (room.status === 'UNAVAILABLE') {
     return room.unavailableReason ? { text: room.unavailableReason, attention: false } : null;
   }
 
-  const checkout = tasks.find((task) => task.taskType === 'CHECKOUT');
-  const stayover = tasks.find((task) => task.taskType === 'STAYOVER');
-  const nameOf = (task) => staffNames[task.assignedStaffId] ?? 'Nhân viên đã nghỉ';
+  const checkout = tasks[0];
+  // Một phòng có thể nhiều người dọn — ghi cả nhóm.
+  const nameOf = (task) => teamNames(task) || 'Nhân viên đã nghỉ';
   const join = (...parts) => parts.filter(Boolean).join(' · ');
 
   switch (room.status) {
@@ -105,11 +102,6 @@ export function roomCardHint(room, tasks = [], staffNames = {}) {
         text: join(checkout.completedAt && `Xong ${formatShortDateTime(checkout.completedAt)}`, nameOf(checkout)),
         attention: true,
       };
-    case 'OCCUPIED':
-      if (!stayover) return null;
-      return stayover.status === 'UNASSIGNED'
-        ? { text: 'Dọn hằng ngày: chưa phân công', attention: true }
-        : { text: `Dọn hằng ngày: ${nameOf(stayover)}`, attention: isOverdue(stayover) };
     default:
       return null;
   }

@@ -1,13 +1,21 @@
 package com.example.SWP391_G2_SE2055_JV.entity;
 
+import java.util.UUID;
+
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
-import jakarta.persistence.*;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
-
-import java.util.UUID;
 
 /**
  * Chức danh — danh mục cấp TENANT, thuộc đúng 1 Department (BR-ORG-06, BR-ORG-07).
@@ -39,7 +47,10 @@ public class Position extends AuditableEntity {
     @Column(name = "name", length = 100, nullable = false)
     private String name;
 
-    /** Quyền nghiệp vụ đặc thù gán theo LOẠI này, không theo tên — BR-ORG-08. */
+    /**
+     * Loại chức danh — chỉ là gợi ý tick sẵn quyền khi Manager chọn chức danh này cho nhân viên.
+     * Quyền thật nằm ở {@code User.permissions}, Manager tick cho từng người (BR-ORG-08 bản sửa).
+     */
     @Enumerated(EnumType.STRING)
     @Column(name = "position_type", length = 20, nullable = false)
     private PositionType positionType;
@@ -48,14 +59,4 @@ public class Position extends AuditableEntity {
     @Column(name = "is_active", nullable = false)
     @lombok.Builder.Default
     private boolean active = true;
-
-    /** BR-PERM-04: chỉ Position loại Lễ tân mới được đổi trạng thái phòng. */
-    public boolean isReception() {
-        return positionType == PositionType.RECEPTION;
-    }
-
-    /** BR-PERM-05: chỉ Position loại Dọn dẹp mới nhận được task housekeeping. */
-    public boolean isHousekeeping() {
-        return positionType == PositionType.HOUSEKEEPING;
-    }
 }

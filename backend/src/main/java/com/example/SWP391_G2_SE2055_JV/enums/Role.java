@@ -3,9 +3,9 @@ package com.example.SWP391_G2_SE2055_JV.enums;
 /**
  * Vai trò tài khoản — DM-01.
  *
- * <p>Chỉ 4 giá trị. "Lễ tân" và "Dọn dẹp" KHÔNG phải role: chúng là
- * {@link PositionType} của Position mà Staff được gán (BR-ORG-08). Quyền nghiệp vụ
- * đặc thù gán theo LOẠI Position, không theo tên Position và không theo role.
+ * <p>Chỉ 4 giá trị. "Lễ tân" và "Dọn dẹp" KHÔNG phải role: chúng là quyền nghiệp vụ
+ * ({@link StaffPermission}) Manager tick cho từng Staff, một người có thể có cả hai.
+ * {@link PositionType} của Position chỉ dùng để tick sẵn các quyền đó.
  */
 public enum Role {
 

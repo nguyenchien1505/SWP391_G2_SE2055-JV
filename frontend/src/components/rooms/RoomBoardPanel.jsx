@@ -28,8 +28,7 @@ const HISTORY_PREVIEW = 5;
  *
  * Quản lý chi nhánh: đầu bảng báo "Chưa phân công" + nút Phân công khi phòng có việc dọn chưa có
  * người làm; ngay dưới nút đổi trạng thái là hàng công cụ Khóa / Mở khóa phòng, Thêm tài sản, Kiểm
- * kê. Các thao tác khác trên việc dọn (kiểm tra phòng, gỡ người, hủy, tạo việc dọn hằng ngày) ở màn
- * Công việc dọn phòng.
+ * kê. Các thao tác khác trên việc dọn (kiểm tra phòng, thêm / gỡ người dọn) ở màn Công việc dọn phòng.
  *
  * Nút đổi trạng thái vẽ từ `room.allowedTargets` do backend tính (F2) — không có dãy nút "chuyển
  * nhanh sang trạng thái bất kỳ": Đang dọn / Chờ kiểm tra chỉ đổi qua việc dọn (BR-ROOM-02).

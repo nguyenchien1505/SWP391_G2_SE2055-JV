@@ -39,10 +39,10 @@ const isDirector = (user) => user?.role === 'DIRECTOR';
 const isManager = (user) => user?.role === 'MANAGER';
 
 /**
- * Có ca làm việc: check-in/out, xem lịch cá nhân, xin nghỉ — Manager và mọi Staff (BR-PERM-03..06).
- * Giám đốc không có ca nên không có mục này.
+ * Có ca làm việc: check-in/out, xem lịch cá nhân, xin nghỉ — chỉ nhân viên (BR-PERM-04..06). Quản lý
+ * khách sạn không có ca (chốt 05/10/2026), Giám đốc cũng không.
  */
-const hasShifts = (user) => user?.role === 'MANAGER' || user?.role === 'STAFF';
+const hasShifts = (user) => user?.role === 'STAFF';
 
 /** Manager và Staff thuộc đúng một khách sạn — hiện tên khách sạn trên thanh tiêu đề. */
 const worksAtLocation = (user) => user?.role === 'MANAGER' || user?.role === 'STAFF';
@@ -92,10 +92,12 @@ const NAV_GROUPS = [
     title: 'Lịch làm việc & dọn dẹp',
     items: [
       // Schedule Policy và Shift Template — Giám đốc (BR-SCH-01, BR-SCH-22).
-      { label: 'Quy định & Mẫu ca', visible: isDirector },
-      { label: 'Xếp lịch làm việc', visible: isBranchManager },
+      { label: 'Quy định & Mẫu ca', to: '/quy-dinh-ca', visible: isDirector },
+      { label: 'Xếp lịch làm việc', to: '/xep-lich', visible: isBranchManager },
       { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
+      { label: 'Lịch dọn phòng', to: '/lich-don-phong', visible: isBranchManager },
       { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: (user) => isStaff(user) && isHousekeeper(user) },
+      { label: 'Lịch dọn của tôi', to: '/lich-don-phong', visible: (user) => isStaff(user) && isHousekeeper(user) },
       { label: 'Lịch cá nhân & Chấm công', visible: hasShifts },
     ],
   },

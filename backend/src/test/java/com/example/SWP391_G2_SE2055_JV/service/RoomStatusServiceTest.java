@@ -269,17 +269,20 @@ class RoomStatusServiceTest {
             verifyNoInteractions(hooks);
         }
 
-        /** BR-HK-10 rồi BR-HK-01: hủy task dọn hằng ngày TRƯỚC, sinh task check-out SAU. */
+        /**
+         * BR-HK-01: khách trả phòng → ghi lịch sử rồi sinh việc dọn chưa phân công. Đã bỏ dọn hằng
+         * ngày (V4) nên không còn việc nào phải hủy trước.
+         */
         @Test
-        void shouldCancelStayoverBeforeCreatingCheckoutTaskWhenGuestChecksOut() {
+        void shouldCreateCheckoutTaskWhenGuestChecksOut() {
             Room room = room(RoomStatus.OCCUPIED);
 
             service.changeStatusByUser(room, request(RoomStatus.DIRTY, null));
 
             InOrder order = inOrder(historyRepository, hooks);
             order.verify(historyRepository).save(any(RoomStatusHistory.class));
-            order.verify(hooks).onGuestCheckedOut(room);
             order.verify(hooks).onRoomBecameDirty(room);
+            verify(hooks, never()).onRoomBecameUnavailable(any());
         }
 
         /** RM-09 — check-in khách vãng lai: Trống → Đang sử dụng, không đụng task nào. */
@@ -390,7 +393,7 @@ class RoomStatusServiceTest {
             assertNothingWritten(room, RoomStatus.OCCUPIED);
         }
 
-        /** Position loại Khác không có quyền nghiệp vụ đặc thù nào. */
+        /** Nhân viên không được tick quyền nào (mặc định của vị trí loại Khác) chỉ có quyền chung. */
         @Test
         void shouldForbidOtherPositionFromReserving() {
             TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.OTHER);

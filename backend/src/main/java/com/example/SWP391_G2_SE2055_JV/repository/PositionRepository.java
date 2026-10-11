@@ -1,7 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.repository;
 
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
-import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -52,8 +51,6 @@ public interface PositionRepository extends JpaRepository<Position, UUID> {
 
     /** Dùng khi đổi tên: bỏ qua chính bản ghi đang sửa. */
     boolean existsByTenantIdAndNameAndIdNot(UUID tenantId, String name, UUID id);
-
-    List<Position> findByTenantIdAndPositionType(UUID tenantId, PositionType positionType);
 
     /** BR-ORG-10: chặn xóa Department khi còn Position trỏ vào. */
     boolean existsByDepartmentId(UUID departmentId);

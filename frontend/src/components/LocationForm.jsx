@@ -153,12 +153,13 @@ export default function LocationForm({ editing, canManage, onSubmit, onCancel })
         <p>
           {editing
             ? editing.status === 'OPERATIONAL'
-              ? 'Đang hoạt động — chi nhánh đã có quản lý phụ trách.'
-              : 'Chưa vận hành — cần gán một Quản lý chi nhánh để kích hoạt.'
+              ? 'Đang hoạt động — quản lý phụ trách đã bắt đầu làm việc.'
+              : 'Chưa vận hành — chưa có quản lý, hoặc quản lý được giao chưa tới ngày bắt đầu làm.'
             : 'Khách sạn mới sẽ ở trạng thái “Chưa vận hành” cho tới khi được gán quản lý.'}
         </p>
         <small className="muted">
-          Trạng thái do hệ thống tự đặt theo việc có quản lý hay không, không chỉnh tay được.
+          Trạng thái do hệ thống tự đặt, không chỉnh tay được: chi nhánh chuyển sang “Đang hoạt động” đúng
+          vào ngày bắt đầu làm của quản lý được giao.
         </small>
       </div>
 

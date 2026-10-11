@@ -12,8 +12,9 @@ import java.util.UUID;
 /**
  * Một cơ sở khách sạn thuộc Tenant — BR-ORG-01.
  *
- * <p>Location mới tạo ở trạng thái NOT_OPERATIONAL cho tới khi được gán Manager
- * (BR-ORG-02, DM-13). Số lượng Location bị giới hạn bởi quota gói dịch vụ
+ * <p>Location mới tạo ở trạng thái NOT_OPERATIONAL cho tới khi được gán Manager VÀ tới ngày
+ * Manager đó bắt đầu làm việc (BR-ORG-02, DM-13, chốt 06/10/2026 — xem
+ * {@code LocationActivationService}). Số lượng Location bị giới hạn bởi quota gói dịch vụ
  * (BR-SAAS-02).
  */
 @Entity
@@ -50,10 +51,18 @@ public class Location extends AuditableEntity {
     @lombok.Builder.Default
     private String timezone = "Asia/Ho_Chi_Minh";
 
-    /** NOT_OPERATIONAL khi chưa có Manager — DM-13, BR-ORG-02. */
+    /** NOT_OPERATIONAL khi chưa có Manager, hoặc Manager chưa tới ngày bắt đầu làm — DM-13, BR-ORG-02. */
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 20, nullable = false)
     private LocationStatus status;
+
+    /**
+     * Bộ mẫu ca chi nhánh đang dùng (V6, chốt 06/10/2026): false = bộ mẫu chung của chuỗi, true =
+     * bộ mẫu riêng của chính chi nhánh. Giám đốc bật / tắt ở màn Quy định & Mẫu ca.
+     */
+    @Column(name = "own_shift_templates", nullable = false)
+    @lombok.Builder.Default
+    private boolean ownShiftTemplates = false;
 
     /** BR-ORG-02: chưa có Manager thì Location chưa được vận hành chính thức. */
     public boolean isOperational() {

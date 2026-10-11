@@ -20,6 +20,18 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
 
     Page<Shift> findByStaffId(UUID staffId, Pageable pageable);
 
+    // Cùng ba phạm vi như trên, giới hạn theo khoảng ngày bắt đầu ca — màn xếp lịch tuần chỉ
+    // cần đúng 7 ngày. Lọc theo shift_date là đủ vì ca qua đêm thuộc về ngày bắt đầu (BR-SCH-03).
+
+    Page<Shift> findByTenantIdAndShiftDateBetween(
+        UUID tenantId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
+
+    Page<Shift> findByTenantIdAndLocationIdAndShiftDateBetween(
+        UUID tenantId, UUID locationId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
+
+    Page<Shift> findByStaffIdAndShiftDateBetween(
+        UUID staffId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
+
     Optional<Shift> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /**
@@ -29,8 +41,21 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
     List<Shift> findByStaffIdAndShiftDateBetweenOrderByShiftDateAscStartTimeAsc(
         UUID staffId, LocalDate fromDate, LocalDate toDate);
 
+    /**
+     * Mọi slot của MỘT ca theo mẫu trong một ngày ở một khách sạn — ví dụ "Ca sáng 05/10 ở khách sạn
+     * A". Dùng cho quy tắc mỗi ca theo mẫu phải có lễ tân (ReceptionCoverageRule).
+     */
+    List<Shift> findByLocationIdAndShiftDateAndSourceTemplateId(UUID locationId, LocalDate shiftDate,
+                                                               UUID sourceTemplateId);
+
     /** BR-HK-03: chỉ được assign task dọn cho nhân viên đang có ca trong ngày đó. */
     boolean existsByStaffIdAndShiftDate(UUID staffId, LocalDate shiftDate);
+
+    /**
+     * Còn ca nào KHÁC trong ngày không — gỡ / xóa / dời một ca chỉ làm người đó mất ngày làm
+     * việc (và chạm BR-HK-03) khi đây là ca duy nhất của họ hôm ấy.
+     */
+    boolean existsByStaffIdAndShiftDateAndIdNot(UUID staffId, LocalDate shiftDate, UUID id);
 
     /**
      * BR-SCH-17 + BR-TRF-05 + BR-USER-04: gỡ ca TƯƠNG LAI khi điều chuyển / nghỉ việc.
