@@ -11,3 +11,30 @@ export async function fetchInvoices() {
   const { data } = await api.get('/billing/invoices');
   return data;
 }
+
+/** Mua gói lần đầu — trả { paymentUrl } để chuyển sang VNPay, hoặc { message, activated }. */
+export async function purchasePlan({ quotaLocation, quotaUser, quotaRoom }) {
+  const { data } = await api.post('/billing/purchase', { quotaLocation, quotaUser, quotaRoom });
+  return data;
+}
+
+/** Mua thêm quota giữa kỳ — số lượng MỚI (không phải phần tăng). Trả { paymentUrl } hoặc { message, activated }. */
+export async function upgradePlan({ quotaLocation, quotaUser, quotaRoom }) {
+  const { data } = await api.post('/billing/upgrade', { quotaLocation, quotaUser, quotaRoom });
+  return data;
+}
+
+/** Gia hạn 1 kỳ 30 ngày theo quota hiện tại — trả { paymentUrl } hoặc { message, activated }. */
+export async function renewPlan() {
+  const { data } = await api.post('/billing/renew');
+  return data;
+}
+
+/**
+ * Gửi nguyên chuỗi tham số VNPay gắn vào trang kết quả (`?vnp_...`) lên backend để kiểm tra chữ
+ * ký và cập nhật hóa đơn. Trả { status, message, quotaLocation, quotaUser, quotaRoom, ... }.
+ */
+export async function confirmVnpayReturn(search) {
+  const { data } = await api.get(`/billing/vnpay-return${search}`);
+  return data;
+}

@@ -1,13 +1,19 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.entity.EmailVerificationToken;
+import com.example.SWP391_G2_SE2055_JV.entity.Subscription;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.SuspendReason;
+import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.repository.EmailVerificationTokenRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.SchedulePolicyRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.SubscriptionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.TenantRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
+import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +32,9 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.util.HtmlUtils;
 
 import java.io.UnsupportedEncodingException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -57,6 +65,13 @@ public class EmailVerificationService {
     private final EmailVerificationTokenRepository tokenRepository;
     private final UserRepository                   userRepository;
     private final TenantRepository                 tenantRepository;
+    private final SubscriptionRepository           subscriptionRepository;
+    private final SchedulePolicyRepository         schedulePolicyRepository;
+    private final PlatformConfigService            platformConfigService;
+
+    /** Số ngày giữ đăng ký chưa xác thực trước khi job xóa — tính từ lúc đăng ký. */
+    @Value("${app.unverified-cleanup.days:7}")
+    private int unverifiedRetentionDays;
     private final ApplicationEventPublisher        eventPublisher;
     private final ObjectProvider<JavaMailSender>   mailSenderProvider;
 
@@ -107,10 +122,75 @@ public class EmailVerificationService {
         if (user.getRole() == Role.DIRECTOR && user.getStatus() == UserStatus.INACTIVE) {
             user.setStatus(UserStatus.ACTIVE);
             userRepository.save(user);
+            startTrialFromToday(user.getTenantId());
         }
         tokenRepository.delete(record);
 
         log.info("Xác thực email thành công cho {}", user.getEmail());
+    }
+
+    /**
+     * Thời gian dùng thử tính từ ngày XÁC THỰC, không từ ngày đăng ký: thời gian chờ bấm link
+     * không ăn vào số ngày dùng thử. Nếu job hết hạn dùng thử đã lỡ khóa Tenant trong lúc chờ
+     * (TRIAL_EXPIRED) thì mở lại về TRIAL — Tenant này chưa từng được dùng.
+     */
+    private void startTrialFromToday(UUID tenantId) {
+        LocalDate today = ShiftTimeUtils.todayInHanoi();
+        int trialDays = platformConfigService.loadSystemConfig().getTrialDays();
+
+        Subscription sub = subscriptionRepository.findByTenantId(tenantId).orElse(null);
+        if (sub != null && sub.isTrial()) {
+            sub.setTrialEndsAt(today.plusDays(trialDays));
+            subscriptionRepository.save(sub);
+        }
+
+        tenantRepository.findById(tenantId).ifPresent(tenant -> {
+            if (tenant.getStatus() == TenantStatus.SUSPENDED
+                    && tenant.getSuspendReason() == SuspendReason.TRIAL_EXPIRED) {
+                tenant.setStatus(TenantStatus.TRIAL);
+                tenant.setSuspendReason(null);
+                tenantRepository.save(tenant);
+            }
+        });
+    }
+
+    /** Mã của các đăng ký đã quá {@code app.unverified-cleanup.days} ngày mà chưa xác thực. */
+    @Transactional(readOnly = true)
+    public List<UUID> findExpiredRegistrations() {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(unverifiedRetentionDays);
+        return tokenRepository.findByCreatedAtBefore(cutoff).stream()
+            .map(EmailVerificationToken::getId)
+            .toList();
+    }
+
+    /**
+     * Xóa trọn một đăng ký chưa xác thực: mã → policy → gói → Giám đốc → Tenant, trong 1
+     * transaction. An toàn vì Giám đốc chưa xác thực chưa từng đăng nhập được, nên Tenant chưa
+     * có dữ liệu nào khác. Xóa xong email được giải phóng để đăng ký lại.
+     *
+     * <p>Chỉ xóa khi tài khoản đúng là Giám đốc còn INACTIVE; trường hợp khác (dữ liệu lệch) chỉ
+     * xóa mã thừa.
+     */
+    @Transactional
+    public void deleteUnverifiedRegistration(UUID tokenId) {
+        EmailVerificationToken record = tokenRepository.findById(tokenId).orElse(null);
+        if (record == null) {
+            return;
+        }
+        User user = userRepository.findById(record.getUserId()).orElse(null);
+        tokenRepository.delete(record);
+        if (user == null || user.getRole() != Role.DIRECTOR || user.getStatus() != UserStatus.INACTIVE) {
+            return;
+        }
+
+        UUID tenantId = user.getTenantId();
+        schedulePolicyRepository.findByTenantId(tenantId).ifPresent(schedulePolicyRepository::delete);
+        subscriptionRepository.findByTenantId(tenantId).ifPresent(subscriptionRepository::delete);
+        userRepository.delete(user);
+        tenantRepository.deleteById(tenantId);
+
+        log.info("Đã xóa đăng ký chưa xác thực quá {} ngày: Tenant {}, Giám đốc {}",
+            unverifiedRetentionDays, tenantId, user.getEmail());
     }
 
     /**

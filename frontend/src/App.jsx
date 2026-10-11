@@ -25,6 +25,7 @@ import MyDamageReportsPage from './pages/MyDamageReportsPage';
 import RegisterPage from './pages/RegisterPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import BillingPage from './pages/BillingPage';
+import PaymentResultPage from './pages/PaymentResultPage';
 
 
 /**
@@ -238,6 +239,8 @@ export default function App() {
       <Route path="/danh-muc" element={inShell(<RequireManagementRole><OrganizationCatalogPage /></RequireManagementRole>)} />
       {/* Gói dịch vụ — chỉ Giám đốc (trang tự đưa vai trò khác về trang chủ). */}
       <Route path="/goi-dich-vu" element={inShell(<BillingPage />)} />
+      {/* VNPay đưa Giám đốc về đây sau khi thanh toán (?vnp_...). */}
+      <Route path="/thanh-toan/ket-qua" element={inShell(<PaymentResultPage />)} />
 
       {/* Tài sản & dashboard — chỉ Giám đốc / Manager, khớp sidebar. Staff chỉ có quyền báo hỏng
           (BR-ASSET-05), không quản lý tài sản hay tồn kho; gõ thẳng URL thì về trang chủ của mình. */}
