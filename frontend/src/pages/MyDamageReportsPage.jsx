@@ -21,8 +21,8 @@ const TABS = [
  *
  * Hai phần:
  *   - **Tài sản khu vực** — báo hỏng tài sản gắn Khu vực (Sảnh, Hành lang, Kho…), vì những tài
- *     sản này không có trang chi tiết phòng. Tài sản trong phòng báo ở tab "Tài sản trong phòng"
- *     của chi tiết phòng.
+ *     sản này không có trang chi tiết phòng. Tài sản trong phòng báo ngay trên bảng chi tiết phòng
+ *     của Sơ đồ phòng (bấm thẳng vào tài sản), hoặc ở tab "Tài sản trong phòng" của chi tiết phòng.
  *   - **Phiếu đã gửi** — theo dõi quản lý đã xử lý chưa và xử lý thế nào. Backend chỉ trả phiếu
  *     do chính người đang đăng nhập gửi.
  *
@@ -100,8 +100,8 @@ function AreaAssetsSection({ onReport }) {
         <h2>Tài sản khu vực</h2>
       </div>
       <p className="muted">
-        Tài sản ở Sảnh, Hành lang, Kho… Tài sản trong phòng thì mở phòng trên{' '}
-        <Link className="inline-link" to="/so-do-phong">Sơ đồ phòng</Link> rồi chọn tab “Tài sản trong phòng”.
+        Tài sản ở Sảnh, Hành lang, Kho… Tài sản trong phòng thì bấm vào phòng trên{' '}
+        <Link className="inline-link" to="/so-do-phong">Sơ đồ phòng</Link> rồi bấm thẳng vào tài sản cần báo.
       </p>
 
       {loadError && (

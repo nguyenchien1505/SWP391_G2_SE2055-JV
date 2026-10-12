@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { hasPermission } from '../../permissions';
+import { canReportDamage, hasPermission } from '../../permissions';
 import { readErrorMessage } from '../../api/client';
 import { fetchTasks } from '../../api/housekeeping';
 import { createRoom, deleteRoom, fetchAllRooms, fetchRoom, updateRoom } from '../../api/rooms';
@@ -11,6 +11,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import FormModal from '../../components/FormModal';
 import { BatchCreateAssetsModal } from '../../components/modals/BatchCreateAssetsModal';
 import { DamageReportModal } from '../../components/modals/DamageReportModal';
+import DamageReportDialog from '../../components/damage-reports/DamageReportDialog';
 import { groupReportsBy } from '../../components/damage-reports/ViewReportButton';
 import { assetService } from '../../services/assetApi';
 import AssignTaskModal from '../../components/rooms/AssignTaskModal';
@@ -57,7 +58,8 @@ const NO_FILTER = { status: '', floor: '', roomType: '', search: '' };
  * Bấm thẻ → bảng chi tiết (`RoomBoardPanel`): thao tác đổi trạng thái lấy từ `room.allowedTargets`
  * (Quản lý khóa / mở khóa — F2; Lễ tân đặt / nhận / trả phòng — F4). Riêng Quản lý chi nhánh thấy
  * thêm nút Phân công khi phòng có việc dọn chưa có người làm (F5); kiểm tra phòng, thêm / gỡ người
- * dọn làm ở màn Công việc dọn phòng (F6).
+ * dọn làm ở màn Công việc dọn phòng (F6). Nhân viên Lễ tân / Dọn dẹp bấm thẳng vào tài sản trong
+ * bảng chi tiết để báo hỏng (BR-ASSET-05) — không phải sang tab tài sản của chi tiết phòng.
  *
  * Đổi trạng thái xong chỉ thay đúng thẻ đó bằng phòng trong response — không tải lại cả sơ đồ,
  * để Lễ tân đang xếp khách không bị mất chỗ đang xem.
@@ -68,6 +70,8 @@ export default function RoomBoardPage() {
   const isManager = user?.role === 'MANAGER';
   const isReception = user?.role === 'STAFF' && hasPermission(user, 'RECEPTION');
   const role = useMemo(() => ({ isDirector, isManager, isReception }), [isDirector, isManager, isReception]);
+  // Nhân viên có quyền Lễ tân hoặc Dọn dẹp — BR-ASSET-05.
+  const canReport = canReportDamage(user);
 
   const wide = useMediaQuery(WIDE_QUERY);
   // Đọc trong callback sau khi gọi API xong — ref để không phải tạo lại callback mỗi lần đổi khổ.
@@ -120,6 +124,9 @@ export default function RoomBoardPage() {
   // Chỉ Quản lý chi nhánh: báo hỏng theo phòng (roomId → danh sách) + phiếu đang mở trong hộp thoại.
   const [reportsByRoom, setReportsByRoom] = useState({});
   const [openReportId, setOpenReportId] = useState(null);
+  // Nhân viên Lễ tân / Dọn dẹp: tài sản đang báo hỏng (hộp thoại) và câu báo đã gửi của phòng đó.
+  const [reportingAsset, setReportingAsset] = useState(null);
+  const [reportNotice, setReportNotice] = useState(null); // { roomId, text }
 
   const replaceRoom = useCallback((updated) => {
     setRooms((prev) => prev.map((room) => (room.id === updated.id ? updated : room)));
@@ -315,10 +322,27 @@ export default function RoomBoardPage() {
     });
   }
 
+  /**
+   * Gửi báo hỏng xong: sơ đồ không đổi gì (BR-ASSET-06 — không tự khóa phòng, không đổi trạng thái
+   * tài sản) nên chỉ báo lại ngay trong bảng chi tiết, bảng vẫn mở để báo tiếp tài sản khác.
+   */
+  function finishDamageReport(report) {
+    setReportingAsset(null);
+    setReportNotice({
+      roomId: report.roomId,
+      text: `Đã gửi báo hỏng ${report.assetName} (${report.assetCode}) cho quản lý.`,
+    });
+  }
+
+  // Câu báo "đã gửi báo hỏng" thuộc về phòng đang mở — mở phòng khác hoặc đóng bảng thì bỏ.
+  useEffect(() => {
+    setReportNotice(null);
+  }, [selectedId]);
+
   const selectedRoom = rooms.find((room) => room.id === selectedId) ?? null;
   const modalOpen = Boolean(
     assigning || noteRoom || auditing || addingAssetTo || openReportId || roomForm || deleting
-      || action.pending,
+      || reportingAsset || action.pending,
   );
 
   // Esc đóng bảng chi tiết khi nó đang đè lên trang — trừ lúc có hộp thoại mở (Esc là của hộp thoại).
@@ -362,6 +386,15 @@ export default function RoomBoardPage() {
       setBanner(null);
       setAuditing(room);
     },
+    // Lễ tân / Dọn dẹp bấm thẳng vào dòng tài sản → hộp thoại báo hỏng (vẽ ở trang, trên bảng chi tiết).
+    onReportAsset: canReport
+      ? (asset) => {
+          setReportNotice(null);
+          setReportingAsset(asset);
+        }
+      : undefined,
+    reportNotice: reportNotice?.roomId === selectedRoom.id ? reportNotice.text : null,
+    onDismissReportNotice: () => setReportNotice(null),
   };
 
   return (
@@ -679,6 +712,13 @@ export default function RoomBoardPage() {
           emptyText="Phòng này chưa có tài sản cố định nào."
           onClose={() => setAuditing(null)}
           onSaved={(changedCount) => finishAudit(auditing, changedCount)}
+        />
+      )}
+      {reportingAsset && (
+        <DamageReportDialog
+          asset={reportingAsset}
+          onClose={() => setReportingAsset(null)}
+          onSubmitted={finishDamageReport}
         />
       )}
     </div>

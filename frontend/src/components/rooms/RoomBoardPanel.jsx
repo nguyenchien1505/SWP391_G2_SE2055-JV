@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import { fetchRoomHistory } from '../../api/rooms';
-import { useAuth } from '../../context/AuthContext';
-import { canReportDamage } from '../../permissions';
 import { assetService } from '../../services/assetApi';
 import { formatDateTime } from '../../pages/rooms/format';
 import { LOCK, roomActionsFor } from '../../pages/rooms/roomActions';
@@ -41,6 +39,10 @@ const HISTORY_PREVIEW = 5;
  * @param reports    báo hỏng của tài sản trong phòng (chỉ Quản lý chi nhánh) — có thì hiện nút
  *                   "Xem báo hỏng" cạnh tên tài sản
  * @param onOpenReport bấm "Xem báo hỏng" → hộp thoại xử lý báo hỏng
+ * @param onReportAsset chỉ nhân viên Lễ tân / Dọn dẹp (BR-ASSET-05): có giá trị thì mỗi dòng tài sản
+ *                   là một nút — bấm thẳng vào tài sản → hộp thoại báo hỏng (trang cha vẽ hộp thoại)
+ * @param reportNotice câu báo vừa gửi báo hỏng của phòng này — hiện ngay trên danh sách tài sản, vì
+ *                   trên màn hẹp bảng này đè lên trang nên banner đầu trang bị che
  */
 export default function RoomBoardPanel({
   room,
@@ -59,8 +61,10 @@ export default function RoomBoardPanel({
   onAuditAssets,
   reports = [],
   onOpenReport,
+  onReportAsset,
+  reportNotice = null,
+  onDismissReportNotice,
 }) {
-  const { user } = useAuth();
   const meta = roomStatusMeta(room.status);
   const actions = roomActionsFor(room);
   // Khóa / mở khóa nằm ở hàng công cụ của Quản lý, cạnh Thêm tài sản và Kiểm kê.
@@ -203,18 +207,22 @@ export default function RoomBoardPanel({
 
         <section className="board-panel__section">
           <h3 className="board-panel__heading">Tài sản trong phòng</h3>
+          {reportNotice && (
+            <div className="alert alert--success" role="status">
+              {reportNotice}{' '}
+              <Link className="inline-link" to="/bao-hong/cua-toi">Xem báo hỏng của tôi</Link>
+              <button type="button" className="alert__close" onClick={onDismissReportNotice} aria-label="Đóng">
+                ×
+              </button>
+            </div>
+          )}
           <RoomAssets
             key={`${room.id}-${assetsKey}`}
             roomId={room.id}
             reportsByAsset={role.isManager ? groupReportsBy(reports, 'assetId') : {}}
             onOpenReport={onOpenReport}
+            onReportAsset={onReportAsset}
           />
-          {/* BR-ASSET-05: Lễ tân / Dọn dẹp báo hỏng ở tab tài sản của chi tiết phòng. */}
-          {canReportDamage(user) && (
-            <Link className="board-panel__more" to={`/phong/${room.id}`} state={{ tab: 'assets' }}>
-              Báo hỏng tài sản ›
-            </Link>
-          )}
         </section>
 
         <section className="board-panel__section">
@@ -229,8 +237,12 @@ export default function RoomBoardPanel({
   );
 }
 
-/** Tài sản cố định đang vận hành trong phòng (không gồm đã thanh lý — BR-ASSET-14), chỉ xem. */
-function RoomAssets({ roomId, reportsByAsset, onOpenReport }) {
+/**
+ * Tài sản cố định đang vận hành trong phòng (không gồm đã thanh lý — BR-ASSET-14). Nhân viên Lễ tân /
+ * Dọn dẹp bấm thẳng vào dòng tài sản để báo hỏng — khỏi phải sang tab tài sản của chi tiết phòng (tab
+ * đó vẫn còn); Quản lý thấy nút "Xem báo hỏng" khi tài sản còn phiếu đang chờ; Giám đốc chỉ xem.
+ */
+function RoomAssets({ roomId, reportsByAsset, onOpenReport, onReportAsset }) {
   const [assets, setAssets] = useState(null); // null = đang tải
   const [error, setError] = useState('');
 
@@ -251,6 +263,8 @@ function RoomAssets({ roomId, reportsByAsset, onOpenReport }) {
     <AssetReportList
       assets={assets}
       compact
+      onReport={onReportAsset}
+      reportOnRowClick
       rowAction={(asset) => <ViewReportButton reports={reportsByAsset[asset.id]} onOpen={onOpenReport} />}
       emptyText="Phòng này chưa có tài sản cố định nào."
     />
