@@ -56,8 +56,13 @@ public interface FixedAssetRepository extends JpaRepository<FixedAsset, UUID> {
     boolean existsByAreaId(UUID areaId);
 
     /**
-     * BR-ROOM-08: chặn xóa Phòng khi còn tài sản cố định gắn vào. Tính cả tài sản đã thanh lý —
-     * cùng quy ước với {@link #existsByAreaId} (BR-ASSET-14 giữ khóa ngoại để tra lịch sử).
+     * BR-ROOM-08: chặn xóa Phòng khi còn tài sản cố định gắn vào. Bên gọi truyền
+     * {@code DISPOSED} để KHÔNG tính tài sản đã thanh lý — đúng hướng dẫn "chuyển tài sản đi hoặc
+     * thanh lý trước khi xóa".
+     *
+     * <p>Khác {@link #existsByAreaId}: phòng bị xóa MỀM nên dòng {@code rooms} vẫn còn, tài sản đã
+     * thanh lý vẫn trỏ được vào phòng cũ mà không phạm khóa ngoại, lịch sử tài sản giữ nguyên
+     * (BR-ASSET-14). Khu vực thì bị xóa cứng, nên vẫn phải đếm cả tài sản đã thanh lý.
      */
-    boolean existsByRoomId(UUID roomId);
+    boolean existsByRoomIdAndStatusNot(UUID roomId, FixedAssetStatus status);
 }

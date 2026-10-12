@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
 import com.example.SWP391_G2_SE2055_JV.entity.Subscription;
+import com.example.SWP391_G2_SE2055_JV.enums.FixedAssetStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
@@ -241,7 +242,8 @@ class RoomValidatorTest {
             Room room = room(status);
             when(taskRepository.findByRoomIdAndStatusIn(room.getId(), HousekeepingTaskStatus.OPEN_STATUSES))
                 .thenReturn(List.of());
-            when(fixedAssetRepository.existsByRoomId(room.getId())).thenReturn(false);
+            when(fixedAssetRepository.existsByRoomIdAndStatusNot(room.getId(), FixedAssetStatus.DISPOSED))
+                .thenReturn(false);
 
             assertThatCode(() -> validator.assertDeletable(room)).doesNotThrowAnyException();
         }
@@ -289,7 +291,8 @@ class RoomValidatorTest {
             Room room = room(RoomStatus.UNAVAILABLE);
             when(taskRepository.findByRoomIdAndStatusIn(room.getId(), HousekeepingTaskStatus.OPEN_STATUSES))
                 .thenReturn(List.of());
-            when(fixedAssetRepository.existsByRoomId(room.getId())).thenReturn(true);
+            when(fixedAssetRepository.existsByRoomIdAndStatusNot(room.getId(), FixedAssetStatus.DISPOSED))
+                .thenReturn(true);
 
             assertThatThrownBy(() -> validator.assertDeletable(room))
                 .isInstanceOf(BusinessException.class)

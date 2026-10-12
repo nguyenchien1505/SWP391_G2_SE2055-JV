@@ -2,6 +2,7 @@ package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
+import com.example.SWP391_G2_SE2055_JV.enums.FixedAssetStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
@@ -113,6 +114,9 @@ public class RoomValidator {
      * BR-ROOM-08: ba điều kiện xóa phòng, kiểm theo thứ tự rẻ tiền trước — trạng thái (đã có
      * sẵn trên entity), rồi task dọn đang mở, rồi tài sản cố định.
      *
+     * <p>Tài sản đã thanh lý KHÔNG chặn xóa: thanh lý là trạng thái cuối, không chuyển đi được nữa,
+     * nên nếu tính cả nó thì phòng từng có tài sản thanh lý sẽ không bao giờ xóa được.
+     *
      * <p>Câu lỗi nêu đúng điều kiện đang vi phạm để Giám đốc biết phải làm gì trước.
      */
     public void assertDeletable(Room room) {
@@ -126,7 +130,7 @@ public class RoomValidator {
             throw new BusinessException("Phòng " + room.getRoomNumber()
                 + " còn việc dọn phòng chưa kết thúc. Hãy hoàn thành hoặc hủy việc dọn trước khi xóa.");
         }
-        if (fixedAssetRepository.existsByRoomId(room.getId())) {
+        if (fixedAssetRepository.existsByRoomIdAndStatusNot(room.getId(), FixedAssetStatus.DISPOSED)) {
             throw new BusinessException("Phòng " + room.getRoomNumber()
                 + " còn tài sản cố định gắn vào. Hãy chuyển tài sản sang nơi khác hoặc thanh lý trước khi xóa.");
         }
