@@ -125,10 +125,13 @@ public class RoomValidator {
                 + room.getStatus().label() + "» nên chưa xóa được. Chỉ xóa được phòng đang "
                 + "«Trống / Sẵn sàng» hoặc «Không khả dụng».");
         }
+        // Không còn hủy tay việc dọn (chốt 05/10/2026): đường duy nhất để dừng việc dọn là khóa phòng,
+        // lúc đó hệ thống tự hủy (BR-HK-09).
         if (!taskRepository.findByRoomIdAndStatusIn(room.getId(), HousekeepingTaskStatus.OPEN_STATUSES)
                 .isEmpty()) {
             throw new BusinessException("Phòng " + room.getRoomNumber()
-                + " còn việc dọn phòng chưa kết thúc. Hãy hoàn thành hoặc hủy việc dọn trước khi xóa.");
+                + " còn việc dọn phòng chưa kết thúc. Hãy chờ việc dọn được kiểm tra xong, hoặc chuyển "
+                + "phòng sang «Không khả dụng» để hệ thống tự hủy việc dọn, rồi mới xóa.");
         }
         if (fixedAssetRepository.existsByRoomIdAndStatusNot(room.getId(), FixedAssetStatus.DISPOSED)) {
             throw new BusinessException("Phòng " + room.getRoomNumber()

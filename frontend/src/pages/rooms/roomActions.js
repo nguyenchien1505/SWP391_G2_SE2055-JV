@@ -65,9 +65,10 @@ const RECEPTION_ACTIONS = {
     danger: true,
     prompt: {
       title: 'Xác nhận trả phòng?',
+      // Đã bỏ dọn hằng ngày (chốt 05/10/2026) nên trả phòng không còn việc nào để hủy (BR-HK-10 cũ).
       message:
-        'Phòng sẽ chuyển sang «Chờ dọn», hệ thống tự tạo một việc dọn phòng và hủy việc dọn '
-        + 'hằng ngày đang mở (nếu có). Thao tác này không hoàn tác được.',
+        'Phòng sẽ chuyển sang «Chờ dọn» và hệ thống tự tạo một việc dọn phòng chờ phân công. '
+        + 'Thao tác này không hoàn tác được.',
       confirmLabel: 'Check-out',
     },
   },
@@ -139,7 +140,7 @@ export const DELETE_ROOM_WARNING =
 
 /**
  * Câu báo thành công sau khi đổi trạng thái. Nêu luôn HỆ QUẢ mà người dùng không nhìn thấy trên
- * màn hình này (task dọn bị hủy / được sinh — BR-HK-01, BR-HK-09, BR-HK-10), vì đó là thứ hay
+ * màn hình này (task dọn bị hủy / được sinh — BR-HK-01, BR-HK-09), vì đó là thứ hay
  * gây bất ngờ nhất.
  */
 export function statusChangedMessage(before, after) {

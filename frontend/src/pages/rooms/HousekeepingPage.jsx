@@ -38,7 +38,7 @@ function readSavedView() {
 }
 
 /**
- * S-09 Hàng chờ phân công + S-11 Danh sách việc dọn — RM-13, RM-14, RM-15, RM-16.
+ * S-09 Hàng chờ phân công + S-11 Danh sách việc dọn — RM-13, RM-14, RM-15.
  *
  * Chỉ Quản lý chi nhánh vào được màn này (route bọc {@code RequireBranchManager}). Giám đốc
  * đã bị gỡ khỏi đây: mọi thao tác trên lịch dọn đều ✖ với họ, và danh sách của họ trộn phòng

@@ -19,6 +19,7 @@ import CleaningSchedulePage from './pages/rooms/CleaningSchedulePage';
 import SchedulePage from './pages/scheduling/SchedulePage';
 import ScheduleRulesPage from './pages/scheduling/ScheduleRulesPage';
 import MySchedulePage from './pages/scheduling/MySchedulePage';
+import ChainRoomSummary from './components/rooms/ChainRoomSummary';
 import HotelOpsSummary from './components/rooms/HotelOpsSummary';
 import ReserveManagerPage from './pages/ReserveManagerPage';
 import AssetCategoriesPage from './pages/AssetCategoriesPage';
@@ -171,6 +172,8 @@ function OverviewWrapper() {
     <>
       {/* BR-DASH-03: Manager thấy số liệu vận hành của khách sạn mình trước phần tài sản. */}
       {user?.role === 'MANAGER' && <HotelOpsSummary />}
+      {/* BR-DASH-02: Giám đốc thấy phòng theo trạng thái của cả chuỗi, so sánh giữa các khách sạn. */}
+      {user?.role === 'DIRECTOR' && <ChainRoomSummary />}
       <DashboardScreen onNavigate={onNavigate} />
     </>
   );

@@ -660,14 +660,13 @@ class RoomControllerTest {
         @Test
         @WithMockUser(roles = "DIRECTOR")
         void shouldReturnBadRequestWithRuleWhenRoomStillHasOpenTask() throws Exception {
-            doThrow(new BusinessException("Phòng 101 còn việc dọn phòng chưa kết thúc. "
-                + "Hãy hoàn thành hoặc hủy việc dọn trước khi xóa."))
-                .when(roomService).deleteRoom(ROOM_ID);
+            String rule = "Phòng 101 còn việc dọn phòng chưa kết thúc. Hãy chờ việc dọn được kiểm tra xong, "
+                + "hoặc chuyển phòng sang «Không khả dụng» để hệ thống tự hủy việc dọn, rồi mới xóa.";
+            doThrow(new BusinessException(rule)).when(roomService).deleteRoom(ROOM_ID);
 
             mockMvc.perform(delete("/rooms/{id}", ROOM_ID))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Phòng 101 còn việc dọn phòng chưa kết thúc. "
-                    + "Hãy hoàn thành hoặc hủy việc dọn trước khi xóa."));
+                .andExpect(jsonPath("$.message").value(rule));
         }
 
         @Test

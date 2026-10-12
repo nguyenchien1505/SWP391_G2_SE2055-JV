@@ -78,9 +78,13 @@ export default function RoomBoardPage() {
   const wideRef = useRef(wide);
   wideRef.current = wide;
 
+  // Kiểu xem (?view=list) và khách sạn mở sẵn (?locationId=…) nằm trên URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Giám đốc chọn khách sạn cần xem. Manager/Staff không chọn: backend tự ép về Location của họ.
+  // Mở từ khối "Phòng toàn chuỗi" ở /tong-quan (BR-DASH-02) thì đã chọn sẵn khách sạn vừa bấm.
   const locations = useTenantLocations(isDirector);
-  const [locationId, setLocationId] = useState('');
+  const [locationId, setLocationId] = useState(() => searchParams.get('locationId') ?? '');
 
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -91,8 +95,7 @@ export default function RoomBoardPage() {
   const navigate = useNavigate();
   const [banner, setBanner] = useState(navigationState?.banner ?? null); // { type, text }
 
-  // Kiểu xem nằm trên URL (?view=list) để quay lại từ trang chi tiết vẫn đúng dạng đang xem.
-  const [searchParams, setSearchParams] = useSearchParams();
+  // Kiểu xem nằm trên URL để quay lại từ trang chi tiết vẫn đúng dạng đang xem.
   const view = searchParams.get('view') === 'list' && (isDirector || isManager) ? 'list' : 'grid';
   // Dạng danh sách không có bảng chi tiết bên cạnh (bảng chiếm hết chiều ngang) → bỏ phòng đang chọn.
   const setView = (next) => {
@@ -156,14 +159,16 @@ export default function RoomBoardPage() {
     }
   }, [isManager]);
 
-  // Giám đốc: mặc định mở khách sạn đầu tiên — sơ đồ luôn là của MỘT khách sạn.
+  // Giám đốc: mặc định mở khách sạn đầu tiên — sơ đồ luôn là của MỘT khách sạn. Mã trên URL không
+  // thuộc chuỗi (link cũ, khách sạn đã xóa) cũng quay về khách sạn đầu tiên.
+  const knownLocation = locations?.some((location) => location.id === locationId) ?? false;
   useEffect(() => {
-    if (isDirector && !locationId && locations?.length > 0) {
+    if (isDirector && !knownLocation && locations?.length > 0) {
       setLocationId(locations[0].id);
     }
-  }, [isDirector, locationId, locations]);
+  }, [isDirector, knownLocation, locations]);
 
-  const waitingForLocation = isDirector && !locationId;
+  const waitingForLocation = isDirector && !knownLocation;
 
   const load = useCallback(async () => {
     if (waitingForLocation) return;
@@ -448,7 +453,6 @@ export default function RoomBoardPage() {
       )}
 
       <RoomStatusFilter
-        variant="tiles"
         counts={counts}
         total={rooms.length}
         selected={filters.status}

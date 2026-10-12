@@ -6,7 +6,7 @@ import { assetService } from '../../services/assetApi';
 import { formatDateTime } from '../../pages/rooms/format';
 import { LOCK, roomActionsFor } from '../../pages/rooms/roomActions';
 import { whyNoRoomActions } from '../../pages/rooms/roomBoard';
-import { changeSourceLabel, roomStatusMeta, taskTypeLabel } from '../../pages/rooms/roomLabels';
+import { changeSourceLabel, roomStatusMeta } from '../../pages/rooms/roomLabels';
 import AssetReportList from '../damage-reports/AssetReportList';
 import ViewReportButton, { groupReportsBy } from '../damage-reports/ViewReportButton';
 import RoomStatusBadge from './RoomStatusBadge';
@@ -93,8 +93,8 @@ export default function RoomBoardPanel({
             {unassigned.map((task) => (
               <button key={task.id} type="button" className="btn btn--primary" onClick={() => onAssign(task)}>
                 <span className="material-symbols-outlined" aria-hidden="true">person_add</span>
-                {/* Hai việc chờ cùng lúc (sau trả phòng + hằng ngày) thì ghi rõ loại để khỏi nhầm. */}
-                {unassigned.length > 1 ? `Phân công · ${taskTypeLabel(task.taskType)}` : 'Phân công'}
+                {/* Mỗi phòng tối đa 1 việc dọn đang mở (BR-HK-11), nên chỉ có một nút. */}
+                Phân công
               </button>
             ))}
           </div>

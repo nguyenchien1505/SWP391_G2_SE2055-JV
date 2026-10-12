@@ -282,6 +282,8 @@ class RoomValidatorTest {
             assertThatThrownBy(() -> validator.assertDeletable(room))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("dọn phòng")
+                // Không còn hủy tay việc dọn — câu lỗi phải chỉ đúng đường còn lại là khóa phòng.
+                .hasMessageContaining("Không khả dụng")
                 .hasMessageNotContaining("BR-");
             verifyNoInteractions(fixedAssetRepository);
         }
