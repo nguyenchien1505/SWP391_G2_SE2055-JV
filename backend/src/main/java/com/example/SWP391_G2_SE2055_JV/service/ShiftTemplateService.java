@@ -10,6 +10,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftTemplateRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Mẫu ca — BR-SCH-04, BR-SCH-22.
@@ -32,8 +35,10 @@ import java.util.UUID;
  * thao tác chủ động: thêm mẫu riêng không tự đổi bộ, nên Giám đốc soạn sẵn bộ riêng (tự thêm từng mẫu,
  * hoặc sao chép bộ chung làm điểm xuất phát) rồi mới bật.
  *
- * <p><b>Không có xóa.</b> BR-SCH-22 quy định chỉ vô hiệu hóa, vì ca đã xếp vẫn trỏ vào mẫu
- * qua {@code shifts.source_template_id} để tra lịch sử — xóa cứng sẽ vỡ khóa ngoại đó.
+ * <p><b>Xóa chỉ dành cho mẫu đã tắt mà chưa ca nào dùng</b> (chốt 09/10/2026 — ngoại lệ của
+ * BR-SCH-22, cần ghi vào THAY_DOI_BR), ví dụ mẫu tạo nhầm hoặc sao chép thừa. Mẫu đã dùng thì chỉ tắt
+ * được: ca đã xếp vẫn trỏ vào mẫu qua {@code shifts.source_template_id} để tra lịch sử, và khóa ngoại
+ * đó cũng chặn xóa.
  */
 @Slf4j
 @Service
@@ -42,6 +47,7 @@ public class ShiftTemplateService {
 
     private final ShiftTemplateRepository shiftTemplateRepository;
     private final LocationRepository      locationRepository;
+    private final ShiftRepository         shiftRepository;
 
     /**
      * @param includeInactive true để Giám đốc quản trị danh mục (thấy cả mẫu đã tắt);
@@ -63,7 +69,8 @@ public class ShiftTemplateService {
                 ? shiftTemplateRepository.findByTenantId(tenantId, pageable)
                 : shiftTemplateRepository.findByTenantIdAndActiveTrue(tenantId, pageable);
         }
-        return page.map(ShiftTemplateResponse::fromEntity);
+        Map<UUID, Long> used = usedShiftCounts(page.getContent());
+        return page.map(template -> ShiftTemplateResponse.fromEntity(template, used.getOrDefault(template.getId(), 0L)));
     }
 
     /**
@@ -78,7 +85,7 @@ public class ShiftTemplateService {
                 && !template.getLocationId().equals(SecurityUtils.getCurrentLocationId())) {
             throw new ResourceNotFoundException("ShiftTemplate", "id", id);
         }
-        return ShiftTemplateResponse.fromEntity(template);
+        return toResponse(template);
     }
 
     /**
@@ -108,7 +115,7 @@ public class ShiftTemplateService {
         log.info("Tạo mẫu ca {} ({}–{}) cho Tenant {}, bộ {}",
             name, template.getStartTime(), template.getEndTime(), tenantId,
             locationId == null ? "chung" : locationId);
-        return ShiftTemplateResponse.fromEntity(template);
+        return ShiftTemplateResponse.fromEntity(template, 0);
     }
 
     /**
@@ -132,7 +139,7 @@ public class ShiftTemplateService {
         template.setDescription(trimToNull(request.getDescription()));
 
         log.info("Cập nhật mẫu ca {}", template.getId());
-        return ShiftTemplateResponse.fromEntity(shiftTemplateRepository.save(template));
+        return toResponse(shiftTemplateRepository.save(template));
     }
 
     /** BR-SCH-22: vô hiệu hóa thay cho xóa. Mẫu đã tắt không xếp ca mới được nữa. */
@@ -142,7 +149,32 @@ public class ShiftTemplateService {
         template.setActive(active);
 
         log.info("{} mẫu ca {}", active ? "Bật" : "Tắt", template.getId());
-        return ShiftTemplateResponse.fromEntity(shiftTemplateRepository.save(template));
+        return toResponse(shiftTemplateRepository.save(template));
+    }
+
+    /**
+     * Xóa hẳn một mẫu — chỉ khi mẫu đã tắt và chưa ca nào dùng (chốt 09/10/2026). Phải tắt trước để
+     * xóa là thao tác hai bước, khó bấm nhầm; mẫu đã dùng thì giữ ở trạng thái tắt để ca cũ còn tra được
+     * tên mẫu (BR-SCH-22).
+     *
+     * <p>Mẫu đã tắt thì không xếp ca mới được nữa (ShiftService từ chối), nên số ca đếm ở đây không
+     * tăng thêm trước lúc xóa. Khóa ngoại {@code fk_shifts_template} vẫn là chốt chặn cuối.
+     */
+    @Transactional
+    public void deleteTemplate(UUID id) {
+        ShiftTemplate template = getOwnedTemplate(id);
+        if (template.isActive()) {
+            throw new BusinessException("Tắt mẫu «" + template.getName() + "» trước khi xóa.");
+        }
+        long used = shiftRepository.countBySourceTemplateId(template.getId());
+        if (used > 0) {
+            throw new BusinessException(String.format(
+                "Không xóa được mẫu «%s»: đã dùng cho %d ca. Giữ mẫu ở trạng thái tắt để các ca đó vẫn tra "
+                    + "được tên mẫu.", template.getName(), used));
+        }
+
+        shiftTemplateRepository.delete(template);
+        log.info("Xóa mẫu ca {} ({})", template.getId(), template.getName());
     }
 
     /**
@@ -199,7 +231,23 @@ public class ShiftTemplateService {
         }
 
         log.info("Sao chép {} mẫu chung sang bộ riêng của chi nhánh {}", created.size(), locationId);
-        return created.stream().map(ShiftTemplateResponse::fromEntity).toList();
+        return created.stream().map(template -> ShiftTemplateResponse.fromEntity(template, 0)).toList();
+    }
+
+    /** Mẫu kèm số ca đã xếp từ nó — màn danh mục cần để biết mẫu nào xóa được. */
+    private ShiftTemplateResponse toResponse(ShiftTemplate template) {
+        return ShiftTemplateResponse.fromEntity(template, shiftRepository.countBySourceTemplateId(template.getId()));
+    }
+
+    /** Số ca của từng mẫu trong một trang, một truy vấn; mẫu chưa có ca nào không có trong kết quả. */
+    private Map<UUID, Long> usedShiftCounts(List<ShiftTemplate> templates) {
+        if (templates.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> ids = templates.stream().map(ShiftTemplate::getId).toList();
+        return shiftRepository.countGroupedBySourceTemplate(ids).stream()
+            .collect(Collectors.toMap(ShiftRepository.TemplateShiftCount::getTemplateId,
+                ShiftRepository.TemplateShiftCount::getTotal));
     }
 
     /** Bộ mẫu chi nhánh đang dùng, theo quy ước của {@link ShiftTemplateRepository#findInSet}. */

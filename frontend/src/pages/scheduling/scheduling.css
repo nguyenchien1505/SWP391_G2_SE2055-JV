@@ -588,6 +588,21 @@
   margin-top: 6px;
 }
 
+/* ── Lịch cá nhân: khối ca chỉ để xem, không bấm được ───────────────────── */
+.cell-block.cell-block--static {
+  cursor: default;
+}
+.cell-block.cell-block--static:hover {
+  outline: none;
+}
+.cell-block--static + .cell-block--static {
+  margin-top: 6px;
+}
+.my-shift__time {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 @media (max-width: 860px) {
   /* Nhãn tuần lên một hàng riêng phía trên, các nút xuống hàng dưới — không bị ép mất chữ. */
   .week-nav__label {

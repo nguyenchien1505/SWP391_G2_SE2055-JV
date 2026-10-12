@@ -1,23 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { readErrorMessage } from '../api/client';
-import { fetchBillingOverview, fetchInvoices } from '../api/billing';
+import { fetchBillingOverview, fetchInvoices, purchasePlan, renewPlan, upgradePlan } from '../api/billing';
 import { homePathFor } from '../homePath';
 import TenantStatusBadge, { SUSPEND_REASON_LABEL } from '../components/TenantStatusBadge';
 import { formatDate, formatDateTime, formatVnd } from './Admin_platform/format';
 import './Admin_platform/admin.css';
 
-const INVOICE_TYPE_LABEL = {
-  PERIODIC: 'Gói / Gia hạn',
-  UPGRADE_DIFF: 'Mua thêm quota',
-};
+// Khớp hằng số của BillingService (backend).
+const CYCLE_DAYS = 30;
+/** Chỉ gia hạn khi còn tối đa bấy nhiêu ngày tới hạn — trả trước nhiều nhất 2 kỳ. */
+const MAX_PREPAY_DAYS = 60;
+/** Mua thêm quota: số tiền chênh lệch tối thiểu, thấp hơn thì từ chối. */
+const MIN_UPGRADE_AMOUNT = 5000;
 
-const INVOICE_STATUS = {
-  PENDING: { label: 'Chờ thanh toán', tone: 'orange' },
-  PAID: { label: 'Đã thanh toán', tone: 'green' },
-  FAILED: { label: 'Thất bại', tone: 'red' },
-};
+const INVOICE_KIND_LABEL = { MUA_GOI: 'Mua gói', GIA_HAN: 'Gia hạn', MUA_THEM: 'Mua thêm quota' };
 
 /** Ba loại tài nguyên tính tiền — BR-SAAS-02, BR-SAAS-03. */
 const RESOURCES = [
@@ -26,14 +24,95 @@ const RESOURCES = [
   { key: 'room', label: 'Phòng', icon: '🛏', usage: 'rooms', quota: 'quotaRoom', price: 'pricePerRoom' },
 ];
 
-/** Số ngày từ hôm nay tới một ngày "YYYY-MM-DD" (giờ địa phương), không âm. */
+// ── Tiện ích ngày / số ─────────────────────────────────────────────────────
+
+/** Hôm nay dạng "YYYY-MM-DD" (giờ địa phương). */
+function todayIso() {
+  return new Date().toLocaleDateString('sv-SE');
+}
+
+/** "YYYY-MM-DD" cộng n ngày (giờ địa phương). */
+function addDays(isoDate, n) {
+  const d = new Date(`${isoDate}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return d.toLocaleDateString('sv-SE');
+}
+
+/** Số ngày từ hôm nay tới một ngày "YYYY-MM-DD", không âm. */
 function daysUntil(isoDate) {
   if (!isoDate) return 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(`${isoDate}T00:00:00`);
-  return Math.max(0, Math.round((target - today) / 86400000));
+  const diff = new Date(`${isoDate}T00:00:00`) - new Date(`${todayIso()}T00:00:00`);
+  return Math.max(0, Math.round(diff / 86400000));
 }
+
+function toNumber(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/** Số lượng ban đầu của form: số của lần thanh toán vừa thất bại (nếu có), ngược lại quota hiện tại. */
+function initialQuota(overview, retry) {
+  return Object.fromEntries(RESOURCES.map((r) => [r.key, String(retry?.[r.quota] ?? overview[r.quota])]));
+}
+
+function toRequest(values) {
+  return { quotaLocation: toNumber(values.location), quotaUser: toNumber(values.user), quotaRoom: toNumber(values.room) };
+}
+
+// ── Thanh toán dùng chung cho Mua gói / Mua thêm / Gia hạn ─────────────────
+
+/**
+ * Gọi API thanh toán: có `paymentUrl` thì chuyển sang VNPay (VNPay đưa về /thanh-toan/ket-qua);
+ * không có thì hiện `message` — giao dịch trước đó còn dở đã được backend tự hỏi VNPay.
+ */
+function usePayment(fallbackError) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+
+  async function pay(request) {
+    setError('');
+    setSubmitting(true);
+    try {
+      const { paymentUrl, message, activated } = await request();
+      if (paymentUrl) {
+        window.location.href = paymentUrl;
+        return;
+      }
+      if (activated) {
+        // Giao dịch trước đó đã thành công: tải lại để thấy gói mới, gỡ chế độ chỉ đọc nếu có.
+        setInfo(message);
+        setTimeout(() => window.location.assign('/goi-dich-vu'), 2000);
+        return;
+      }
+      setError(message);
+    } catch (err) {
+      setError(readErrorMessage(err, fallbackError));
+    }
+    setSubmitting(false);
+  }
+
+  return { pay, submitting, error, info };
+}
+
+function PaymentFeedback({ error, info }) {
+  return (
+    <>
+      {error && (
+        <div className="alert alert--error" role="alert">
+          {error}
+        </div>
+      )}
+      {info && (
+        <div className="alert alert--success" role="status">
+          {info}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Thành phần giao diện ───────────────────────────────────────────────────
 
 function Meter({ label, icon, metric }) {
   const percent = Math.min(metric?.usedPercent ?? 0, 100);
@@ -87,16 +166,10 @@ function QuotaInputs({ values, onChange, errors }) {
   );
 }
 
-function toNumber(value) {
-  const n = Number(value);
-  return Number.isInteger(n) && n >= 0 ? n : null;
-}
-
-/** Mua gói lần đầu: chọn số lượng, giá theo bảng giá hiện hành, chu kỳ 30 ngày (BR-SAAS-05). */
-function BuyPlanPanel({ overview }) {
-  const [values, setValues] = useState(() =>
-    Object.fromEntries(RESOURCES.map((r) => [r.key, String(overview[r.quota])])),
-  );
+/** Mua gói lần đầu: chọn số lượng, giá theo bảng giá hiện hành, kỳ 30 ngày từ ngày thanh toán. */
+function BuyPlanPanel({ overview, retry }) {
+  const [values, setValues] = useState(() => initialQuota(overview, retry));
+  const { pay, submitting, error, info } = usePayment('Không tạo được thanh toán.');
 
   const errors = {};
   let total = 0;
@@ -115,9 +188,7 @@ function BuyPlanPanel({ overview }) {
       <div className="panel__head">
         <h2>Mua gói dịch vụ</h2>
       </div>
-      <p className="muted">
-        Chọn số lượng cần dùng. Giá theo bảng giá hiện hành, chu kỳ 30 ngày tính từ ngày thanh toán.
-      </p>
+      <p className="muted">Chọn số lượng cần dùng. Giá theo bảng giá hiện hành, chu kỳ 30 ngày tính từ ngày thanh toán.</p>
       <QuotaInputs values={values} onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))} errors={errors} />
       <dl className="kv">
         {RESOURCES.map((r) => (
@@ -133,18 +204,23 @@ function BuyPlanPanel({ overview }) {
           </dd>
         </div>
       </dl>
-      <button type="button" className="btn btn--primary" disabled={!valid}>
-        Thanh toán qua VNPay
+      <PaymentFeedback error={error} info={info} />
+      <button
+        type="button"
+        className="btn btn--primary"
+        disabled={!valid || submitting}
+        onClick={() => pay(() => purchasePlan(toRequest(values)))}
+      >
+        {submitting ? 'Đang chuyển sang VNPay…' : 'Thanh toán qua VNPay'}
       </button>
     </section>
   );
 }
 
-/** Mua thêm quota giữa kỳ: trả phần chênh lệch theo số ngày còn lại (BR-SAAS-06). */
-function BuyMorePanel({ overview }) {
-  const [values, setValues] = useState(() =>
-    Object.fromEntries(RESOURCES.map((r) => [r.key, String(overview[r.quota])])),
-  );
+/** Mua thêm quota giữa kỳ: chỉ tăng, trả chênh lệch cho số ngày còn lại tới ngày đến hạn. */
+function BuyMorePanel({ overview, retry }) {
+  const [values, setValues] = useState(() => initialQuota(overview, retry));
+  const { pay, submitting, error, info } = usePayment('Không tạo được thanh toán mua thêm.');
   const daysLeft = daysUntil(overview.nextBillingDate);
 
   const errors = {};
@@ -160,8 +236,9 @@ function BuyMorePanel({ overview }) {
       fullCycleDiff += (n - current) * overview[r.price];
     }
   }
-  const valid = Object.keys(errors).length === 0 && increased;
-  const amount = Math.round((fullCycleDiff * daysLeft) / 30);
+  const amount = Math.round((fullCycleDiff * daysLeft) / CYCLE_DAYS);
+  const belowMinimum = increased && amount < MIN_UPGRADE_AMOUNT;
+  const valid = Object.keys(errors).length === 0 && increased && daysLeft > 0 && !belowMinimum;
 
   return (
     <section className="panel">
@@ -169,79 +246,107 @@ function BuyMorePanel({ overview }) {
         <h2>Mua thêm quota</h2>
       </div>
       <p className="muted">
-        Tăng số lượng giữa kỳ, chỉ trả phần chênh lệch cho {daysLeft} ngày còn lại của chu kỳ. Quota mới
-        có hiệu lực sau khi thanh toán thành công.
+        Tăng số lượng giữa kỳ, chỉ trả phần chênh lệch cho {daysLeft} ngày còn lại tới ngày đến hạn (tối thiểu{' '}
+        {formatVnd(MIN_UPGRADE_AMOUNT)}). Quota mới có hiệu lực ngay sau khi thanh toán thành công.
       </p>
       <QuotaInputs values={values} onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))} errors={errors} />
       <dl className="kv">
         <div>
-          <dt>Phí chênh lệch ({daysLeft}/30 ngày)</dt>
+          <dt>
+            Phí chênh lệch ({daysLeft}/{CYCLE_DAYS} ngày)
+          </dt>
           <dd>
-            <b>{valid ? formatVnd(amount) : '—'}</b>
+            <b>{increased ? formatVnd(amount) : '—'}</b>
           </dd>
         </div>
       </dl>
-      <button type="button" className="btn btn--primary" disabled={!valid}>
-        Thanh toán phần chênh lệch
-      </button>
-    </section>
-  );
-}
-
-/** Gia hạn chu kỳ 30 ngày (BR-SAAS-05, BR-SAAS-10). */
-function RenewPanel({ overview, pendingInvoice, urgent }) {
-  return (
-    <section className="panel">
-      <div className="panel__head">
-        <h2>Gia hạn gói</h2>
-      </div>
-      {urgent && (
-        <div className="alert alert--warn" role="status">
-          {overview.status === 'SUSPENDED'
-            ? 'Tài khoản đang bị khóa do thanh toán thất bại. Thanh toán hóa đơn gia hạn để mở lại.'
-            : 'Hóa đơn gia hạn đã quá hạn. Thanh toán ngay để tránh bị khóa tài khoản.'}
-        </div>
+      {belowMinimum && (
+        <p className="field__help field__help--error">
+          Số tiền thấp hơn mức tối thiểu {formatVnd(MIN_UPGRADE_AMOUNT)}. Vui lòng mua thêm nhiều hơn hoặc mua sau khi gia hạn.
+        </p>
       )}
-      <dl className="kv">
-        <div>
-          <dt>Ngày gia hạn</dt>
-          <dd>{formatDate(overview.nextBillingDate)}</dd>
-        </div>
-        <div>
-          <dt>Phí mỗi chu kỳ</dt>
-          <dd>{formatVnd(overview.periodFee)}</dd>
-        </div>
-        {pendingInvoice && (
-          <div>
-            <dt>Hóa đơn cần thanh toán</dt>
-            <dd>
-              {formatVnd(pendingInvoice.amount)} · kỳ {formatDate(pendingInvoice.periodStart)} →{' '}
-              {formatDate(pendingInvoice.periodEnd)}
-            </dd>
-          </div>
-        )}
-      </dl>
-      <button type="button" className="btn btn--primary">
-        Gia hạn gói
+      <PaymentFeedback error={error} info={info} />
+      <button
+        type="button"
+        className="btn btn--primary"
+        disabled={!valid || submitting}
+        onClick={() => pay(() => upgradePlan(toRequest(values)))}
+      >
+        {submitting ? 'Đang chuyển sang VNPay…' : 'Thanh toán phần chênh lệch'}
       </button>
     </section>
   );
 }
 
 /**
- * "Gói dịch vụ" của Giám đốc: gói đang dùng, hạn dùng, mức sử dụng, các thao tác mua gói / mua
- * thêm / gia hạn (hiện theo tình trạng gói) và lịch sử hóa đơn.
- *
- * Các nút thanh toán chưa gắn API — làm ở các đợt sau.
+ * Gia hạn 1 kỳ 30 ngày theo quota hiện tại. Kỳ nối tiếp ngày đến hạn; đang bị khóa vì chưa gia hạn
+ * thì tính từ hôm nay (khớp backend).
+ */
+function RenewPanel({ overview }) {
+  const { pay, submitting, error, info } = usePayment('Không tạo được thanh toán gia hạn.');
+  const { status, suspendReason, nextBillingDate: due } = overview;
+  const locked = status === 'SUSPENDED' && suspendReason === 'PAYMENT_FAILED';
+  const canRenew = daysUntil(due) <= MAX_PREPAY_DAYS;
+  const nextStart = locked ? todayIso() : due;
+
+  return (
+    <section className="panel">
+      <div className="panel__head">
+        <h2>Gia hạn gói</h2>
+      </div>
+      {(locked || status === 'PAYMENT_OVERDUE') && (
+        <div className="alert alert--warn" role="status">
+          {locked
+            ? 'Tài khoản đang bị khóa do chưa gia hạn. Gia hạn ngay để mở lại.'
+            : 'Gói đã quá hạn thanh toán. Gia hạn ngay để tránh bị khóa tài khoản.'}
+        </div>
+      )}
+      <dl className="kv">
+        <div>
+          <dt>Kỳ tới</dt>
+          <dd>
+            {formatDate(nextStart)} → {formatDate(addDays(nextStart, CYCLE_DAYS - 1))}
+          </dd>
+        </div>
+        <div>
+          <dt>Số tiền (quota hiện tại)</dt>
+          <dd>{formatVnd(overview.periodFee)}</dd>
+        </div>
+      </dl>
+      {!canRenew && (
+        <p className="muted">
+          Bạn đã thanh toán trước. Có thể gia hạn tiếp từ ngày {formatDate(addDays(due, -MAX_PREPAY_DAYS))}.
+        </p>
+      )}
+      <PaymentFeedback error={error} info={info} />
+      <button type="button" className="btn btn--primary" disabled={!canRenew || submitting} onClick={() => pay(renewPlan)}>
+        {submitting ? 'Đang chuyển sang VNPay…' : 'Gia hạn'}
+      </button>
+    </section>
+  );
+}
+
+// ── Trang ──────────────────────────────────────────────────────────────────
+
+/**
+ * "Gói dịch vụ" của Giám đốc: gói đang dùng, hạn dùng, mức sử dụng, thao tác theo tình trạng gói
+ * (mua gói / mua thêm / gia hạn — đều qua VNPay) và lịch sử hóa đơn đã thanh toán.
  */
 export default function BillingPage() {
   const { user } = useAuth();
+  // Trang kết quả đưa về đây khi thanh toán thất bại / bị hủy: ?msg=&ql=&qu=&qr=
+  const [searchParams] = useSearchParams();
+  const retryNotice = searchParams.get('msg');
+  const retry = searchParams.get('ql')
+    ? { quotaLocation: searchParams.get('ql'), quotaUser: searchParams.get('qu'), quotaRoom: searchParams.get('qr') }
+    : null;
+
   const [overview, setOverview] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (user?.role !== 'DIRECTOR') return;
+    if (user?.role !== 'DIRECTOR') return undefined;
     let cancelled = false;
     Promise.all([fetchBillingOverview(), fetchInvoices()])
       .then(([ov, inv]) => {
@@ -271,9 +376,6 @@ export default function BillingPage() {
 
   const { status, suspendReason, trial } = overview;
   const adminLocked = status === 'SUSPENDED' && suspendReason === 'ADMIN_LOCKED';
-  const paymentProblem =
-    status === 'PAYMENT_OVERDUE' || (status === 'SUSPENDED' && suspendReason === 'PAYMENT_FAILED');
-  const pendingRenewal = invoices.find((i) => i.invoiceType === 'PERIODIC' && i.status !== 'PAID');
 
   return (
     <div className="page admin-page">
@@ -290,14 +392,12 @@ export default function BillingPage() {
           <h2>Gói hiện tại</h2>
           <TenantStatusBadge status={status} />
         </div>
-
         {status === 'SUSPENDED' && (
           <div className="alert alert--warn" role="status">
             Tài khoản đang bị khóa do <b>{SUSPEND_REASON_LABEL[suspendReason] ?? suspendReason ?? '—'}</b>.
             {suspendReason === 'TRIAL_EXPIRED' && ' Mua gói để tiếp tục sử dụng hệ thống.'}
           </div>
         )}
-
         <dl className="kv">
           {trial ? (
             <div>
@@ -310,13 +410,13 @@ export default function BillingPage() {
           ) : (
             <>
               <div>
-                <dt>Chu kỳ hiện tại</dt>
+                <dt>Đã thanh toán đến</dt>
                 <dd>
-                  {formatDate(overview.currentPeriodStart)} → {formatDate(overview.nextBillingDate)}
+                  {formatDate(addDays(overview.nextBillingDate, -1))} (còn {daysUntil(overview.nextBillingDate)} ngày)
                 </dd>
               </div>
               <div>
-                <dt>Ngày gia hạn</dt>
+                <dt>Ngày đến hạn gia hạn</dt>
                 <dd>{formatDate(overview.nextBillingDate)}</dd>
               </div>
               <div>
@@ -326,7 +426,6 @@ export default function BillingPage() {
             </>
           )}
         </dl>
-
         <div className="meter-grid">
           {RESOURCES.map((r) => (
             <Meter key={r.key} label={r.label} icon={r.icon} metric={overview[r.usage]} />
@@ -335,13 +434,16 @@ export default function BillingPage() {
       </section>
 
       {/* B. Thao tác theo tình trạng gói */}
-      {!adminLocked && trial && <BuyPlanPanel overview={overview} />}
-      {!adminLocked && !trial && status === 'ACTIVE' && <BuyMorePanel overview={overview} />}
-      {!adminLocked && !trial && (
-        <RenewPanel overview={overview} pendingInvoice={pendingRenewal} urgent={paymentProblem} />
+      {retryNotice && (
+        <div className="alert alert--warn" role="status">
+          {retryNotice}
+        </div>
       )}
+      {!adminLocked && trial && <BuyPlanPanel overview={overview} retry={retry} />}
+      {!adminLocked && !trial && status === 'ACTIVE' && <BuyMorePanel overview={overview} retry={retry} />}
+      {!adminLocked && !trial && <RenewPanel overview={overview} />}
 
-      {/* C. Lịch sử hóa đơn */}
+      {/* C. Lịch sử hóa đơn đã thanh toán */}
       <section className="panel">
         <div className="panel__head">
           <h2>Lịch sử hóa đơn</h2>
@@ -358,37 +460,22 @@ export default function BillingPage() {
                   <th>Kỳ áp dụng</th>
                   <th>Số lượng (KS / NV / Phòng)</th>
                   <th>Số tiền</th>
-                  <th>Trạng thái</th>
-                  <th />
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((inv) => {
-                  const st = INVOICE_STATUS[inv.status] ?? { label: inv.status, tone: 'grey' };
-                  return (
-                    <tr key={inv.id}>
-                      <td>{formatDateTime(inv.issuedAt)}</td>
-                      <td>{INVOICE_TYPE_LABEL[inv.invoiceType] ?? inv.invoiceType}</td>
-                      <td>
-                        {formatDate(inv.periodStart)} → {formatDate(inv.periodEnd)}
-                      </td>
-                      <td>
-                        {inv.quotaLocation} / {inv.quotaUser} / {inv.quotaRoom}
-                      </td>
-                      <td>{formatVnd(inv.amount)}</td>
-                      <td>
-                        <span className={`badge badge--${st.tone}`}>{st.label}</span>
-                      </td>
-                      <td>
-                        {inv.status !== 'PAID' && (
-                          <button type="button" className="btn btn--ghost">
-                            Thanh toán
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {invoices.map((inv) => (
+                  <tr key={inv.id}>
+                    <td>{formatDateTime(inv.issuedAt)}</td>
+                    <td>{INVOICE_KIND_LABEL[inv.kind] ?? inv.kind}</td>
+                    <td>
+                      {formatDate(inv.periodStart)} → {formatDate(inv.periodEnd)}
+                    </td>
+                    <td>
+                      {inv.quotaLocation} / {inv.quotaUser} / {inv.quotaRoom}
+                    </td>
+                    <td>{formatVnd(inv.amount)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

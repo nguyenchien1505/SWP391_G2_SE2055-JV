@@ -98,7 +98,8 @@ const NAV_GROUPS = [
       { label: 'Lịch dọn phòng', to: '/lich-don-phong', visible: isBranchManager },
       { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: (user) => isStaff(user) && isHousekeeper(user) },
       { label: 'Lịch dọn của tôi', to: '/lich-don-phong', visible: (user) => isStaff(user) && isHousekeeper(user) },
-      { label: 'Lịch cá nhân & Chấm công', visible: hasShifts },
+      // Chỉ xem lịch — chấm công (check-in / check-out) để sau.
+      { label: 'Lịch cá nhân', to: '/lich-ca-nhan', visible: hasShifts },
     ],
   },
   {

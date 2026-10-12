@@ -8,6 +8,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.SuspendReason;
 import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.EmailVerificationTokenRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.SubscriptionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.TenantRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.PaginationUtils;
@@ -22,7 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -61,6 +64,7 @@ public class TenantAdminService {
 
     private final TenantRepository       tenantRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final EmailVerificationTokenRepository verificationTokenRepository;
 
     // ── Xem ─────────────────────────────────────────────────────────────────
 
@@ -77,8 +81,16 @@ public class TenantAdminService {
         String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
 
         Pageable pageable = PaginationUtils.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return tenantRepository.search(status, normalizedKeyword, pageable)
+        Page<TenantResponse> rows = tenantRepository.search(status, normalizedKeyword, pageable)
             .map(TenantResponse::fromEntity);
+
+        // Giám đốc chưa xác thực email: một truy vấn cho cả trang.
+        List<UUID> ids = rows.getContent().stream().map(TenantResponse::getId).toList();
+        Set<UUID> unverified = ids.isEmpty()
+            ? Set.of()
+            : new HashSet<>(verificationTokenRepository.findTenantIdsAwaitingVerification(ids));
+        rows.forEach(row -> row.setDirectorVerified(!unverified.contains(row.getId())));
+        return rows;
     }
 
     /** Chi tiết một Tenant kèm tóm tắt Subscription. Không tồn tại thì 404. */
@@ -222,6 +234,9 @@ public class TenantAdminService {
         // DM-09: mỗi Tenant đúng 1 Subscription. Thiếu thì trả null thay vì ném lỗi để Admin
         // vẫn xem được Tenant có dữ liệu lệch.
         Subscription subscription = subscriptionRepository.findByTenantId(tenant.getId()).orElse(null);
-        return TenantDetailResponse.fromEntity(tenant, subscription);
+        TenantDetailResponse detail = TenantDetailResponse.fromEntity(tenant, subscription);
+        detail.setDirectorVerified(
+            verificationTokenRepository.findTenantIdsAwaitingVerification(List.of(tenant.getId())).isEmpty());
+        return detail;
     }
 }

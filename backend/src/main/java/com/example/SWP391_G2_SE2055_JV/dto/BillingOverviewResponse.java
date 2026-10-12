@@ -27,8 +27,7 @@ public class BillingOverviewResponse {
     /** Số ngày dùng thử còn lại tính từ hôm nay (giờ Hà Nội), không âm; {@code null} nếu đã trả phí. */
     private Long      trialDaysLeft;
 
-    /** Chu kỳ 30 ngày đang chạy — chỉ có khi đã trả phí (BR-SAAS-05). */
-    private LocalDate currentPeriodStart;
+    /** Ngày đầu tiên CHƯA được trả tiền (đã trả đến hôm trước) — chỉ có khi đã trả phí (BR-SAAS-05). */
     private LocalDate nextBillingDate;
 
     private int quotaLocation;

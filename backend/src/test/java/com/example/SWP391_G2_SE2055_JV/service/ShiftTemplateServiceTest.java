@@ -9,6 +9,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.ShiftTemplate;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftTemplateRepository;
 import com.example.SWP391_G2_SE2055_JV.support.TestAuth;
 import org.junit.jupiter.api.AfterEach;
@@ -39,7 +40,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Mẫu ca — BR-SCH-04, BR-SCH-22 (đủ trường, chỉ vô hiệu hóa chứ không xóa), và bộ mẫu theo chi nhánh
+ * Mẫu ca — BR-SCH-04, BR-SCH-22 (đủ trường; ngừng dùng thì vô hiệu hóa, chỉ xóa hẳn được mẫu đã tắt mà
+ * chưa ca nào dùng — chốt 09/10/2026), và bộ mẫu theo chi nhánh
  * (chốt 06/10/2026, V6): mỗi chi nhánh dùng ĐÚNG MỘT bộ — bộ chung của chuỗi hoặc bộ riêng của nó —
  * Giám đốc bật / tắt chủ động, có thể sao chép bộ chung làm điểm xuất phát.
  */
@@ -53,6 +55,7 @@ class ShiftTemplateServiceTest {
 
     @Mock ShiftTemplateRepository shiftTemplateRepository;
     @Mock LocationRepository      locationRepository;
+    @Mock ShiftRepository         shiftRepository;
 
     @InjectMocks ShiftTemplateService service;
 
@@ -180,6 +183,70 @@ class ShiftTemplateServiceTest {
 
             assertThat(response.isActive()).isFalse();
             verify(shiftTemplateRepository, never()).delete(any());
+        }
+
+        /** Mẫu đã tắt mà chưa ca nào dùng (tạo nhầm, sao chép thừa) thì xóa hẳn được. */
+        @Test
+        void shouldDeleteDeactivatedTemplateNeverUsed() {
+            ShiftTemplate template = morningTemplate();
+            template.setActive(false);
+            when(shiftTemplateRepository.findByIdAndTenantId(TEMPLATE_ID, TENANT_ID)).thenReturn(Optional.of(template));
+            when(shiftRepository.countBySourceTemplateId(TEMPLATE_ID)).thenReturn(0L);
+
+            service.deleteTemplate(TEMPLATE_ID);
+
+            verify(shiftTemplateRepository).delete(template);
+        }
+
+        /** Xóa là bước thứ hai sau khi tắt — mẫu đang dùng thì không xóa thẳng được. */
+        @Test
+        void shouldRejectDeletingActiveTemplate() {
+            when(shiftTemplateRepository.findByIdAndTenantId(TEMPLATE_ID, TENANT_ID))
+                .thenReturn(Optional.of(morningTemplate()));
+
+            assertThatThrownBy(() -> service.deleteTemplate(TEMPLATE_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Tắt mẫu «Ca sáng» trước khi xóa");
+            verify(shiftTemplateRepository, never()).delete(any());
+            verifyNoInteractions(shiftRepository);
+        }
+
+        /** BR-SCH-22: mẫu đã dùng cho ca nào thì giữ lại (tắt) để các ca đó vẫn tra được tên mẫu. */
+        @Test
+        void shouldRejectDeletingTemplateUsedByShifts() {
+            ShiftTemplate template = morningTemplate();
+            template.setActive(false);
+            when(shiftTemplateRepository.findByIdAndTenantId(TEMPLATE_ID, TENANT_ID)).thenReturn(Optional.of(template));
+            when(shiftRepository.countBySourceTemplateId(TEMPLATE_ID)).thenReturn(12L);
+
+            assertThatThrownBy(() -> service.deleteTemplate(TEMPLATE_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("đã dùng cho 12 ca");
+            verify(shiftTemplateRepository, never()).delete(any());
+        }
+
+        @Test
+        void shouldNotDeleteTemplateOfAnotherTenant() {
+            when(shiftTemplateRepository.findByIdAndTenantId(TEMPLATE_ID, TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.deleteTemplate(TEMPLATE_ID)).isInstanceOf(ResourceNotFoundException.class);
+            verify(shiftTemplateRepository, never()).delete(any());
+        }
+
+        /** Danh mục kèm số ca đã dùng từng mẫu — màn hình biết mẫu đã tắt nào xóa được; đếm gộp một lần. */
+        @Test
+        void shouldReportUsedShiftCountWithEachTemplate() {
+            Pageable pageable = PageRequest.of(0, 20);
+            ShiftTemplate unused = ShiftTemplate.builder().id(UUID.randomUUID()).tenantId(TENANT_ID)
+                .name("Ca thử").startTime(LocalTime.of(9, 0)).endTime(LocalTime.of(12, 0)).active(false).build();
+            when(shiftTemplateRepository.findByTenantId(TENANT_ID, pageable))
+                .thenReturn(new PageImpl<>(List.of(morningTemplate(), unused)));
+            when(shiftRepository.countGroupedBySourceTemplate(List.of(TEMPLATE_ID, unused.getId())))
+                .thenReturn(List.of(usage(TEMPLATE_ID, 12)));
+
+            List<ShiftTemplateResponse> templates = service.getTemplates(true, null, pageable).getContent();
+
+            assertThat(templates).extracting(ShiftTemplateResponse::getUsedShiftCount).containsExactly(12L, 0L);
         }
 
         /** Không chọn chi nhánh: Giám đốc quản trị toàn bộ danh mục — mọi bộ, kể cả mẫu đã tắt. */
@@ -340,6 +407,20 @@ class ShiftTemplateServiceTest {
 
             assertThat(service.getTemplateById(TEMPLATE_ID).getName()).isEqualTo("Ca sáng");
         }
+    }
+
+    private static ShiftRepository.TemplateShiftCount usage(UUID templateId, long total) {
+        return new ShiftRepository.TemplateShiftCount() {
+            @Override
+            public UUID getTemplateId() {
+                return templateId;
+            }
+
+            @Override
+            public long getTotal() {
+                return total;
+            }
+        };
     }
 
     private static Location location(UUID id, boolean ownTemplates) {

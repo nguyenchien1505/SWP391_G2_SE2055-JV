@@ -30,6 +30,9 @@ public class TenantResponse {
     private SuspendReason suspendReason;
     private LocalDateTime createdAt;
 
+    /** Giám đốc đã bấm link xác thực email chưa — {@code TenantAdminService} điền sau khi map. */
+    private boolean directorVerified;
+
     public static TenantResponse fromEntity(Tenant tenant) {
         return TenantResponse.builder()
             .id(tenant.getId())
