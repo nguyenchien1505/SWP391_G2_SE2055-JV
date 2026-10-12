@@ -1,13 +1,20 @@
 import { compareNatural } from './roomLabels';
-import { hhmm, timeRange } from '../scheduling/scheduleFormat';
+import { hhmm } from '../scheduling/scheduleFormat';
+import {
+  OTHER_SHIFT_ROW,
+  compareShiftStart,
+  rowIdOfShift,
+  shiftRowOf,
+  sortShiftRows,
+} from '../scheduling/personalShifts';
 
 /**
  * Lịch dọn của MỘT nhân viên dạng bảng theo ca — cùng cách chia hàng / cột với bảng xếp lịch của quản
- * lý (chốt 06/10/2026): hàng là ca, cột là ngày, ô là việc dọn của ca đó.
+ * lý (chốt 06/10/2026): hàng là ca, cột là ngày, ô là việc dọn của ca đó. Hàng ca dùng chung với «Lịch
+ * cá nhân» ({@link shiftRowOf}).
  */
 
-/** Hàng của các ca tự nhập giờ (không theo mẫu). */
-export const OTHER_SHIFT_ROW = 'OTHER';
+export { OTHER_SHIFT_ROW };
 /** Hàng của việc dọn rơi vào ngày không có ca (ví dụ ca đã bị xóa sau khi dọn xong). */
 export const NO_SHIFT_ROW = 'NO_SHIFT';
 
@@ -22,8 +29,6 @@ function within(clock, shift) {
   const end = hhmm(shift.endTime);
   return start < end ? clock >= start && clock < end : clock >= start || clock < end;
 }
-
-const rowIdOfShift = (shift) => shift.sourceTemplateId ?? OTHER_SHIFT_ROW;
 
 /**
  * Chia ca và việc dọn của một người vào các ô (ca, ngày).
@@ -47,18 +52,9 @@ export function buildMyShiftBoard(shifts, tasks) {
 
   const shiftsByDay = new Map();
   for (const shift of shifts) {
-    const rowId = rowIdOfShift(shift);
-    if (!rows.has(rowId)) {
-      rows.set(rowId, shift.sourceTemplateId
-        ? {
-          id: rowId,
-          name: shift.sourceTemplateName ?? 'Ca theo mẫu',
-          timeLabel: `${timeRange(shift.startTime, shift.endTime)}${shift.overnight ? ' (qua đêm)' : ''}`,
-          start: hhmm(shift.startTime),
-        }
-        : { id: rowId, name: 'Ca giờ khác', timeLabel: 'Ca tự nhập giờ', start: null });
-    }
-    cell(rowId, shift.shiftDate).shifts.push(shift);
+    const row = shiftRowOf(shift);
+    if (!rows.has(row.id)) rows.set(row.id, row);
+    cell(row.id, shift.shiftDate).shifts.push(shift);
     if (!shiftsByDay.has(shift.shiftDate)) shiftsByDay.set(shift.shiftDate, []);
     shiftsByDay.get(shift.shiftDate).push(shift);
   }
@@ -81,15 +77,14 @@ export function buildMyShiftBoard(shifts, tasks) {
 
   for (const value of cells.values()) {
     value.tasks.sort((a, b) => compareNatural(a.roomNumber, b.roomNumber));
-    value.shifts.sort((a, b) => hhmm(a.startTime).localeCompare(hhmm(b.startTime)));
+    value.shifts.sort(compareShiftStart);
   }
 
   // Ca theo mẫu theo giờ bắt đầu, rồi "Ca giờ khác", cuối cùng "Ngoài ca" — như bảng của quản lý.
   const rank = (row) => (row.id === NO_SHIFT_ROW ? 2 : row.id === OTHER_SHIFT_ROW ? 1 : 0);
-  const sortedRows = [...rows.values()].sort((a, b) => rank(a) - rank(b) || (a.start ?? '').localeCompare(b.start ?? ''));
 
   return {
-    rows: sortedRows,
+    rows: sortShiftRows(rows.values(), rank),
     cellOf: (rowId, day) => cells.get(`${rowId}|${day}`) ?? { shifts: [], tasks: [] },
   };
 }

@@ -18,6 +18,7 @@ import MyTasksPage from './pages/rooms/MyTasksPage';
 import CleaningSchedulePage from './pages/rooms/CleaningSchedulePage';
 import SchedulePage from './pages/scheduling/SchedulePage';
 import ScheduleRulesPage from './pages/scheduling/ScheduleRulesPage';
+import MySchedulePage from './pages/scheduling/MySchedulePage';
 import HotelOpsSummary from './components/rooms/HotelOpsSummary';
 import ReserveManagerPage from './pages/ReserveManagerPage';
 import AssetCategoriesPage from './pages/AssetCategoriesPage';
@@ -115,6 +116,15 @@ function RequireCleaningSchedule({ children }) {
   const allowed = user?.role === 'MANAGER' || user?.role === 'PLATFORM_ADMIN'
     || (user?.role === 'STAFF' && hasPermission(user, 'HOUSEKEEPING'));
   return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
+ * Lịch cá nhân — chỉ nhân viên: quản lý khách sạn không có ca (chốt 05/10/2026), Giám đốc cũng không.
+ * Vai trò khác về trang chủ của mình. Chỉ là lớp giao diện; backend chỉ trả ca của chính người đăng nhập.
+ */
+function RequireStaff({ children }) {
+  const { user } = useAuth();
+  return user?.role === 'STAFF' ? children : <Navigate to={homePathFor(user)} replace />;
 }
 
 /**
@@ -274,6 +284,8 @@ export default function App() {
           định và mẫu ca dùng chung cả chuỗi (BR-PERM-02). */}
       <Route path="/xep-lich" element={inShell(<RequireBranchManager><SchedulePage /></RequireBranchManager>)} />
       <Route path="/quy-dinh-ca" element={inShell(<RequireDirector><ScheduleRulesPage /></RequireDirector>)} />
+      {/* Nhân viên xem ca của chính mình (BR-PERM-04..06); chấm công để sau. */}
+      <Route path="/lich-ca-nhan" element={inShell(<RequireStaff><MySchedulePage /></RequireStaff>)} />
       {/* Gói dịch vụ — chỉ Giám đốc (trang tự đưa vai trò khác về trang chủ). */}
       <Route path="/goi-dich-vu" element={inShell(<BillingPage />)} />
       {/* VNPay đưa Giám đốc về đây sau khi thanh toán (?vnp_...). */}

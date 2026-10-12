@@ -3,6 +3,7 @@ import { readErrorMessage } from '../../api/client';
 import {
   copyCommonTemplates,
   createShiftTemplate,
+  deleteShiftTemplate,
   fetchPolicy,
   fetchShiftTemplates,
   setLocationOwnTemplates,
@@ -26,8 +27,8 @@ const COMMON = 'COMMON';
  * BR-SCH-22, BR-PERM-02. Chỉ Giám đốc (route bọc RequireDirector); Manager đọc quy định ngay trên
  * bảng xếp lịch.
  *
- * Mẫu ca không có nút xóa: BR-SCH-22 chỉ cho vô hiệu hóa, vì các ca đã xếp vẫn trỏ vào mẫu để tra
- * lịch sử.
+ * Mẫu ca ngừng dùng thì tắt (BR-SCH-22). Chỉ mẫu đã tắt mà chưa ca nào dùng mới xóa hẳn được (chốt
+ * 09/10/2026) — ca đã xếp vẫn trỏ vào mẫu để tra lịch sử, nên mẫu đã dùng chỉ tắt.
  *
  * Bộ mẫu theo chi nhánh (chốt 06/10/2026): có bộ mẫu CHUNG của chuỗi và bộ mẫu RIÊNG của từng chi
  * nhánh; mỗi chi nhánh dùng ĐÚNG MỘT bộ. Giám đốc soạn bộ riêng (tự thêm từng mẫu hoặc sao chép bộ
@@ -42,7 +43,8 @@ export default function ScheduleRulesPage() {
   const [banner, setBanner] = useState(null); // { type, text }
   const [showInactive, setShowInactive] = useState(true);
   const [editing, setEditing] = useState(null); // null | { locationId } (thêm mới) | mẫu đang sửa
-  const [toggling, setToggling] = useState(null); // id mẫu đang bật/tắt
+  const [busyTemplate, setBusyTemplate] = useState(null); // id mẫu đang bật/tắt hoặc đang xóa
+  const [pendingDelete, setPendingDelete] = useState(null); // mẫu đang hỏi xác nhận xóa
   const [filterSet, setFilterSet] = useState(ALL_SETS);
   const [switching, setSwitching] = useState(null); // { location, own } — đang hỏi xác nhận đổi bộ
   const [busyLocation, setBusyLocation] = useState(null); // id chi nhánh đang đổi bộ / sao chép
@@ -103,7 +105,7 @@ export default function ScheduleRulesPage() {
   }
 
   async function handleToggle(template) {
-    setToggling(template.id);
+    setBusyTemplate(template.id);
     setBanner(null);
     try {
       // Thay đúng dòng vừa đổi bằng bản backend trả về — bảng và thông báo đổi cùng lúc.
@@ -113,12 +115,29 @@ export default function ScheduleRulesPage() {
         type: 'success',
         text: updated.active
           ? `Đã bật lại mẫu «${updated.name}».`
-          : `Đã tắt mẫu «${updated.name}». Manager không chọn được mẫu này khi xếp ca mới; các ca đã xếp giữ nguyên.`,
+          : `Đã tắt mẫu «${updated.name}». Manager không chọn được mẫu này khi xếp ca mới; các ca đã xếp giữ nguyên.`
+            + (updated.usedShiftCount === 0 ? ' Mẫu chưa dùng cho ca nào — bấm «Xóa» nếu không cần nữa.' : ''),
       });
     } catch (err) {
       setBanner({ type: 'error', text: readErrorMessage(err, 'Không đổi được trạng thái mẫu ca.') });
     } finally {
-      setToggling(null);
+      setBusyTemplate(null);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    const template = pendingDelete;
+    setPendingDelete(null);
+    setBusyTemplate(template.id);
+    setBanner(null);
+    try {
+      await deleteShiftTemplate(template.id);
+      setTemplates((prev) => prev.filter((t) => t.id !== template.id));
+      setBanner({ type: 'success', text: `Đã xóa mẫu ca «${template.name}».` });
+    } catch (err) {
+      setBanner({ type: 'error', text: readErrorMessage(err, 'Không xóa được mẫu ca.') });
+    } finally {
+      setBusyTemplate(null);
     }
   }
 
@@ -293,6 +312,13 @@ export default function ScheduleRulesPage() {
                             <span className={`badge ${template.active ? 'badge--green' : 'badge--grey'}`}>
                               {template.active ? 'Đang dùng' : 'Đã tắt'}
                             </span>
+                            {!template.active && (
+                              <small className="template-set-note">
+                                {template.usedShiftCount > 0
+                                  ? `Đã dùng cho ${template.usedShiftCount} ca — giữ để tra lịch sử`
+                                  : 'Chưa dùng cho ca nào'}
+                              </small>
+                            )}
                           </td>
                           <td className="cell-actions">
                             <button
@@ -309,10 +335,26 @@ export default function ScheduleRulesPage() {
                               type="button"
                               className="btn btn--ghost btn--sm"
                               onClick={() => handleToggle(template)}
-                              disabled={toggling === template.id}
+                              disabled={busyTemplate === template.id}
                             >
                               {template.active ? 'Tắt' : 'Bật lại'}
                             </button>
+                            {!template.active && (
+                              <button
+                                type="button"
+                                className="btn btn--danger btn--sm"
+                                onClick={() => {
+                                  setBanner(null);
+                                  setPendingDelete(template);
+                                }}
+                                disabled={busyTemplate === template.id || template.usedShiftCount > 0}
+                                title={template.usedShiftCount > 0
+                                  ? `Đã dùng cho ${template.usedShiftCount} ca nên chỉ tắt được, không xóa được`
+                                  : undefined}
+                              >
+                                Xóa
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -324,7 +366,8 @@ export default function ScheduleRulesPage() {
 
             <div className="panel__foot">
               <span className="muted">
-                Mẫu đã tắt không chọn được khi xếp ca mới nhưng vẫn giữ để tra các ca cũ — không xóa được mẫu.
+                Mẫu đã tắt không chọn được khi xếp ca mới. Mẫu đã tắt mà chưa dùng cho ca nào thì xóa hẳn được;
+                mẫu đã dùng chỉ tắt, để các ca cũ vẫn tra được tên mẫu.
               </span>
             </div>
           </section>
@@ -440,6 +483,16 @@ export default function ScheduleRulesPage() {
             onCancel={() => setEditing(null)}
           />
         </FormModal>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Xóa mẫu ca «${pendingDelete.name}»?`}
+          message="Mẫu bị xóa hẳn khỏi danh mục và không khôi phục được. Mẫu chưa dùng cho ca nào nên lịch đã xếp không bị ảnh hưởng."
+          confirmLabel="Xóa mẫu"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={handleConfirmDelete}
+        />
       )}
 
       {switching && (

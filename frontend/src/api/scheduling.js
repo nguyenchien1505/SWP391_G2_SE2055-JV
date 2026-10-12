@@ -55,10 +55,18 @@ export async function updateShiftTemplate(id, payload) {
   return data;
 }
 
-/** BR-SCH-22: không xóa mẫu — chỉ bật/tắt. */
+/** BR-SCH-22: ngừng dùng mẫu thì tắt, không xóa. */
 export async function setShiftTemplateActive(id, active) {
   const { data } = await api.patch(`/scheduling/shift-templates/${id}/active`, { active });
   return data;
+}
+
+/**
+ * Xóa hẳn mẫu — backend chỉ cho với mẫu đã tắt và chưa ca nào dùng (`usedShiftCount` = 0, chốt
+ * 09/10/2026); mẫu đã dùng thì giữ ở trạng thái tắt để ca cũ còn tra được tên mẫu.
+ */
+export async function deleteShiftTemplate(id) {
+  await api.delete(`/scheduling/shift-templates/${id}`);
 }
 
 /**

@@ -3,6 +3,7 @@ package com.example.SWP391_G2_SE2055_JV.controller;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftTemplateRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.LocationTemplateSetResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.ShiftTemplateResponse;
+import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.service.ShiftTemplateService;
 import com.example.SWP391_G2_SE2055_JV.support.SecuredWebMvcTest;
 import org.junit.jupiter.api.Nested;
@@ -24,9 +25,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -160,7 +163,7 @@ class ShiftTemplateControllerTest {
             verifyNoInteractions(shiftTemplateService);
         }
 
-        /** BR-SCH-22: không có xóa — tắt mẫu bằng cờ active. */
+        /** BR-SCH-22: ngừng dùng thì tắt mẫu bằng cờ active. */
         @Test
         @WithMockUser(roles = "DIRECTOR")
         void shouldDeactivateTemplate() throws Exception {
@@ -171,6 +174,36 @@ class ShiftTemplateControllerTest {
                 .andExpect(status().isOk());
 
             verify(shiftTemplateService).setActive(TEMPLATE_ID, false);
+        }
+
+        /** Xóa hẳn mẫu đã tắt và chưa ca nào dùng (chốt 09/10/2026). */
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldLetDirectorDeleteTemplate() throws Exception {
+            mockMvc.perform(delete("/scheduling/shift-templates/{id}", TEMPLATE_ID))
+                .andExpect(status().isNoContent());
+
+            verify(shiftTemplateService).deleteTemplate(TEMPLATE_ID);
+        }
+
+        /** Mẫu còn bật hoặc đã dùng cho ca: service từ chối, câu lý do hiện thẳng trên màn hình. */
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldExplainWhyTemplateCannotBeDeleted() throws Exception {
+            doThrow(new BusinessException("Không xóa được mẫu «Ca đêm»: đã dùng cho 3 ca."))
+                .when(shiftTemplateService).deleteTemplate(TEMPLATE_ID);
+
+            mockMvc.perform(delete("/scheduling/shift-templates/{id}", TEMPLATE_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Không xóa được mẫu «Ca đêm»: đã dùng cho 3 ca."));
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldForbidManagerFromDeleting() throws Exception {
+            mockMvc.perform(delete("/scheduling/shift-templates/{id}", TEMPLATE_ID))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(shiftTemplateService);
         }
     }
 

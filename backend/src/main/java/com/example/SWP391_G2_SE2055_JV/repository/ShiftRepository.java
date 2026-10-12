@@ -4,9 +4,12 @@ import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -69,4 +72,27 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
 
     /** BR-DASH-03: số Staff có ca hôm nay tại một Location. */
     long countByLocationIdAndShiftDate(UUID locationId, LocalDate shiftDate);
+
+    /**
+     * Số ca xếp từ một mẫu, tính cả ca đã qua và chỗ trống chưa giao người — mẫu chưa ca nào dùng mới
+     * xóa hẳn được (chốt 09/10/2026).
+     */
+    long countBySourceTemplateId(UUID sourceTemplateId);
+
+    /**
+     * Đếm gộp số ca của từng mẫu cho một trang danh mục mẫu ca — tránh N+1 query. Mẫu chưa có ca nào
+     * không xuất hiện trong kết quả; bên gọi tự quy về 0. Không gọi với danh sách rỗng.
+     */
+    @Query("""
+        SELECT s.sourceTemplateId AS templateId, COUNT(s) AS total
+        FROM Shift s
+        WHERE s.sourceTemplateId IN :templateIds
+        GROUP BY s.sourceTemplateId
+        """)
+    List<TemplateShiftCount> countGroupedBySourceTemplate(@Param("templateIds") Collection<UUID> templateIds);
+
+    interface TemplateShiftCount {
+        UUID getTemplateId();
+        long getTotal();
+    }
 }

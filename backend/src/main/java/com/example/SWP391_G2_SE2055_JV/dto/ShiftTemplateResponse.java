@@ -29,10 +29,16 @@ public class ShiftTemplateResponse {
     private boolean       overnight;
     private BigDecimal    durationHours;
 
+    /**
+     * Số ca xếp từ mẫu này, tính cả ca đã qua — mẫu đã tắt mà số này bằng 0 thì xóa hẳn được
+     * (chốt 09/10/2026).
+     */
+    private long          usedShiftCount;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    public static ShiftTemplateResponse fromEntity(ShiftTemplate template) {
+    public static ShiftTemplateResponse fromEntity(ShiftTemplate template, long usedShiftCount) {
         return ShiftTemplateResponse.builder()
             .id(template.getId())
             .locationId(template.getLocationId())
@@ -43,6 +49,7 @@ public class ShiftTemplateResponse {
             .active(template.isActive())
             .overnight(ShiftTimeUtils.isOvernight(template.getStartTime(), template.getEndTime()))
             .durationHours(ShiftTimeUtils.durationHours(template.getStartTime(), template.getEndTime()))
+            .usedShiftCount(usedShiftCount)
             .createdAt(template.getCreatedAt())
             .updatedAt(template.getUpdatedAt())
             .build();
