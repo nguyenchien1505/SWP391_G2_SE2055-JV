@@ -15,6 +15,8 @@ import java.util.UUID;
 public class ShiftTemplateResponse {
 
     private UUID          id;
+    /** null = thuộc bộ mẫu chung của chuỗi; có giá trị = thuộc bộ mẫu riêng của chi nhánh đó. */
+    private UUID          locationId;
     private String        name;
     private LocalTime     startTime;
     private LocalTime     endTime;
@@ -27,12 +29,19 @@ public class ShiftTemplateResponse {
     private boolean       overnight;
     private BigDecimal    durationHours;
 
+    /**
+     * Số ca xếp từ mẫu này, tính cả ca đã qua — mẫu đã tắt mà số này bằng 0 thì xóa hẳn được
+     * (chốt 09/10/2026).
+     */
+    private long          usedShiftCount;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    public static ShiftTemplateResponse fromEntity(ShiftTemplate template) {
+    public static ShiftTemplateResponse fromEntity(ShiftTemplate template, long usedShiftCount) {
         return ShiftTemplateResponse.builder()
             .id(template.getId())
+            .locationId(template.getLocationId())
             .name(template.getName())
             .startTime(template.getStartTime())
             .endTime(template.getEndTime())
@@ -40,6 +49,7 @@ public class ShiftTemplateResponse {
             .active(template.isActive())
             .overnight(ShiftTimeUtils.isOvernight(template.getStartTime(), template.getEndTime()))
             .durationHours(ShiftTimeUtils.durationHours(template.getStartTime(), template.getEndTime()))
+            .usedShiftCount(usedShiftCount)
             .createdAt(template.getCreatedAt())
             .updatedAt(template.getUpdatedAt())
             .build();

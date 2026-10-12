@@ -13,7 +13,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -42,10 +41,11 @@ import java.util.List;
  *   STAFF          : quyền chung của người lao động
  * </pre>
  *
- * <p>Trục 2 — {@code POSITION_*}: Lễ tân và Dọn dẹp KHÔNG phải role mà là Loại Position
- * (BR-ORG-08). Quyền nghiệp vụ đặc thù của hai nhóm này gắn vào authority
- * {@code POSITION_RECEPTION} / {@code POSITION_HOUSEKEEPING}. Position loại OTHER chỉ có
- * quyền chung, không nhận authority đặc thù nào (BR-ORG-09, BR-PERM-06).
+ * <p>Trục 2 — {@code POSITION_*}: Lễ tân và Dọn dẹp KHÔNG phải role mà là quyền nghiệp vụ Manager
+ * tick cho từng nhân viên ({@code StaffPermission}, BR-ORG-08 bản sửa). Mỗi quyền đã tick là một
+ * authority {@code POSITION_RECEPTION} / {@code POSITION_HOUSEKEEPING} (giữ tiền tố cũ để các rule
+ * không phải đổi); một người có thể có cả hai. Nhân viên không được tick quyền nào chỉ có quyền
+ * chung, không nhận authority đặc thù nào (BR-ORG-09, BR-PERM-06).
  *
  * <p>Rule ở đây là lớp chặn thô theo URL; kiểm tra quyền sở hữu (Staff chỉ xem ca của
  * mình, Manager chỉ thao tác trong Location của mình) nằm ở tầng service.
@@ -73,7 +73,10 @@ public class SecurityConfig {
         "/auth/unauthorized",
         // BR-SAAS-13: Tenant tự đăng ký, chưa có tài khoản nên phải công khai.
         // (Endpoint chưa hiện thực — khai báo sẵn để rule không bị bỏ sót khi làm.)
-        "/auth/register-tenant"
+        "/auth/register-tenant",
+        // Xác thực email sau khi đăng ký — người dùng chưa đăng nhập được nên phải công khai.
+        "/auth/verify-email",
+        "/auth/resend-verification"
     };
 
     /** Origin của frontend. Dev: Vite chạy cổng 3000; đổi khi deploy bằng biến môi trường. */
@@ -211,11 +214,12 @@ public class SecurityConfig {
                 // (rule đó mở GET tới STAFF) — nếu không Staff vẫn xem được kho.
                 .requestMatchers("/assets/consumables/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
-                // Cả Lễ tân và Dọn dẹp đều báo hỏng được (BR-ASSET-05).
+                // CHỈ nhân viên có quyền Lễ tân hoặc Dọn dẹp báo hỏng (BR-ASSET-05). Manager là
+                // người nhận báo hỏng — thấy tài sản hỏng thì đổi trạng thái thẳng, không tự báo
+                // cho mình; Admin đứng ngoài mọi Location nên không có tài sản để báo.
                 .requestMatchers(HttpMethod.POST, "/assets/damage-reports")
                     .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
-                        hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + MANAGER,
-                            "POSITION_RECEPTION", "POSITION_HOUSEKEEPING")))
+                        hasAnyAuthority(authn, "POSITION_RECEPTION", "POSITION_HOUSEKEEPING")))
                 .requestMatchers(HttpMethod.GET, "/assets/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers("/assets/**")

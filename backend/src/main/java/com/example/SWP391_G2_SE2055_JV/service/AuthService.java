@@ -1,15 +1,21 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.ChangePasswordRequest;
+import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 /**
  * Tự đổi mật khẩu — BR-USER-07.
@@ -24,8 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private final UserRepository  userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final UserRepository     userRepository;
+    private final LocationRepository locationRepository;
+    private final PasswordEncoder    passwordEncoder;
 
     @Transactional
     public void changePassword(String email, ChangePasswordRequest request) {
@@ -45,5 +52,35 @@ public class AuthService {
         userRepository.save(user);
 
         log.info("Đổi mật khẩu thành công cho {}", email);
+    }
+
+    /**
+     * Tên khách sạn người dùng đang làm việc — hiển thị trên thanh tiêu đề. Staff không gọi được
+     * {@code GET /locations} nên tên phải đi kèm {@code /auth/me}. Lọc theo Tenant để không lộ
+     * tên khách sạn của Tenant khác; chưa gán khách sạn thì trả {@code null}.
+     */
+    @Transactional(readOnly = true)
+    public String findLocationName(UUID locationId, UUID tenantId) {
+        if (locationId == null || tenantId == null) {
+            return null;
+        }
+        return locationRepository.findByIdAndTenantId(locationId, tenantId)
+            .map(Location::getName)
+            .orElse(null);
+    }
+
+    /**
+     * Email Quản lý đang phụ trách khách sạn — hiển thị trên thanh tiêu đề để nhân viên biết liên
+     * hệ ai. Staff không gọi được {@code GET /users} nên email phải đi kèm {@code /auth/me}. Khách
+     * sạn chưa có Quản lý đang hoạt động thì trả {@code null}.
+     */
+    @Transactional(readOnly = true)
+    public String findLocationManagerEmail(UUID locationId) {
+        if (locationId == null) {
+            return null;
+        }
+        return userRepository.findFirstByLocationIdAndRoleAndStatus(locationId, Role.MANAGER, UserStatus.ACTIVE)
+            .map(User::getEmail)
+            .orElse(null);
     }
 }

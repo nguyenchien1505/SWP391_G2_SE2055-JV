@@ -14,6 +14,7 @@ import FormModal from '../components/FormModal';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { formatDate, todayIso } from './rooms/format';
 
 const PAGE_SIZE = 10;
 
@@ -281,6 +282,9 @@ export default function LocationsPage() {
                             <div className="cell-manager">
                               <b>{staff.manager.fullName}</b>
                               <small>{staff.manager.phone}</small>
+                              {staff.manager.startWorkDate > todayIso() && (
+                                <small className="muted">Bắt đầu làm {formatDate(staff.manager.startWorkDate)}</small>
+                              )}
                             </div>
                           ) : (
                             <span className="muted">Chưa phân công</span>
@@ -294,6 +298,12 @@ export default function LocationsPage() {
                         </td>
                         <td>
                           <StatusBadge status={row.status} />
+                          {/* Chốt 06/10/2026: có quản lý nhưng chưa tới ngày họ bắt đầu làm thì chưa vận hành. */}
+                          {row.status === 'NOT_OPERATIONAL' && staff?.manager?.startWorkDate > todayIso() && (
+                            <small className="muted cell-status-note">
+                              Hoạt động từ {formatDate(staff.manager.startWorkDate)}
+                            </small>
+                          )}
                         </td>
                         <td className="cell-actions">
                           <button
@@ -348,19 +358,6 @@ export default function LocationsPage() {
             </div>
           </div>
         </section>
-      </div>
-
-      <div className="note">
-        <span aria-hidden="true">ⓘ</span>
-        <div>
-          <b>Quy định thêm khách sạn mới</b>
-          <p>
-            Khách sạn mới luôn ở trạng thái <b>Chưa vận hành</b> và chỉ chuyển sang{' '}
-            <b>Đang hoạt động</b> sau khi được gán một Quản lý chi nhánh. Mỗi khách
-            sạn chỉ có đúng một quản lý. Chỉ Giám đốc được thêm và xóa khách sạn; Quản lý chi
-            nhánh chỉ cập nhật được địa chỉ và số điện thoại liên hệ.
-          </p>
-        </div>
       </div>
 
       {formOpen && (

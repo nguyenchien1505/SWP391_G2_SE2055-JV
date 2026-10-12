@@ -34,6 +34,10 @@ public class AuthController {
         body.put("role",               user.getRole().name());
         body.put("tenantId",           user.getTenantId());
         body.put("locationId",         user.getLocationId());
+        // Tên khách sạn cho thanh tiêu đề — Staff không gọi được GET /locations.
+        body.put("locationName",       authService.findLocationName(user.getLocationId(), user.getTenantId()));
+        // Email Quản lý của khách sạn đó — nhân viên biết liên hệ ai.
+        body.put("locationManagerEmail", authService.findLocationManagerEmail(user.getLocationId()));
         body.put("positionId",         user.getPositionId());
         // Quyền nghiệp vụ đã được tick — ví dụ ["RECEPTION", "HOUSEKEEPING"]; rỗng = quyền chung.
         body.put("permissions",        user.getPermissions().stream().map(Enum::name).sorted().toList());

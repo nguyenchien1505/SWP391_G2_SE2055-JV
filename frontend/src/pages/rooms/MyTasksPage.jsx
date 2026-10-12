@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
 import { completeTask, fetchTasks } from '../../api/housekeeping';
+import { fetchShifts } from '../../api/scheduling';
 import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import TaskStatusBadge from '../../components/rooms/TaskStatusBadge';
-import { formatDate, todayIso } from './format';
-import { compareNatural, taskTypeLabel } from './roomLabels';
+import { formatClock, formatDate, todayIso } from './format';
+import { timeRange } from '../scheduling/scheduleFormat';
+import { compareNatural, taskRoomLabel, teamNames } from './roomLabels';
 import './rooms.css';
 
 const DONE_STATUSES = ['PENDING_INSPECTION', 'COMPLETED'];
@@ -16,8 +19,9 @@ const DONE_STATUSES = ['PENDING_INSPECTION', 'COMPLETED'];
  * **mobile-first** thật sự — không có bảng, mỗi việc là một dòng với số phòng cỡ lớn và đúng
  * MỘT nút to chiếm hết chiều ngang.
  *
- * Không có bộ lọc theo người: backend đã ép nhân viên chỉ thấy việc của chính mình, nên gọi
- * `GET /housekeeping/tasks` là đủ (BR-PERM-05).
+ * Không có bộ lọc theo người: backend đã ép nhân viên chỉ thấy việc có mình trong nhóm dọn, nên gọi
+ * `GET /housekeeping/tasks` là đủ (BR-PERM-05). Một phòng có thể nhiều người dọn — mỗi việc ghi rõ
+ * dọn cùng ai, và một người bấm «Hoàn thành» là xong cho cả nhóm.
  *
  * Hai mục:
  *   - **Cần làm** — mọi việc đang làm, KHÔNG lọc theo ngày: việc tồn đọng từ hôm qua vẫn phải
@@ -25,6 +29,7 @@ const DONE_STATUSES = ['PENDING_INSPECTION', 'COMPLETED'];
  *   - **Đã xong hôm nay** — để tự đối chiếu cuối ca.
  */
 export default function MyTasksPage() {
+  const { user } = useAuth();
   const today = todayIso();
 
   const [todo, setTodo] = useState([]);
@@ -34,6 +39,7 @@ export default function MyTasksPage() {
   const [banner, setBanner] = useState(null);       // { type, text }
   const [submittingId, setSubmittingId] = useState(null);
   const [previousOf, setPreviousOf] = useState(null);   // việc dọn lại đang xem lý do không đạt
+  const [shifts, setShifts] = useState(null);           // ca hôm nay của mình; null = chưa tải / lỗi
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,17 +62,28 @@ export default function MyTasksPage() {
     load();
   }, [load]);
 
+  // Ca hôm nay: backend chỉ trả ca của chính nhân viên. Lỗi thì ẩn thẻ — không chặn việc dọn.
+  useEffect(() => {
+    let cancelled = false;
+    fetchShifts({ from: today, to: today })
+      .then((list) => !cancelled && setShifts(list))
+      .catch(() => !cancelled && setShifts(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [today]);
+
   async function handleComplete(task) {
     setSubmittingId(task.id);
     setBanner(null);
     try {
       const updated = await completeTask(task.id);
+      // Nói rõ là CHƯA xong hẳn, tránh nhân viên tưởng mình còn sót việc khi thấy nó vẫn ở đó.
       setBanner({
         type: 'success',
-        text: updated.status === 'PENDING_INSPECTION'
-          // Nói rõ là CHƯA xong hẳn, tránh nhân viên tưởng mình còn sót việc khi thấy nó vẫn ở đó.
-          ? `Đã báo xong phòng ${updated.roomNumber} — chờ quản lý kiểm tra.`
-          : `Đã hoàn thành phòng ${updated.roomNumber}.`,
+        text: `Đã báo xong phòng ${taskRoomLabel(updated)}`
+          + ((updated.assignees?.length ?? 0) > 1 ? ' cho cả nhóm' : '')
+          + ' — chờ quản lý kiểm tra.',
       });
       await load();
     } catch (err) {
@@ -101,6 +118,26 @@ export default function MyTasksPage() {
       )}
       {loading && <p className="state">Đang tải dữ liệu…</p>}
 
+      {shifts && (
+        <section className="my-shift" aria-label="Ca hôm nay">
+          <span className="my-shift__label">Ca hôm nay</span>
+          {shifts.length === 0 ? (
+            <span className="my-shift__none">
+              Hôm nay bạn không có ca — việc dọn chỉ được giao vào ngày bạn có ca.
+            </span>
+          ) : (
+            shifts.map((shift) => (
+              <span key={shift.id} className="my-shift__time">
+                {timeRange(shift.startTime, shift.endTime)}
+                {shift.checkInAt && (
+                  <small> · đã vào ca {formatClock(new Date(shift.checkInAt))}</small>
+                )}
+              </span>
+            ))
+          )}
+        </section>
+      )}
+
       <section className="panel">
         <div className="panel__head">
           <h2>Cần làm</h2>
@@ -118,10 +155,14 @@ export default function MyTasksPage() {
           {todo.map((task) => (
             <li key={task.id} className="task-row">
               <div className="task-row__info">
-                <span className="task-row__room">{task.roomNumber ?? '—'}</span>
-                <span className="task-row__meta">
-                  Tầng {task.floor ?? '—'} · {taskTypeLabel(task.taskType)}
+                <span className="task-row__room">
+                  {task.roomNumber ?? '—'}
+                  {task.roomTypeName && <small> - {task.roomTypeName}</small>}
                 </span>
+                <span className="task-row__meta">Tầng {task.floor ?? '—'}</span>
+                {teamNames(task, user?.id) && (
+                  <span className="task-row__meta">Dọn cùng: {teamNames(task, user?.id)}</span>
+                )}
                 {/* BR-HK-04: việc của hôm trước chưa xong thì vẫn phải làm, không tự hủy. */}
                 {task.assignedDate && task.assignedDate < today && (
                   <span className="task-card__flag">Tồn đọng từ {formatDate(task.assignedDate)}</span>
@@ -162,8 +203,13 @@ export default function MyTasksPage() {
           {done.map((task) => (
             <li key={task.id} className="task-row task-row--done">
               <div className="task-row__info">
-                <span className="task-row__room">{task.roomNumber ?? '—'}</span>
-                <span className="task-row__meta">{taskTypeLabel(task.taskType)}</span>
+                <span className="task-row__room">
+                  {task.roomNumber ?? '—'}
+                  {task.roomTypeName && <small> - {task.roomTypeName}</small>}
+                </span>
+                {teamNames(task, user?.id) && (
+                  <span className="task-row__meta">Dọn cùng: {teamNames(task, user?.id)}</span>
+                )}
               </div>
               <TaskStatusBadge status={task.status} />
             </li>

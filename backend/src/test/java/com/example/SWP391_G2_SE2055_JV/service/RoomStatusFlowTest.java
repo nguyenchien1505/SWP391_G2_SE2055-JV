@@ -198,20 +198,11 @@ class RoomStatusFlowTest {
     // ── Checklist F4 §3.3: luồng khách của Lễ tân ──────────────────────────
 
     /**
-     * RM-10 — check-out kéo theo HAI hệ quả ngược chiều nhau trong cùng một transaction:
-     * hủy task dọn hằng ngày đang mở (BR-HK-10) rồi sinh task dọn sau trả phòng (BR-HK-01).
-     *
-     * <p>Thứ tự là bắt buộc chứ không phải tùy: DB có unique {@code uk_hk_open_task_per_room_type}
-     * (mỗi phòng tối đa 1 task ĐANG MỞ cho mỗi loại). Test này chạy trên MySQL thật nên nếu code
-     * sinh task mới trước khi hủy task cũ thì sẽ vỡ ở tầng DB — unit test với mock không bắt được.
+     * RM-10 — khách trả phòng: phòng sang «Chờ dọn» và hệ thống sinh ĐÚNG MỘT việc dọn chưa phân
+     * công (BR-HK-01), cùng transaction. Đã bỏ dọn hằng ngày (V4) nên không còn việc nào để hủy.
      */
     @Test
-    void shouldCancelStayoverAndCreateCheckoutTaskOnCheckOut() {
-        HousekeepingTask stayover = persist(HousekeepingTask.builder().tenantId(tenantId).locationId(hanoi)
-            .roomId(occupied102.getId()).taskType(HousekeepingTaskType.STAYOVER)
-            .status(HousekeepingTaskStatus.IN_PROGRESS)
-            .createdSource(TaskCreatedSource.MANAGER_STAYOVER).build());
-        flushAndClear();
+    void shouldCreateCheckoutTaskOnCheckOut() {
         loginAsReception();
 
         RoomResponse after = roomService.changeStatus(occupied102.getId(), request(RoomStatus.DIRTY, null));
@@ -219,17 +210,12 @@ class RoomStatusFlowTest {
 
         assertThat(after.getStatus()).isEqualTo(RoomStatus.DIRTY);
 
-        HousekeepingTask cancelled = em.find(HousekeepingTask.class, stayover.getId());
-        assertThat(cancelled.getStatus()).isEqualTo(HousekeepingTaskStatus.CANCELLED);
-        assertThat(cancelled.getCancelReason()).isEqualTo(TaskCancelReason.GUEST_CHECKED_OUT);
-
-        // Còn ĐÚNG một task đang mở, và đó là task dọn sau trả phòng do hệ thống sinh.
         assertThat(taskRepository.findByRoomIdAndStatusIn(occupied102.getId(), HousekeepingTaskStatus.OPEN_STATUSES))
             .singleElement().satisfies(task -> {
                 assertThat(task.getTaskType()).isEqualTo(HousekeepingTaskType.CHECKOUT);
                 assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
                 assertThat(task.getCreatedSource()).isEqualTo(TaskCreatedSource.CHECKOUT_AUTO);
-                assertThat(task.getAssignedStaffId()).isNull();
+                assertThat(task.getAssigneeIds()).isEmpty();
             });
 
         assertThat(historyOf(occupied102)).singleElement().satisfies(row -> {

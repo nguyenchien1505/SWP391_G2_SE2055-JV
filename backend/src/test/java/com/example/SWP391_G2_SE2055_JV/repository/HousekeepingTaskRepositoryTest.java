@@ -1,17 +1,22 @@
 package com.example.SWP391_G2_SE2055_JV.repository;
 
 import com.example.SWP391_G2_SE2055_JV.config.JpaConfig;
+import com.example.SWP391_G2_SE2055_JV.entity.Department;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
+import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
 import com.example.SWP391_G2_SE2055_JV.entity.Tenant;
+import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
-import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
+import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,10 +24,11 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -31,7 +37,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * F5 — các bất biến của lịch dọn được ép ở tầng DB, kiểm trên MySQL thật.
+ * Các bất biến của lịch dọn được ép ở tầng DB, và các truy vấn trên bảng nhóm dọn
+ * {@code housekeeping_task_assignees} (V4) — kiểm trên MySQL thật.
  *
  * <p>Service vẫn phải tự chặn trước để trả câu lỗi dễ hiểu; những test này chứng minh rằng kể cả
  * khi service sót (hoặc hai request chạy song song) thì DB vẫn không nhận dữ liệu sai — đúng tinh
@@ -49,6 +56,9 @@ class HousekeepingTaskRepositoryTest {
     private UUID tenantId;
     private UUID locationId;
     private UUID roomId;
+    private UUID hoa;
+    private UUID nam;
+    private final LocalDate today = LocalDate.of(2026, 10, 5);
 
     @BeforeEach
     void setUp() {
@@ -59,79 +69,155 @@ class HousekeepingTaskRepositoryTest {
         UUID roomTypeId = persist(RoomType.builder().tenantId(tenantId).name("Đôi").build()).getId();
         roomId = persist(Room.builder().tenantId(tenantId).locationId(locationId).roomNumber("201")
             .floor("2").roomTypeId(roomTypeId).capacity(2).status(RoomStatus.DIRTY).build()).getId();
+
+        UUID department = persist(Department.builder().tenantId(tenantId).name("Buồng phòng").build()).getId();
+        UUID position = persist(Position.builder().tenantId(tenantId).departmentId(department)
+            .name("Nhân viên dọn phòng").positionType(PositionType.HOUSEKEEPING).build()).getId();
+        hoa = persistCleaner(position, "Nguyễn Thị Hoa");
+        nam = persistCleaner(position, "Trần Văn Nam");
         em.flush();
     }
 
-    /** BR-HK-11: mỗi phòng tối đa MỘT task đang mở cho mỗi loại — cột sinh {@code open_task_key}. */
+    /** BR-HK-11: mỗi phòng tối đa MỘT việc dọn đang mở — cột sinh {@code open_task_key}. */
     @Test
-    void shouldRejectSecondOpenCheckoutTaskForSameRoom() {
-        repository.saveAndFlush(task(HousekeepingTaskType.CHECKOUT, HousekeepingTaskStatus.UNASSIGNED));
+    void shouldRejectSecondOpenTaskForSameRoom() {
+        repository.saveAndFlush(task(HousekeepingTaskStatus.UNASSIGNED));
 
-        HousekeepingTask duplicate = task(HousekeepingTaskType.CHECKOUT, HousekeepingTaskStatus.IN_PROGRESS);
+        HousekeepingTask duplicate = task(HousekeepingTaskStatus.IN_PROGRESS);
 
         assertThatThrownBy(() -> repository.saveAndFlush(duplicate))
             .isInstanceOf(DataIntegrityViolationException.class);
     }
 
-    /** Hai LOẠI khác nhau không đụng nhau: phòng có khách vẫn vừa dọn hằng ngày vừa chờ check-out được. */
-    @Test
-    void shouldAllowOpenCheckoutAndStayoverForSameRoom() {
-        repository.saveAndFlush(task(HousekeepingTaskType.CHECKOUT, HousekeepingTaskStatus.UNASSIGNED));
-
-        assertThatCode(() -> repository.saveAndFlush(
-            task(HousekeepingTaskType.STAYOVER, HousekeepingTaskStatus.UNASSIGNED)))
-            .doesNotThrowAnyException();
-    }
-
     /** Task đã đóng nhả lại chỗ (cột sinh về NULL) — nếu không, phòng dọn xong sẽ không bao giờ dọn lại được. */
     @Test
-    void shouldAllowNewCheckoutTaskAfterPreviousCompleted() {
-        HousekeepingTask first = task(HousekeepingTaskType.CHECKOUT, HousekeepingTaskStatus.COMPLETED);
+    void shouldAllowNewTaskAfterPreviousCompleted() {
+        HousekeepingTask first = task(HousekeepingTaskStatus.COMPLETED);
         first.setCompletedAt(LocalDateTime.now());
         repository.saveAndFlush(first);
 
-        assertThatCode(() -> repository.saveAndFlush(
-            task(HousekeepingTaskType.CHECKOUT, HousekeepingTaskStatus.UNASSIGNED)))
+        assertThatCode(() -> repository.saveAndFlush(task(HousekeepingTaskStatus.UNASSIGNED)))
             .doesNotThrowAnyException();
         assertThat(repository.findByRoomIdAndStatusIn(roomId, HousekeepingTaskStatus.OPEN_STATUSES))
             .hasSize(1);
     }
 
     /**
-     * BR-HK-06: dọn hằng ngày KHÔNG có bước chờ kiểm tra. Đây là lưới cuối nếu ai đó viết nhầm
-     * nhánh CHECKOUT/STAYOVER trong {@code HousekeepingService.completeTask}.
+     * Đã bỏ việc dọn hằng ngày (V4): {@code ck_hk_task_type} chỉ còn nhận CHECKOUT. Ghi bằng SQL thô
+     * vì enum Java không còn giá trị STAYOVER.
      *
      * <p>MySQL báo vi phạm CHECK bằng mã 3819, Spring không xếp vào {@code
      * DataIntegrityViolationException} — nên chỉ khẳng định "DB từ chối, đúng ràng buộc này".
      */
     @Test
-    void shouldRejectPendingInspectionStayoverAtDbLevel() {
-        HousekeepingTask invalid = task(HousekeepingTaskType.STAYOVER,
-            HousekeepingTaskStatus.PENDING_INSPECTION);
-
-        assertThatThrownBy(() -> repository.saveAndFlush(invalid))
-            .isInstanceOf(DataAccessException.class)
-            .hasMessageContaining("ck_hk_stayover_no_inspection");
+    void shouldRejectStayoverTaskAtDbLevel() {
+        assertThatThrownBy(() -> em.getEntityManager().createNativeQuery("""
+                INSERT INTO housekeeping_tasks (id, tenant_id, location_id, room_id, task_type, status, created_source)
+                VALUES (?, ?, ?, ?, 'STAYOVER', 'UNASSIGNED', 'CHECKOUT_AUTO')
+                """)
+                .setParameter(1, UUID.randomUUID().toString())
+                .setParameter(2, tenantId.toString())
+                .setParameter(3, locationId.toString())
+                .setParameter(4, roomId.toString())
+                .executeUpdate())
+            .hasMessageContaining("ck_hk_task_type");
     }
 
-    /** Task chưa phân công thì không được có người làm — {@code ck_hk_assignment_pair}. */
+    /** Một việc nhiều người dọn: cả nhóm ghi xuống và đọc lại đủ. */
     @Test
-    void shouldRejectUnassignedTaskThatStillHasStaffAtDbLevel() {
-        HousekeepingTask invalid = task(HousekeepingTaskType.CHECKOUT, HousekeepingTaskStatus.UNASSIGNED);
-        invalid.setAssignedStaffId(UUID.randomUUID());
+    void shouldStoreWholeTeamOfTask() {
+        HousekeepingTask task = repository.saveAndFlush(inProgress(hoa, nam));
+        em.clear();
 
-        assertThatThrownBy(() -> repository.saveAndFlush(invalid)).isInstanceOf(DataAccessException.class);
+        assertThat(repository.findById(task.getId()).orElseThrow().getAssigneeIds())
+            .containsExactlyInAnyOrder(hoa, nam);
+    }
+
+    /** Lọc "việc có mình trong nhóm" (BR-PERM-05) và tham số null = không lọc theo người. */
+    @Test
+    void shouldSearchByTeamMember() {
+        repository.saveAndFlush(inProgress(hoa));
+        em.clear();
+
+        assertThat(repository.search(tenantId, null, hoa, null, null, null, null, null, PageRequest.of(0, 20)))
+            .hasSize(1);
+        assertThat(repository.search(tenantId, null, nam, null, null, null, null, null, PageRequest.of(0, 20)))
+            .isEmpty();
+        assertThat(repository.search(tenantId, locationId, null, null, null, null, null, null, PageRequest.of(0, 20)))
+            .hasSize(1);
+    }
+
+    /** Lịch dọn theo tuần: khoảng ngày tính cả hai đầu, việc chưa giao (không có ngày) không lọt vào. */
+    @Test
+    void shouldSearchByAssignedDateRange() {
+        repository.saveAndFlush(inProgress(hoa));
+        repository.saveAndFlush(task(HousekeepingTaskStatus.COMPLETED, today.minusDays(3)));
+        em.clear();
+
+        assertThat(repository.search(tenantId, locationId, null, null, null, null,
+            today.minusDays(3), today, PageRequest.of(0, 20))).hasSize(2);
+        assertThat(repository.search(tenantId, locationId, null, null, null, null,
+            today.minusDays(2), today.plusDays(4), PageRequest.of(0, 20))).hasSize(1);
+        assertThat(repository.search(tenantId, locationId, null, null, null, null,
+            today.plusDays(1), today.plusDays(7), PageRequest.of(0, 20))).isEmpty();
+    }
+
+    /** BR-HK-03 và BR-HK-07 đi qua bảng nhóm: theo đúng ngày, sau một ngày, và đếm. */
+    @Test
+    void shouldFindTasksOfStaffThroughTeam() {
+        repository.saveAndFlush(inProgress(hoa, nam));
+        em.clear();
+
+        assertThat(repository.findOfStaffOn(nam, today, HousekeepingTaskStatus.IN_PROGRESS)).hasSize(1);
+        assertThat(repository.findOfStaffOn(nam, today.plusDays(1), HousekeepingTaskStatus.IN_PROGRESS)).isEmpty();
+        assertThat(repository.findOfStaffAfter(hoa, HousekeepingTaskStatus.IN_PROGRESS, today.minusDays(1)))
+            .hasSize(1);
+        // "Sau hôm nay" là LỚN HƠN — việc của chính hôm nay không tính (BR-SCH-17).
+        assertThat(repository.findOfStaffAfter(hoa, HousekeepingTaskStatus.IN_PROGRESS, today)).isEmpty();
+        assertThat(repository.countOfStaff(hoa, HousekeepingTaskStatus.IN_PROGRESS)).isEqualTo(1);
+        assertThat(repository.countOfStaff(hoa, HousekeepingTaskStatus.PENDING_INSPECTION)).isZero();
+    }
+
+    /** Người trong nhóm phải là tài khoản có thật — {@code fk_hk_assignees_staff}. */
+    @Test
+    void shouldRejectUnknownTeamMemberAtDbLevel() {
+        HousekeepingTask task = inProgress(UUID.randomUUID());
+
+        assertThatThrownBy(() -> repository.saveAndFlush(task))
+            .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     // ── Dữ liệu ─────────────────────────────────────────────────────────────
 
-    private HousekeepingTask task(HousekeepingTaskType type, HousekeepingTaskStatus status) {
+    private HousekeepingTask task(HousekeepingTaskStatus status) {
         return HousekeepingTask.builder()
             .tenantId(tenantId).locationId(locationId).roomId(roomId)
-            .taskType(type).status(status)
-            .createdSource(type == HousekeepingTaskType.CHECKOUT
-                ? TaskCreatedSource.CHECKOUT_AUTO : TaskCreatedSource.MANAGER_STAYOVER)
+            .status(status)
+            .createdSource(TaskCreatedSource.CHECKOUT_AUTO)
             .build();
+    }
+
+    /** Việc đã đóng của một ngày cũ — không chiếm chỗ "việc đang mở" nên đứng chung phòng được. */
+    private HousekeepingTask task(HousekeepingTaskStatus status, LocalDate assignedDate) {
+        HousekeepingTask task = task(status);
+        task.setAssignedDate(assignedDate);
+        task.setCompletedAt(LocalDateTime.now());
+        task.getAssigneeIds().add(nam);
+        return task;
+    }
+
+    /** Việc đang làm hôm nay của nhóm {@code team}. */
+    private HousekeepingTask inProgress(UUID... team) {
+        HousekeepingTask task = task(HousekeepingTaskStatus.IN_PROGRESS);
+        task.setAssignedDate(today);
+        task.getAssigneeIds().addAll(java.util.List.of(team));
+        return task;
+    }
+
+    private UUID persistCleaner(UUID positionId, String fullName) {
+        return persist(User.builder().tenantId(tenantId).locationId(locationId).role(Role.STAFF)
+            .positionId(positionId).email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
+            .fullName(fullName).phone("0900000000").build()).getId();
     }
 
     private <T> T persist(T entity) {

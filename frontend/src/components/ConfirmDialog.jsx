@@ -1,5 +1,6 @@
 /** design.md mục 5: mọi thao tác không hoàn tác được phải qua hộp thoại xác nhận. */
-export default function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel }) {
+/** `confirmTone`: màu nút xác nhận — mặc định đỏ cho thao tác xóa/hủy, 'primary' cho việc thường. */
+export default function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel, confirmTone = 'danger' }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -9,7 +10,7 @@ export default function ConfirmDialog({ title, message, confirmLabel, onConfirm,
           <button type="button" className="btn btn--ghost" onClick={onCancel}>
             Hủy
           </button>
-          <button type="button" className="btn btn--danger" onClick={onConfirm}>
+          <button type="button" className={`btn btn--${confirmTone}`} onClick={onConfirm}>
             {confirmLabel}
           </button>
         </div>

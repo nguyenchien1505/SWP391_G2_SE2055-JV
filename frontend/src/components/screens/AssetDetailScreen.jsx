@@ -4,6 +4,7 @@ import { fetchAllRooms } from '../../api/rooms';
 import { fetchAllAreas } from '../../api/locations';
 import { useAuth } from '../../context/AuthContext';
 import { PURPOSE_LABEL } from '../asset-categories/categoryLabels';
+import { DamageReportModal } from '../modals/DamageReportModal';
 
 const STATUS_LABEL = {
   Good: 'Tốt (Good)',
@@ -378,6 +379,9 @@ export const AssetDetailScreen = ({ assetRef, onNavigate }) => {
               </div>
             </div>
           </div>
+
+          {/* Thanh lý tự đóng các phiếu đang chờ → nạp lại khi trạng thái đổi. */}
+          <AssetDamageHistory key={asset.status} assetId={asset.id} onResolved={loadAssetDetail} />
         </div>
 
         {/* Right Column: Identification Profile (7 cols) */}
@@ -442,17 +446,6 @@ export const AssetDetailScreen = ({ assetRef, onNavigate }) => {
                 </div>
               )}
 
-            </div>
-
-            {/* Operational Rule Callout */}
-            <div className="p-4 bg-[#eff4ff] rounded-xl border border-[#d1e4ff] text-xs space-y-1.5">
-              <div className="flex items-center gap-2 font-bold text-[#00375e]">
-                <span className="material-symbols-outlined text-[18px] text-[#0e61a1]">verified_user</span>
-                <span>Quy định vận hành tài sản buồng phòng</span>
-              </div>
-              <p className="text-[#5B6472] leading-relaxed">
-                Thiết bị gắn liền với phòng Deluxe chỉ được phép di chuyển sang phòng cùng hạng hoặc kho kỹ thuật khi có phiếu báo hỏng. Mọi thao tác chuyển đổi trạng thái sang <span className="font-semibold text-[#616161]">Đã thanh lý (Disposed)</span> là quyết định cuối cùng của chu trình vòng đời và không thể hoàn tác.
-              </p>
             </div>
           </div>
         </div>
@@ -721,6 +714,105 @@ export const AssetDetailScreen = ({ assetRef, onNavigate }) => {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+const HISTORY_LIMIT = 5;
+
+/**
+ * Báo hỏng gần đây của tài sản — để thấy tài sản hỏng lặp lại. Giám đốc/Manager thấy mọi phiếu
+ * trong phạm vi; bấm vào phiếu để mở hộp thoại xử lý.
+ *
+ * @param onResolved gọi khi ĐÓNG hộp thoại sau khi đã xử lý phiếu — trạng thái tài sản có thể đã
+ *                   đổi. Không gọi ngay lúc xử lý: tài sản đổi trạng thái thì khối này dựng lại
+ *                   (key theo trạng thái) và hộp thoại sẽ biến mất trước khi Manager đọc kết quả.
+ */
+function AssetDamageHistory({ assetId, onResolved }) {
+  const [reports, setReports] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState('');
+  const [openId, setOpenId] = useState(null);
+  const [version, setVersion] = useState(0);
+  const [resolvedAny, setResolvedAny] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    assetService
+      .getDamageReports({ fixedAssetId: assetId, status: '', limit: HISTORY_LIMIT })
+      .then((res) => {
+        if (cancelled) return;
+        setReports(res.items);
+        setTotal(res.total);
+      })
+      .catch((e) => !cancelled && setError(e.message || 'Không tải được lịch sử báo hỏng.'));
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId, version]);
+
+  const pending = (reports ?? []).filter((r) => r.ticketStatus === 'New').length;
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#DFE3E8] p-5 shadow-xs space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-bold text-xs text-[#00375e] flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[16px] text-[#D32F2F]">report</span>
+          Lịch sử báo hỏng
+        </h3>
+        {reports && (
+          <span className="text-[11px] text-[#5B6472]">
+            {total} phiếu{pending > 0 ? ` · ${pending} đang chờ` : ''}
+          </span>
+        )}
+      </div>
+
+      {error && <p className="text-xs text-[#D32F2F]">{error}</p>}
+      {!reports && !error && <p className="text-xs text-[#5B6472]">Đang tải…</p>}
+      {reports && reports.length === 0 && <p className="text-xs text-[#5B6472]">Chưa có báo hỏng nào.</p>}
+
+      {reports && reports.length > 0 && (
+        <ul className="space-y-2">
+          {reports.map((r) => (
+            <li key={r.id}>
+              <button
+                type="button"
+                onClick={() => setOpenId(r.id)}
+                className="w-full text-left p-2.5 rounded-xl border border-[#DFE3E8] hover:bg-[#F7F8FA] cursor-pointer text-xs space-y-0.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-[#1C2330]">{r.reportedTime}</span>
+                  <span className={`font-bold ${r.ticketStatus === 'New' ? 'text-[#EF6C00]' : 'text-[#2E7D32]'}`}>
+                    {r.ticketStatusLabel}
+                  </span>
+                </div>
+                <div className="text-[#5B6472] line-clamp-2 break-words">{r.description}</div>
+                <div className="text-[11px] text-[#5B6472]">Báo bởi {r.reportedBy}</div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {total > HISTORY_LIMIT && (
+        <p className="text-[11px] text-[#5B6472]">Hiện {HISTORY_LIMIT} phiếu gần nhất.</p>
+      )}
+
+      {openId && (
+        <DamageReportModal
+          incidentId={openId}
+          onClose={() => {
+            setOpenId(null);
+            if (resolvedAny) {
+              setResolvedAny(false);
+              onResolved?.();
+            }
+          }}
+          onResolved={() => {
+            setVersion((v) => v + 1);
+            setResolvedAny(true);
+          }}
+        />
       )}
     </div>
   );

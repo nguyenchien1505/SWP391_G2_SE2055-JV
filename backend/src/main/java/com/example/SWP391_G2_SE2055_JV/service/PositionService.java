@@ -32,9 +32,9 @@ import java.util.stream.Collectors;
 /**
  * Chức danh — BR-ORG-06..10, BR-ORG-13, BR-ORG-14.
  *
- * <p>Danh mục cấp TENANT. Lễ tân và Dọn dẹp KHÔNG phải role mà là Loại Position
- * (BR-ORG-08): quyền nghiệp vụ đặc thù bám vào {@code positionType}, nên trường này được
- * bảo vệ chặt hơn tên hiển thị.
+ * <p>Danh mục cấp TENANT. {@code positionType} không cấp quyền: quyền nghiệp vụ (Lễ tân, Dọn dẹp)
+ * Manager tick cho từng nhân viên ({@code StaffPermission}); Loại chỉ quyết định ô nào được tick
+ * sẵn khi chọn chức danh, nên Giám đốc đổi Loại được bất cứ lúc nào — xem {@link #updatePosition}.
  */
 @Slf4j
 @Service

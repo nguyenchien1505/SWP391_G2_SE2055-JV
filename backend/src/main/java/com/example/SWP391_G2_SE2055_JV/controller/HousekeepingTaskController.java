@@ -2,7 +2,6 @@ package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
-import com.example.SWP391_G2_SE2055_JV.dto.CreateStayoverTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
@@ -29,8 +28,9 @@ import java.util.UUID;
  * Lịch dọn phòng — BR-PERM-03 (Manager tạo/điều chỉnh lịch dọn, assign task),
  * BR-PERM-05 (nhân viên Dọn dẹp nhận task và bấm hoàn thành).
  *
- * <p>Không có API tạo task CHECKOUT: hệ thống tự sinh khi phòng chuyển "Chờ dọn"
- * (BR-HK-01) — xem {@code HousekeepingRoomHooks}.
+ * <p>Không có API tạo hay hủy tay việc dọn: hệ thống tự sinh khi phòng chuyển "Chờ dọn"
+ * (BR-HK-01) và tự hủy khi phòng bị khóa (BR-HK-09) — xem {@code HousekeepingRoomHooks}. Việc dọn
+ * hằng ngày (tạo tay, tạo hàng loạt, hủy tay) đã bỏ từ V4.
  *
  * <p>Rule URL trong {@code SecurityConfig}: {@code GET /housekeeping/**} cho cả 4 role,
  * {@code PATCH /housekeeping/tasks/*}{@code /complete} thêm {@code POSITION_HOUSEKEEPING},
@@ -50,13 +50,15 @@ public class HousekeepingTaskController {
             @RequestParam(required = false) HousekeepingTaskStatus status,
             @RequestParam(required = false) HousekeepingTaskType taskType,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate assignedDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(housekeepingService.getTasks(status, taskType, assignedDate, pageable));
+        return ResponseEntity.ok(housekeepingService.getTasks(status, taskType, assignedDate, from, to, pageable));
     }
 
     /**
      * S-10 — nhân viên dọn phòng gán được việc trong ngày {@code date}: đang làm việc, thuộc
-     * Location của Manager, Position loại Dọn dẹp, và CÓ CA ngày đó (BR-HK-03).
+     * Location của Manager, có quyền Dọn dẹp, và CÓ CA ngày đó (BR-HK-03).
      *
      * <p>Không nhận {@code locationId}: phạm vi luôn là Location của người đang đăng nhập.
      * Khai báo trước {@code /{id}} cho dễ đọc — Spring vẫn ưu tiên path cố định hơn path có biến.
@@ -74,14 +76,10 @@ public class HousekeepingTaskController {
         return ResponseEntity.ok(housekeepingService.getTask(id));
     }
 
-    /** Chỉ tạo tay task STAYOVER — BR-HK-05. */
-    @PostMapping
-    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
-    public ResponseEntity<HousekeepingTaskResponse> createStayoverTask(
-            @Valid @RequestBody CreateStayoverTaskRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(housekeepingService.createStayoverTask(request));
-    }
-
+    /**
+     * Giao việc cho một hoặc nhiều người. Việc chưa phân công: nhóm bắt đầu dọn; việc đang làm:
+     * thêm người vào nhóm (cùng ngày).
+     */
     @PatchMapping("/{id}/assign")
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
     public ResponseEntity<HousekeepingTaskResponse> assignTask(
@@ -90,14 +88,22 @@ public class HousekeepingTaskController {
         return ResponseEntity.ok(housekeepingService.assignTask(id, request));
     }
 
+    /**
+     * Gỡ người khỏi việc đang làm.
+     *
+     * @param staffId người cần gỡ; bỏ trống = gỡ cả nhóm. Không còn ai thì việc về hàng chờ và phòng
+     *                về «Chờ dọn».
+     */
     @PatchMapping("/{id}/unassign")
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
-    public ResponseEntity<HousekeepingTaskResponse> unassignTask(@PathVariable UUID id) {
-        return ResponseEntity.ok(housekeepingService.unassignTask(id));
+    public ResponseEntity<HousekeepingTaskResponse> unassignTask(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID staffId) {
+        return ResponseEntity.ok(housekeepingService.unassignTask(id, staffId));
     }
 
     /**
-     * Quyền sở hữu (chỉ người được phân công) kiểm tra ở service — BR-PERM-05.
+     * Quyền sở hữu (chỉ người trong nhóm dọn) kiểm tra ở service — BR-PERM-05.
      *
      * <p>Q7 (chốt 22/09/2026): bỏ {@code MANAGER} khỏi đây. BR-PERM-05 chỉ nói nhân viên Dọn
      * dẹp, và service vốn đã chặn mọi người không phải người được gán — để MANAGER ở lại chỉ
@@ -126,15 +132,5 @@ public class HousekeepingTaskController {
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER','STAFF')")
     public ResponseEntity<InspectionRecordResponse> getInspection(@PathVariable UUID id) {
         return ResponseEntity.ok(housekeepingService.getInspection(id));
-    }
-
-    /**
-     * RM-20 — hủy tay một việc dọn. <b>Không có body</b>: lý do luôn là {@code MANAGER_MANUAL},
-     * hai lý do còn lại do hệ thống tự đặt khi phòng đổi trạng thái (BR-HK-09, BR-HK-10).
-     */
-    @PatchMapping("/{id}/cancel")
-    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
-    public ResponseEntity<HousekeepingTaskResponse> cancelTask(@PathVariable UUID id) {
-        return ResponseEntity.ok(housekeepingService.cancelTask(id));
     }
 }

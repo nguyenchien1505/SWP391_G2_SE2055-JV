@@ -5,12 +5,14 @@ export function Table({
   data,
   keyExtractor,
   onRowClick,
+  isRowSelected,
+  minWidthClass = 'min-w-[800px]',
   isLoading = false,
   emptyMessage = 'Không có dữ liệu hiển thị',
 }) {
   return (
     <div className="w-full overflow-x-auto bg-white border border-[#DFE3E8] rounded-lg shadow-2xs">
-      <table className="w-full text-left border-collapse min-w-[800px]">
+      <table className={`w-full text-left border-collapse ${minWidthClass}`}>
         <thead>
           <tr className="border-b border-[#DFE3E8] bg-[#F7F9FC]">
             {columns.map((col, idx) => (
@@ -50,9 +52,14 @@ export function Table({
               <tr
                 key={keyExtractor(item)}
                 onClick={() => onRowClick?.(item)}
+                aria-selected={isRowSelected ? isRowSelected(item) : undefined}
                 className={`transition-colors duration-100 ${
-                  onRowClick ? 'cursor-pointer hover:bg-[#F4F7FC]' : 'hover:bg-[#F9FAFC]'
-                }`}
+                  isRowSelected?.(item)
+                    ? 'bg-[#E3EDF8]'
+                    : onRowClick
+                    ? 'cursor-pointer hover:bg-[#F4F7FC]'
+                    : 'hover:bg-[#F9FAFC]'
+                } ${onRowClick ? 'cursor-pointer' : ''}`}
               >
                 {columns.map((col, cIdx) => (
                   <td key={cIdx} className={`px-4 py-3.5 align-middle ${col.className || ''}`}>

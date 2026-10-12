@@ -12,7 +12,8 @@ import lombok.Data;
  * CỐ ĐỊNH, và Department của nhân viên được suy ra từ Position nên đổi ở đây sẽ âm thầm
  * chuyển phòng ban của mọi người đang giữ chức danh này.
  *
- * <p>{@code positionType} chỉ đổi được khi chưa ai được gán — xem service.
+ * <p>{@code positionType} đổi được bất cứ lúc nào: Loại chỉ để tick sẵn quyền cho nhân viên MỚI,
+ * không đổi quyền của người đang giữ chức danh — xem service.
  */
 @Data
 public class UpdatePositionRequest {

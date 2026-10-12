@@ -60,6 +60,7 @@ public class TenantRegistrationService {
     private final SchedulePolicyRepository schedulePolicyRepository;
     private final PlatformConfigService    platformConfigService;
     private final PasswordEncoder          passwordEncoder;
+    private final EmailVerificationService emailVerificationService;
 
     @Transactional
     public RegisterTenantResponse registerTenant(RegisterTenantRequest request) {
@@ -98,7 +99,8 @@ public class TenantRegistrationService {
             .email(email)
             .passwordHash(passwordEncoder.encode(request.getPassword()))
             .mustChangePassword(false)
-            .status(UserStatus.ACTIVE)
+            // Chưa đăng nhập được cho tới khi bấm link xác thực trong email (EmailVerificationService).
+            .status(UserStatus.INACTIVE)
             .fullName(request.getRepresentativeName().trim())
             .phone(request.getPhone())
             .build());
@@ -124,6 +126,9 @@ public class TenantRegistrationService {
         schedulePolicyRepository.save(SchedulePolicy.builder()
             .tenantId(tenant.getId())
             .build());
+
+        // 5. Mã xác thực email. Email được gửi SAU KHI transaction này commit.
+        emailVerificationService.issue(director, tenant.getName());
 
         log.info("Đăng ký Tenant mới {} ({}), Giám đốc {}, dùng thử đến {}",
             tenant.getId(), tenant.getName(), email, trialEndsAt);

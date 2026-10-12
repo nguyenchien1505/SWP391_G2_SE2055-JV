@@ -56,9 +56,9 @@ spring:
           starttls:
             enable: true
           # Không để request treo lâu khi SMTP phản hồi chậm (mili giây).
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
+          connectiontimeout: 10000
+          timeout: 30000
+          writetimeout: 30000
 
   session:
     timeout: 8h

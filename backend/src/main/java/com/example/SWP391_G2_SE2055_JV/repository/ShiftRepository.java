@@ -4,9 +4,12 @@ import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +23,18 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
 
     Page<Shift> findByStaffId(UUID staffId, Pageable pageable);
 
+    // Cùng ba phạm vi như trên, giới hạn theo khoảng ngày bắt đầu ca — màn xếp lịch tuần chỉ
+    // cần đúng 7 ngày. Lọc theo shift_date là đủ vì ca qua đêm thuộc về ngày bắt đầu (BR-SCH-03).
+
+    Page<Shift> findByTenantIdAndShiftDateBetween(
+        UUID tenantId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
+
+    Page<Shift> findByTenantIdAndLocationIdAndShiftDateBetween(
+        UUID tenantId, UUID locationId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
+
+    Page<Shift> findByStaffIdAndShiftDateBetween(
+        UUID staffId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
+
     Optional<Shift> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /**
@@ -29,8 +44,21 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
     List<Shift> findByStaffIdAndShiftDateBetweenOrderByShiftDateAscStartTimeAsc(
         UUID staffId, LocalDate fromDate, LocalDate toDate);
 
+    /**
+     * Mọi slot của MỘT ca theo mẫu trong một ngày ở một khách sạn — ví dụ "Ca sáng 05/10 ở khách sạn
+     * A". Dùng cho quy tắc mỗi ca theo mẫu phải có lễ tân (ReceptionCoverageRule).
+     */
+    List<Shift> findByLocationIdAndShiftDateAndSourceTemplateId(UUID locationId, LocalDate shiftDate,
+                                                               UUID sourceTemplateId);
+
     /** BR-HK-03: chỉ được assign task dọn cho nhân viên đang có ca trong ngày đó. */
     boolean existsByStaffIdAndShiftDate(UUID staffId, LocalDate shiftDate);
+
+    /**
+     * Còn ca nào KHÁC trong ngày không — gỡ / xóa / dời một ca chỉ làm người đó mất ngày làm
+     * việc (và chạm BR-HK-03) khi đây là ca duy nhất của họ hôm ấy.
+     */
+    boolean existsByStaffIdAndShiftDateAndIdNot(UUID staffId, LocalDate shiftDate, UUID id);
 
     /**
      * BR-SCH-17 + BR-TRF-05 + BR-USER-04: gỡ ca TƯƠNG LAI khi điều chuyển / nghỉ việc.
@@ -44,4 +72,27 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
 
     /** BR-DASH-03: số Staff có ca hôm nay tại một Location. */
     long countByLocationIdAndShiftDate(UUID locationId, LocalDate shiftDate);
+
+    /**
+     * Số ca xếp từ một mẫu, tính cả ca đã qua và chỗ trống chưa giao người — mẫu chưa ca nào dùng mới
+     * xóa hẳn được (chốt 09/10/2026).
+     */
+    long countBySourceTemplateId(UUID sourceTemplateId);
+
+    /**
+     * Đếm gộp số ca của từng mẫu cho một trang danh mục mẫu ca — tránh N+1 query. Mẫu chưa có ca nào
+     * không xuất hiện trong kết quả; bên gọi tự quy về 0. Không gọi với danh sách rỗng.
+     */
+    @Query("""
+        SELECT s.sourceTemplateId AS templateId, COUNT(s) AS total
+        FROM Shift s
+        WHERE s.sourceTemplateId IN :templateIds
+        GROUP BY s.sourceTemplateId
+        """)
+    List<TemplateShiftCount> countGroupedBySourceTemplate(@Param("templateIds") Collection<UUID> templateIds);
+
+    interface TemplateShiftCount {
+        UUID getTemplateId();
+        long getTotal();
+    }
 }

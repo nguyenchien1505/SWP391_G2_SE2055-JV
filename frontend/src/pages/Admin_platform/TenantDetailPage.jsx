@@ -154,6 +154,11 @@ export default function TenantDetailPage() {
             </span>
             <h1>{tenant.name}</h1>
             <TenantStatusBadge status={tenant.status} />
+            {tenant.directorVerified ? (
+              <span className="badge badge--green">Giám đốc đã xác thực</span>
+            ) : (
+              <span className="badge badge--orange">Giám đốc chưa xác thực email</span>
+            )}
           </div>
           <p className="muted">
             Mã định danh: TNT-{shortId(tenant.id)} · Ngày đăng ký: {formatDate(tenant.createdAt)}
@@ -187,6 +192,13 @@ export default function TenantDetailPage() {
           <button type="button" className="alert__close" onClick={() => setBanner(null)}>
             ✕
           </button>
+        </div>
+      )}
+
+      {!tenant.directorVerified && (
+        <div className="alert alert--warn" role="status">
+          Giám đốc chưa bấm link xác thực email nên chưa đăng nhập được. Đăng ký này sẽ tự bị xóa
+          nếu sau 7 ngày kể từ ngày đăng ký ({formatDate(tenant.createdAt)}) vẫn chưa xác thực.
         </div>
       )}
 

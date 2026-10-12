@@ -143,12 +143,13 @@ export default function ManagersPage() {
   );
   const locationName = useCallback((id) => locationById[id]?.name ?? '—', [locationById]);
 
-  // DM-13: khách sạn "Chưa vận hành" nghĩa là chưa có Manager — chỉ những khách sạn này mới
-  // gán được Manager mới (mỗi khách sạn một Manager).
-  const freeLocations = useMemo(
-    () => locations.filter((loc) => loc.status === 'NOT_OPERATIONAL'),
-    [locations],
-  );
+  // Mỗi khách sạn một Manager: chỉ khách sạn CHƯA có Manager (tính cả người đang tạm khóa) mới gán
+  // được. Không suy từ trạng thái "Chưa vận hành" — khách sạn đã giao cho Manager bắt đầu làm sau hôm
+  // nay vẫn "Chưa vận hành" tới ngày đó (chốt 06/10/2026).
+  const freeLocations = useMemo(() => {
+    const taken = new Set(managers.filter((m) => m.locationId && m.status !== 'TERMINATED').map((m) => m.locationId));
+    return locations.filter((loc) => !taken.has(loc.id));
+  }, [locations, managers]);
 
   // Người nhận bàn giao phải đăng nhập được ngay — bỏ qua Quản lý dự bị đang bị khóa.
   const activeReserves = useMemo(
@@ -600,25 +601,6 @@ export default function ManagersPage() {
             </div>
           </div>
         </section>
-      </div>
-
-      <div className="note">
-        <span aria-hidden="true">ⓘ</span>
-        <div>
-          <b>Quy định tài khoản Quản lý</b>
-          <p>
-            Chỉ Giám đốc tạo và quản lý tài khoản Quản lý (BR-PERM-02). Mỗi khách sạn có đúng một
-            Quản lý; khách sạn có Quản lý mới chuyển sang <b>Đang hoạt động</b> (BR-ORG-02). Mật khẩu
-            tạm chỉ hiển thị một lần và phải đổi ở lần đăng nhập đầu (BR-USER-07). Email là tên
-            đăng nhập, không đổi và không dùng lại được kể cả sau khi nghỉ việc (BR-USER-06).
-          </p>
-          <p>
-            Chọn "Khác" khi tạo để có <b>Quản lý dự bị</b> — chưa phụ trách khách sạn, gán sau ở màn sửa.
-            Cho nghỉ việc một Quản lý đang phụ trách khách sạn thì phải bàn giao ngay cho Quản lý dự bị
-            hoặc Quản lý mới. Quản lý đã nghỉ việc mà chưa phát sinh dữ liệu thì xóa vĩnh viễn được
-            (🗑), khi đó email được dùng lại.
-          </p>
-        </div>
       </div>
 
       {formOpen && (

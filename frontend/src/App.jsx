@@ -11,15 +11,26 @@ import TenantsPage from './pages/Admin_platform/TenantsPage';
 import TenantDetailPage from './pages/Admin_platform/TenantDetailPage';
 import PricingPage from './pages/Admin_platform/PricingPage';
 import SystemConfigPage from './pages/Admin_platform/SystemConfigPage';
-import RoomsPage from './pages/rooms/RoomsPage';
 import RoomDetailPage from './pages/rooms/RoomDetailPage';
 import RoomBoardPage from './pages/rooms/RoomBoardPage';
 import HousekeepingPage from './pages/rooms/HousekeepingPage';
 import MyTasksPage from './pages/rooms/MyTasksPage';
+import CleaningSchedulePage from './pages/rooms/CleaningSchedulePage';
+import SchedulePage from './pages/scheduling/SchedulePage';
+import ScheduleRulesPage from './pages/scheduling/ScheduleRulesPage';
+import MySchedulePage from './pages/scheduling/MySchedulePage';
+import HotelOpsSummary from './components/rooms/HotelOpsSummary';
 import ReserveManagerPage from './pages/ReserveManagerPage';
 import AssetCategoriesPage from './pages/AssetCategoriesPage';
 import OrganizationCatalogPage from './pages/OrganizationCatalogPage';
+import MyDamageReportsPage from './pages/MyDamageReportsPage';
 import { homePathFor } from './homePath';
+import { canReportDamage, hasPermission } from './permissions';
+import RegisterPage from './pages/RegisterPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
+import BillingPage from './pages/BillingPage';
+import PaymentResultPage from './pages/PaymentResultPage';
+
 
 /**
  * Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). Quản lý dự bị
@@ -86,6 +97,45 @@ function RequireBranchManager({ children }) {
   return allowed ? children : <Navigate to={homePathFor(user)} replace />;
 }
 
+/**
+ * Quy định xếp ca & Mẫu ca — chỉ Giám đốc sửa (BR-SCH-01, BR-PERM-02). Manager đọc quy định ngay trên
+ * bảng xếp lịch nên không cần vào đây. Chỉ là lớp giao diện; quyền thật do backend quyết định.
+ */
+function RequireDirector({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role === 'DIRECTOR' || user?.role === 'PLATFORM_ADMIN';
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
+ * Lịch dọn phòng theo nhân viên — Quản lý chi nhánh (mọi người dọn của khách sạn) và nhân viên có quyền
+ * Dọn dẹp (lịch của chính mình). Chỉ là lớp giao diện; phạm vi dữ liệu do backend quyết định.
+ */
+function RequireCleaningSchedule({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role === 'MANAGER' || user?.role === 'PLATFORM_ADMIN'
+    || (user?.role === 'STAFF' && hasPermission(user, 'HOUSEKEEPING'));
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
+ * Lịch cá nhân — chỉ nhân viên: quản lý khách sạn không có ca (chốt 05/10/2026), Giám đốc cũng không.
+ * Vai trò khác về trang chủ của mình. Chỉ là lớp giao diện; backend chỉ trả ca của chính người đăng nhập.
+ */
+function RequireStaff({ children }) {
+  const { user } = useAuth();
+  return user?.role === 'STAFF' ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
+ * Báo hỏng của tôi — chỉ nhân viên có quyền Lễ tân / Dọn dẹp (BR-ASSET-05). Vai trò khác về trang
+ * chủ của mình. Chỉ là lớp giao diện; quyền thật do backend quyết định.
+ */
+function RequireDamageReporter({ children }) {
+  const { user } = useAuth();
+  return canReportDamage(user) ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
 /** Trang nghiệp vụ trong khung AppLayout, bắt buộc đã đăng nhập (và đã đổi mật khẩu tạm). */
 function inShell(page) {
   return (
@@ -98,9 +148,9 @@ function inShell(page) {
 import { DashboardScreen } from './components/screens/DashboardScreen';
 import { AssetManagementScreen } from './components/screens/AssetManagementScreen';
 import { AssetDetailScreen } from './components/screens/AssetDetailScreen';
-import { BatchCreateAssetsScreen } from './components/screens/BatchCreateAssetsScreen';
 import { ConsumableInventoryScreen } from './components/screens/ConsumableInventoryScreen';
-import { DamageReportScreen } from './components/screens/DamageReportScreen';
+import { DamageReportListScreen } from './components/screens/DamageReportListScreen';
+import { AreaManagementScreen } from './components/screens/AreaManagementScreen';
 import { useNavigate, useParams } from 'react-router-dom';
 
 function useAssetNavigate() {
@@ -109,25 +159,24 @@ function useAssetNavigate() {
     if (path === 'overview') navigate('/tong-quan');
     if (path === 'fixed-assets') navigate('/tai-san');
     if (path === 'asset-detail') navigate(`/tai-san/${param}`);
-    if (path === 'batch-create') navigate('/tai-san/batch');
     if (path === 'consumables') navigate('/vat-tu');
     if (path === 'issue-reports') navigate('/bao-hong');
-    if (path === 'incident-detail') navigate(`/bao-hong/${param}`);
   };
 }
 
 function OverviewWrapper() {
-  return <DashboardScreen onNavigate={useAssetNavigate()} />;
+  const { user } = useAuth();
+  const onNavigate = useAssetNavigate();
+  return (
+    <>
+      {/* BR-DASH-03: Manager thấy số liệu vận hành của khách sạn mình trước phần tài sản. */}
+      {user?.role === 'MANAGER' && <HotelOpsSummary />}
+      <DashboardScreen onNavigate={onNavigate} />
+    </>
+  );
 }
 function FixedAssetWrapper() {
   return <AssetManagementScreen onNavigate={useAssetNavigate()} />;
-}
-/** Chỉ Manager tạo tài sản trong khách sạn của mình (BR-ASSET-09) — vai trò khác về danh sách. */
-function BatchCreateWrapper() {
-  const { user } = useAuth();
-  const onNavigate = useAssetNavigate();
-  if (user?.role !== 'MANAGER') return <Navigate to="/tai-san" replace />;
-  return <BatchCreateAssetsScreen onNavigate={onNavigate} />;
 }
 /** Tồn kho tiêu hao chỉ mở cho Giám đốc (xem) và Manager (sửa) — Staff không đụng tới (BR-PERM). */
 function ConsumableWrapper() {
@@ -136,13 +185,26 @@ function ConsumableWrapper() {
   if (user?.role !== 'DIRECTOR' && user?.role !== 'MANAGER') return <Navigate to={homePathFor(user)} replace />;
   return <ConsumableInventoryScreen onNavigate={onNavigate} />;
 }
+/**
+ * Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12) — chỉ Manager, khớp sidebar; vai trò khác
+ * về trang chủ. Chỉ là lớp giao diện; quyền thật do backend quyết định.
+ */
+function AreaWrapper() {
+  const { user } = useAuth();
+  if (user?.role !== 'MANAGER') return <Navigate to={homePathFor(user)} replace />;
+  return <AreaManagementScreen userRole={user.role} />;
+}
 function DetailWrapper() {
   const { ref } = useParams();
   return <AssetDetailScreen key={ref} assetRef={ref} onNavigate={useAssetNavigate()} />;
 }
+function IncidentListWrapper() {
+  return <DamageReportListScreen onNavigate={useAssetNavigate()} />;
+}
+/** Link cũ tới một báo hỏng: mở danh sách báo hỏng kèm hộp thoại xử lý phiếu đó. */
 function IncidentWrapper() {
   const { id } = useParams();
-  return <DamageReportScreen incidentId={id} onNavigate={useAssetNavigate()} />;
+  return <DamageReportListScreen key={id} initialIncidentId={id} onNavigate={useAssetNavigate()} />;
 }
 
 export default function App() {
@@ -162,6 +224,21 @@ export default function App() {
           )
         }
       />
+      {/* BR-SAAS-13: tự đăng ký doanh nghiệp — công khai; đã đăng nhập thì về trang chủ. */}
+      <Route
+        path="/dang-ky"
+        element={
+          loading ? (
+            <div className="boot-screen">Đang tải…</div>
+          ) : user ? (
+            <Navigate to={homePathFor(user)} replace />
+          ) : (
+            <RegisterPage />
+          )
+        }
+      />
+      {/* Mở từ nút trong email xác thực — công khai vì tài khoản chưa đăng nhập được. */}
+      <Route path="/xac-thuc-email" element={<VerifyEmailPage />} />
       <Route
         path="/doi-mat-khau"
         element={
@@ -186,18 +263,33 @@ export default function App() {
       <Route path="/quan-ly" element={inShell(<RequireManagementRole><ManagersPage /></RequireManagementRole>)} />
       {/* Quản lý tài khoản nhân viên — BR-PERM-03: Manager CRUD Staff trong khách sạn của mình. */}
       <Route path="/nhan-vien" element={inShell(<RequireManagementRole><StaffPage /></RequireManagementRole>)} />
-      {/* Quản lý phòng — BR-ROOM-*. S-02 dành cho Giám đốc/Manager; chi tiết và sơ đồ phòng mọi vai trò. */}
-      <Route path="/phong" element={inShell(<RequireManagementRole><RoomsPage /></RequireManagementRole>)} />
+      {/* Quản lý phòng — BR-ROOM-*. Danh sách phòng (S-02) đã gộp vào Sơ đồ phòng (nút "Danh sách");
+          link cũ /phong chuyển sang dạng danh sách của sơ đồ. Chi tiết và sơ đồ phòng mọi vai trò. */}
+      <Route path="/phong" element={<Navigate to="/so-do-phong?view=list" replace />} />
       <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />
       <Route path="/so-do-phong" element={inShell(<RoomBoardPage />)} />
       {/* Dọn phòng — BR-HK-*. Bảng lịch dọn chỉ cho Quản lý chi nhánh; "việc của tôi" không
           chặn vai trò vì backend tự ép nhân viên về việc của chính mình (BR-PERM-05). */}
       <Route path="/don-phong" element={inShell(<RequireBranchManager><HousekeepingPage /></RequireBranchManager>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
+      <Route path="/lich-don-phong" element={inShell(<RequireCleaningSchedule><CleaningSchedulePage /></RequireCleaningSchedule>)} />
+      {/* Báo hỏng của nhân viên — BR-ASSET-05. Đường tĩnh nên được ưu tiên hơn /bao-hong/:id
+          (màn xử lý của Manager) dù khai báo ở đâu. */}
+      <Route path="/bao-hong/cua-toi" element={inShell(<RequireDamageReporter><MyDamageReportsPage /></RequireDamageReporter>)} />
       {/* Danh mục tài sản cấp Tenant — BR-ASSET-09: Giám đốc CRUD, Manager chỉ xem. */}
       <Route path="/danh-muc-tai-san" element={inShell(<RequireManagementRole><AssetCategoriesPage /></RequireManagementRole>)} />
       {/* Loại phòng, Phòng ban, Vị trí công việc — BR-ORG-06, BR-ORG-11: chỉ Giám đốc; Manager vào thấy thông báo. */}
       <Route path="/danh-muc" element={inShell(<RequireManagementRole><OrganizationCatalogPage /></RequireManagementRole>)} />
+      {/* Lịch làm việc — BR-SCH-*. Manager xếp ca cho khách sạn mình (BR-PERM-03); Giám đốc đặt quy
+          định và mẫu ca dùng chung cả chuỗi (BR-PERM-02). */}
+      <Route path="/xep-lich" element={inShell(<RequireBranchManager><SchedulePage /></RequireBranchManager>)} />
+      <Route path="/quy-dinh-ca" element={inShell(<RequireDirector><ScheduleRulesPage /></RequireDirector>)} />
+      {/* Nhân viên xem ca của chính mình (BR-PERM-04..06); chấm công để sau. */}
+      <Route path="/lich-ca-nhan" element={inShell(<RequireStaff><MySchedulePage /></RequireStaff>)} />
+      {/* Gói dịch vụ — chỉ Giám đốc (trang tự đưa vai trò khác về trang chủ). */}
+      <Route path="/goi-dich-vu" element={inShell(<BillingPage />)} />
+      {/* VNPay đưa Giám đốc về đây sau khi thanh toán (?vnp_...). */}
+      <Route path="/thanh-toan/ket-qua" element={inShell(<PaymentResultPage />)} />
 
       {/* Tài sản & dashboard — chỉ Giám đốc / Manager, khớp sidebar. Staff chỉ có quyền báo hỏng
           (BR-ASSET-05), không quản lý tài sản hay tồn kho; gõ thẳng URL thì về trang chủ của mình. */}
@@ -212,11 +304,13 @@ export default function App() {
       >
         <Route path="/tong-quan" element={<OverviewWrapper />} />
         <Route path="/tai-san" element={<FixedAssetWrapper />} />
-        <Route path="/tai-san/batch" element={<BatchCreateWrapper />} />
+        {/* Thêm tài sản giờ là hộp thoại; link cũ tới màn riêng về danh sách tài sản. */}
+        <Route path="/tai-san/batch" element={<Navigate to="/tai-san" replace />} />
         {/* :ref là id tài sản; mã tài sản (link cũ) vẫn được nhận. */}
         <Route path="/tai-san/:ref" element={<DetailWrapper />} />
         <Route path="/vat-tu" element={<ConsumableWrapper />} />
-        <Route path="/bao-hong" element={<IncidentWrapper />} />
+        <Route path="/khu-vuc" element={<AreaWrapper />} />
+        <Route path="/bao-hong" element={<IncidentListWrapper />} />
         <Route path="/bao-hong/:id" element={<IncidentWrapper />} />
       </Route>
 
