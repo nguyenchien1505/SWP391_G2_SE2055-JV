@@ -6,6 +6,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.ShiftTemplateResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateShiftTemplateRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.ShiftTemplate;
+import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
@@ -33,6 +34,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -406,6 +408,34 @@ class ShiftTemplateServiceTest {
                 .thenReturn(Optional.of(morningTemplate()));
 
             assertThat(service.getTemplateById(TEMPLATE_ID).getName()).isEqualTo("Ca sáng");
+        }
+    }
+
+    @Nested
+    class AsStaff {
+
+        @BeforeEach
+        void loginAsStaff() {
+            TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+        }
+
+        /**
+         * Lịch cá nhân / lịch dọn lấy đủ các ca của chi nhánh làm hàng (chốt 12/10/2026): nhân viên luôn
+         * chỉ thấy bộ mẫu chi nhánh MÌNH đang dùng, và chỉ mẫu đang dùng — tham số khác bị bỏ qua.
+         */
+        @Test
+        void shouldScopeStaffToActiveTemplatesOfOwnLocationSet() {
+            Pageable pageable = PageRequest.of(0, 20);
+            when(locationRepository.findByIdAndTenantId(LOCATION_ID, TENANT_ID))
+                .thenReturn(Optional.of(location(LOCATION_ID, false)));
+            when(shiftTemplateRepository.findInSet(TENANT_ID, null, false, pageable))
+                .thenReturn(new PageImpl<>(List.of(morningTemplate())));
+
+            assertThat(service.getTemplates(true, OTHER_LOCATION_ID, pageable).getContent())
+                .extracting(ShiftTemplateResponse::getName).containsExactly("Ca sáng");
+            verify(locationRepository, never()).findByIdAndTenantId(OTHER_LOCATION_ID, TENANT_ID);
+            verify(shiftTemplateRepository, never()).findInSet(any(), any(), eq(true), any());
+            verify(shiftTemplateRepository, never()).findByTenantId(any(), any());
         }
     }
 
