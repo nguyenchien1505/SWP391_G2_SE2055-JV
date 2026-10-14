@@ -22,7 +22,8 @@ export async function updatePolicy(payload) {
  *
  * Bộ mẫu chung (`locationId` null) + bộ mẫu riêng từng chi nhánh; mỗi chi nhánh dùng đúng một bộ
  * (`location.ownShiftTemplates`). Manager luôn nhận bộ chi nhánh mình đang dùng (backend tự giới hạn);
- * Giám đốc nhận tất cả, hoặc truyền `locationId` để chỉ lấy bộ chi nhánh đó đang dùng.
+ * Giám đốc nhận tất cả, hoặc truyền `locationId` để chỉ lấy bộ chi nhánh đó đang dùng. Nhân viên nhận
+ * mẫu đang dùng của bộ chi nhánh mình — làm hàng ca cho lịch cá nhân / lịch dọn.
  */
 export async function fetchShiftTemplates({ includeInactive = false, locationId } = {}) {
   const { data } = await api.get('/scheduling/shift-templates', {

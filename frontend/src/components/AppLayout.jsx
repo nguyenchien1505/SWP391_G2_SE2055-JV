@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { STAFF_PERMISSIONS, canReportDamage, hasPermission } from '../permissions';
@@ -154,6 +154,14 @@ export default function AppLayout({ children }) {
   const { user, signOut } = useAuth();
   const [navOpen, setNavOpen] = useState(false);
 
+  // Ngăn kéo menu (màn hẹp): Esc để đóng, như bấm ra nền mờ bên ngoài.
+  useEffect(() => {
+    if (!navOpen) return undefined;
+    const onKey = (e) => e.key === 'Escape' && setNavOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen]);
+
   // Bỏ cả nhóm khi vai trò này không còn mục nào — không để tiêu đề nhóm trơ trọi.
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
@@ -162,9 +170,23 @@ export default function AppLayout({ children }) {
 
   return (
     <div className={`shell ${navOpen ? 'shell--nav-open' : ''}`}>
-      <aside className="shell__nav">
+      <aside className="shell__nav" id="app-nav">
         <div className="shell__brand">
           <Logo subtitle="PMS MULTI-TENANT" />
+        </div>
+
+        {/* Điện thoại: thanh trên không đủ chỗ cho email, vai trò, đăng xuất — dời vào đầu ngăn kéo. */}
+        <div className="shell__account">
+          <b>{user?.email}</b>
+          <small>{roleLabelOf(user)}</small>
+          {user?.role === 'STAFF' && user.locationManagerEmail && (
+            <a className="shell__account-manager" href={`mailto:${user.locationManagerEmail}`}>
+              👤 Quản lý: {user.locationManagerEmail}
+            </a>
+          )}
+          <button type="button" className="btn btn--ghost" onClick={signOut}>
+            Đăng xuất
+          </button>
         </div>
 
         <nav>
@@ -197,6 +219,8 @@ export default function AppLayout({ children }) {
           ))}
         </nav>
       </aside>
+      {/* Nền mờ sau ngăn kéo menu (chỉ hiện ở màn hẹp) — bấm ra ngoài để đóng. */}
+      {navOpen && <div className="shell__backdrop" aria-hidden="true" onClick={() => setNavOpen(false)} />}
 
       <div className="shell__main">
         <header className="topbar">
@@ -204,7 +228,9 @@ export default function AppLayout({ children }) {
             type="button"
             className="topbar__burger"
             onClick={() => setNavOpen((v) => !v)}
-            aria-label="Mở menu"
+            aria-label={navOpen ? 'Đóng menu' : 'Mở menu'}
+            aria-expanded={navOpen}
+            aria-controls="app-nav"
           >
             ☰
           </button>

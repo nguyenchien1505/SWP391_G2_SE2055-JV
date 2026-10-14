@@ -2076,17 +2076,6 @@ button.area-report:hover {
 .work-block__name {
   font-weight: 700;
 }
-/* Có ca mà chưa có việc — chữ nhạt, không phải nút. */
-.work-idle {
-  display: grid;
-  gap: 2px;
-  margin: 0;
-  padding: 6px 8px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-control);
-  font-size: 12px;
-  color: var(--muted);
-}
 /* Chi tiết việc của một ca — mỗi phòng một thẻ, viền trái theo trạng thái. */
 .work-detail-list {
   list-style: none;
@@ -2200,5 +2189,25 @@ button.area-report:hover {
 @media (max-width: 480px) {
   .room-card-item .room-row-actions .material-symbols-outlined {
     display: none;
+  }
+}
+
+/* Màn cảm ứng còn rộng (máy tính bảng nằm ngang): thẻ tầng và link quay lại đủ to cho ngón tay — màn
+   ≤ 860px đã có luật riêng ở trên. Máy dùng chuột giữ cỡ gọn. */
+@media (pointer: coarse) and (min-width: 861px) {
+  .floor-tab {
+    min-height: 44px;
+  }
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+/* Điện thoại / máy tính bảng: chữ nhỏ nhất là 12px. */
+@media (max-width: 860px) {
+  .board-panel__facts dt {
+    font-size: 12px;
   }
 }

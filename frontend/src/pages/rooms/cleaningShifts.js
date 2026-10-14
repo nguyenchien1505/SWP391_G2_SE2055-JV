@@ -6,12 +6,13 @@ import {
   rowIdOfShift,
   shiftRowOf,
   sortShiftRows,
+  templateRows,
 } from '../scheduling/personalShifts';
 
 /**
  * Lịch dọn của MỘT nhân viên dạng bảng theo ca — cùng cách chia hàng / cột với bảng xếp lịch của quản
  * lý (chốt 06/10/2026): hàng là ca, cột là ngày, ô là việc dọn của ca đó. Hàng ca dùng chung với «Lịch
- * cá nhân» ({@link shiftRowOf}).
+ * cá nhân» ({@link shiftRowOf}): mọi mẫu ca đang dùng của chi nhánh luôn có hàng (chốt 12/10/2026).
  */
 
 export { OTHER_SHIFT_ROW };
@@ -37,12 +38,13 @@ function within(clock, shift) {
  * thuộc ca chứa giờ được giao (không khớp ca nào thì ca đầu tiên); ngày không có ca thì vào hàng
  * "Ngoài ca" để không việc nào bị khuất.
  *
- * @param shifts ca của người đó trong tuần (có `sourceTemplateName` do backend trả kèm)
- * @param tasks  việc dọn có người đó trong nhóm, trong tuần
+ * @param shifts    ca của người đó trong tuần (có `sourceTemplateName` do backend trả kèm)
+ * @param tasks     việc dọn có người đó trong nhóm, trong tuần
+ * @param templates mẫu ca đang dùng của chi nhánh — mỗi mẫu luôn có hàng
  * @returns {{ rows: { id, name, timeLabel, start }[], cellOf: (rowId, day) => { shifts, tasks } }}
  */
-export function buildMyShiftBoard(shifts, tasks) {
-  const rows = new Map();
+export function buildMyShiftBoard(shifts, tasks, templates = []) {
+  const rows = templateRows(templates);
   const cells = new Map();
   const cell = (rowId, day) => {
     const key = `${rowId}|${day}`;
