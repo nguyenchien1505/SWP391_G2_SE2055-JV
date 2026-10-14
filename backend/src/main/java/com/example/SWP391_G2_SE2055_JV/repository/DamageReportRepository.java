@@ -56,4 +56,7 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
 
     /** Tự đóng khi tài sản chuyển sang DISPOSED — xem {@code FixedAssetService.updateStatus}. */
     List<DamageReport> findByFixedAssetIdAndStatus(UUID fixedAssetId, DamageReportStatus status);
+
+    /** Tài sản đã từng bị báo hỏng (mọi trạng thái) thì không xóa cứng được — xem {@code FixedAssetService.deleteFixedAsset}. */
+    boolean existsByFixedAssetId(UUID fixedAssetId);
 }

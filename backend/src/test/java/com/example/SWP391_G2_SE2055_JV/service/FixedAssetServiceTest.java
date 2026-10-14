@@ -13,6 +13,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.repository.AreaRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.AssetCategoryRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.DamageReportRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.FixedAssetRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
 import com.example.SWP391_G2_SE2055_JV.support.TestAuth;
@@ -53,17 +54,14 @@ class FixedAssetServiceTest {
     @Mock private AssetCategoryRepository categoryRepository;
     @Mock private RoomRepository          roomRepository;
     @Mock private AreaRepository          areaRepository;
+    @Mock private DamageReportRepository  damageReportRepository;
 
     private FixedAssetService service;
 
-    /**
-     * {@code damageReportRepository} để null có chủ đích: nó chỉ được gọi khi đổi trạng thái
-     * sang DISPOSED, không nằm trên luồng tạo.
-     */
     @BeforeEach
     void setUp() {
         service = new FixedAssetService(
-            fixedAssetRepository, categoryRepository, roomRepository, areaRepository, null);
+            fixedAssetRepository, categoryRepository, roomRepository, areaRepository, damageReportRepository);
         TestAuth.loginAsManager(TENANT, LOCATION);
     }
 
@@ -319,6 +317,63 @@ class FixedAssetServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Mã tài sản đã tồn tại");
             verify(fixedAssetRepository, never()).save(any());
+        }
+    }
+
+    // ── Xóa cứng ─────────────────────────────────────────────────────────────
+
+    /**
+     * Xóa cứng chỉ dành cho tài sản nhập sai. Tài sản đã thanh lý hoặc đã có báo hỏng là
+     * dữ liệu cần giữ để tra cứu (BR-ASSET-14), phải bị chặn với lý do rõ ràng.
+     */
+    @Nested
+    class XoaCung {
+
+        private FixedAsset ownedAsset(FixedAssetStatus status) {
+            FixedAsset asset = FixedAsset.builder()
+                .id(UUID.randomUUID())
+                .tenantId(TENANT)
+                .locationId(LOCATION)
+                .categoryId(UUID.randomUUID())
+                .assetCode("TS-001")
+                .name("Điều hòa nhiệt độ")
+                .areaId(UUID.randomUUID())
+                .status(status)
+                .build();
+            when(fixedAssetRepository.findByIdAndTenantIdAndLocationId(asset.getId(), TENANT, LOCATION))
+                .thenReturn(Optional.of(asset));
+            return asset;
+        }
+
+        @Test
+        void tai_san_nhap_sai_chua_co_bao_hong_thi_xoa_duoc() {
+            FixedAsset asset = ownedAsset(FixedAssetStatus.GOOD);
+            when(damageReportRepository.existsByFixedAssetId(asset.getId())).thenReturn(false);
+
+            service.deleteFixedAsset(asset.getId());
+
+            verify(fixedAssetRepository).delete(asset);
+        }
+
+        @Test
+        void tai_san_da_thanh_ly_thi_bi_chan() {
+            FixedAsset asset = ownedAsset(FixedAssetStatus.DISPOSED);
+
+            assertThatThrownBy(() -> service.deleteFixedAsset(asset.getId()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("đã thanh lý");
+            verify(fixedAssetRepository, never()).delete(any());
+        }
+
+        @Test
+        void tai_san_da_co_bao_hong_thi_bi_chan() {
+            FixedAsset asset = ownedAsset(FixedAssetStatus.BROKEN);
+            when(damageReportRepository.existsByFixedAssetId(asset.getId())).thenReturn(true);
+
+            assertThatThrownBy(() -> service.deleteFixedAsset(asset.getId()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("đã có báo hỏng");
+            verify(fixedAssetRepository, never()).delete(any());
         }
     }
 }

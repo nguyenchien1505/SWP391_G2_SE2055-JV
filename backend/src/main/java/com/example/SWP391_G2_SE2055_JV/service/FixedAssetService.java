@@ -193,9 +193,26 @@ public class FixedAssetService {
         log.info("Tự đóng {} báo hỏng NEW của tài sản {} do tài sản đã thanh lý", pending.size(), fixedAssetId);
     }
 
+    /**
+     * Xóa cứng — CHỈ dành cho tài sản nhập sai. Tài sản đã qua sử dụng phải đi đường thanh
+     * lý ({@link #updateStatus} với {@code DISPOSED}) để còn tra lại được (BR-ASSET-14).
+     *
+     * <p>Không có bảng lịch sử tài sản (DM-17), nên chốt chặn là hai dấu vết duy nhất trong
+     * DB: trạng thái DISPOSED và báo hỏng. Kiểm tra báo hỏng tường minh thay vì để khóa
+     * ngoại {@code fk_damage_fixed_asset} chặn, để Manager nhận được lý do cụ thể thay vì
+     * lỗi 409 chung chung.
+     */
     @Transactional
     public void deleteFixedAsset(UUID id) {
         FixedAsset asset = getOwnedAsset(id);
+        if (asset.isDisposed()) {
+            throw new BusinessException(
+                "Tài sản đã thanh lý được giữ lại để tra cứu, không xóa được (BR-ASSET-14).");
+        }
+        if (damageReportRepository.existsByFixedAssetId(asset.getId())) {
+            throw new BusinessException(
+                "Tài sản đã có báo hỏng nên không xóa được. Nếu không dùng nữa, hãy chuyển sang Đã thanh lý.");
+        }
         log.info("Xóa vĩnh viễn tài sản {}", asset.getAssetCode());
         fixedAssetRepository.delete(asset);
     }
