@@ -54,18 +54,23 @@ public class ShiftTemplateService {
      *                        false (mặc định) cho màn hình xếp ca — BR-SCH-22.
      * @param locationId      chỉ lấy BỘ mẫu chi nhánh này đang dùng (chung hoặc riêng); null = mọi
      *                        mẫu của Tenant. Manager luôn chỉ thấy bộ của chi nhánh mình.
+     *
+     * <p>Nhân viên cũng bị ép về bộ của chi nhánh mình và chỉ thấy mẫu đang dùng: lịch cá nhân / lịch
+     * dọn cần đủ các ca của chi nhánh làm hàng, kể cả ca tuần đó họ không làm (chốt 12/10/2026).
      */
     @Transactional(readOnly = true)
     public Page<ShiftTemplateResponse> getTemplates(boolean includeInactive, UUID locationId, Pageable pageable) {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
-        UUID usableAt = SecurityUtils.hasRole(Role.MANAGER) ? SecurityUtils.getCurrentLocationId() : locationId;
+        boolean staff = SecurityUtils.hasRole(Role.STAFF);
+        UUID usableAt = staff || SecurityUtils.hasRole(Role.MANAGER) ? SecurityUtils.getCurrentLocationId() : locationId;
+        boolean withInactive = includeInactive && !staff;
 
         Page<ShiftTemplate> page;
         if (usableAt != null) {
             Location location = requireLocation(usableAt, tenantId);
-            page = shiftTemplateRepository.findInSet(tenantId, setOf(location), includeInactive, pageable);
+            page = shiftTemplateRepository.findInSet(tenantId, setOf(location), withInactive, pageable);
         } else {
-            page = includeInactive
+            page = withInactive
                 ? shiftTemplateRepository.findByTenantId(tenantId, pageable)
                 : shiftTemplateRepository.findByTenantIdAndActiveTrue(tenantId, pageable);
         }

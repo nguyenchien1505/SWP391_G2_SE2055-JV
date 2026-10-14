@@ -194,6 +194,10 @@ public class SecurityConfig {
                 // nhưng Manager phải ĐỌC được: xem policy để hiểu vì sao ca bị chặn, và chọn
                 // template khi xếp ca. Rule GET này phải đứng TRƯỚC rule chặn bên dưới vì rule
                 // khớp đầu tiên thắng ("/scheduling/policy/**" khớp cả "/scheduling/policy").
+                // Riêng DANH SÁCH mẫu ca mở cho cả nhân viên (service ép về bộ mẫu đang dùng của chi
+                // nhánh mình) để lịch cá nhân / lịch dọn luôn hiện đủ các ca (chốt 12/10/2026).
+                .requestMatchers(HttpMethod.GET, "/scheduling/shift-templates")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers(HttpMethod.GET, "/scheduling/policy/**", "/scheduling/shift-templates/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
                 .requestMatchers("/scheduling/policy/**", "/scheduling/shift-templates/**")

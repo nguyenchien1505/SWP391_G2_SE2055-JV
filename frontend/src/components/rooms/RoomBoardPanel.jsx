@@ -28,12 +28,16 @@ const HISTORY_PREVIEW = 5;
  * người làm; ngay dưới nút đổi trạng thái là hàng công cụ Khóa / Mở khóa phòng, Thêm tài sản, Kiểm
  * kê. Các thao tác khác trên việc dọn (kiểm tra phòng, thêm / gỡ người dọn) ở màn Công việc dọn phòng.
  *
+ * Giám đốc: nút "Sửa thông tin" mở form S-03 (RM-03, BR-ROOM-04) — cùng form với nút Sửa ở dạng
+ * danh sách, để khỏi phải rời sơ đồ.
+ *
  * Nút đổi trạng thái vẽ từ `room.allowedTargets` do backend tính (F2) — không có dãy nút "chuyển
  * nhanh sang trạng thái bất kỳ": Đang dọn / Chờ kiểm tra chỉ đổi qua việc dọn (BR-ROOM-02).
  *
  * @param role      { isDirector, isManager, isReception } — chỉ để ẨN/HIỆN cho dễ dùng
  * @param tasks     việc dọn ĐANG MỞ của phòng (chỉ Quản lý chi nhánh có dữ liệu này) — dùng để
  *                  biết việc nào chưa phân công
+ * @param onEditInfo chỉ Giám đốc: bấm "Sửa thông tin" → form sửa phòng (trang cha vẽ hộp thoại)
  * @param historyKey đổi giá trị để nạp lại lịch sử sau mỗi lần phòng đổi trạng thái
  * @param assetsKey  đổi giá trị để nạp lại danh sách tài sản sau khi kiểm kê
  * @param reports    báo hỏng của tài sản trong phòng (chỉ Quản lý chi nhánh) — có thì hiện nút
@@ -57,6 +61,7 @@ export default function RoomBoardPanel({
   onAction,
   onAssign,
   onEditNote,
+  onEditInfo,
   onAddAsset,
   onAuditAssets,
   reports = [],
@@ -155,6 +160,15 @@ export default function RoomBoardPanel({
               <button type="button" className="btn btn--ghost board-tool" onClick={() => onAuditAssets(room)}>
                 <span className="material-symbols-outlined" aria-hidden="true">fact_check</span>
                 Kiểm kê
+              </button>
+            </div>
+          )}
+          {/* BR-ROOM-04: Giám đốc sửa mọi thông tin phòng (số phòng, tầng, loại, sức chứa, ghi chú). */}
+          {role.isDirector && (
+            <div className="board-panel__tools">
+              <button type="button" className="btn btn--ghost board-tool" onClick={() => onEditInfo(room)}>
+                <span className="material-symbols-outlined" aria-hidden="true">edit</span>
+                Sửa thông tin
               </button>
             </div>
           )}

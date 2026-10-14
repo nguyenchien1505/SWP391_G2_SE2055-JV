@@ -526,6 +526,11 @@ a.nav-item {
   padding: 22px;
   min-width: 0;
 }
+/* Nền mờ sau ngăn kéo menu và khối tài khoản trong ngăn kéo — chỉ dùng ở màn hẹp (xem Responsive). */
+.shell__backdrop,
+.shell__account {
+  display: none;
+}
 
 /* ── Trang nội dung ────────────────────────────────────────────────── */
 .page__head {
@@ -918,6 +923,14 @@ a.nav-item {
     transform: translateX(0);
     box-shadow: 0 0 40px rgba(28, 35, 48, 0.25);
   }
+  /* Bấm ra ngoài ngăn kéo để đóng; nằm ngay dưới ngăn kéo (z-index 40). */
+  .shell__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(28, 35, 48, 0.35);
+  }
   .topbar__burger {
     display: flex;
     align-items: center;
@@ -929,6 +942,11 @@ a.nav-item {
   }
   .topbar__clock {
     display: none;
+  }
+  /* Thẻ "Quản lý" (máy tính bảng — điện thoại đã dời vào ngăn kéo) cũng là vùng bấm: cao 44px. */
+  .topbar__manager {
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
   /* Thanh trên chật trên điện thoại: bớt đệm và khoảng cách để email hiện được nhiều chữ nhất. */
   .topbar {
@@ -968,6 +986,64 @@ a.nav-item {
   }
   .login-card {
     padding: 24px 20px 16px;
+  }
+}
+
+/* Điện thoại: thanh trên chỉ còn nút menu và tên khách sạn — email, vai trò, liên hệ quản lý và nút
+   đăng xuất dời vào đầu ngăn kéo menu, thay vì bị cắt còn vài chữ ("dond…", "Nhân …"). */
+@media (max-width: 640px) {
+  .topbar__user {
+    display: none;
+  }
+  .topbar__location {
+    max-width: none;
+    min-width: 0;
+  }
+  .shell__account {
+    display: grid;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--page-bg);
+  }
+  .shell__account b {
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+  .shell__account small {
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .shell__account-manager {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+  .shell__account .btn {
+    margin-top: 8px;
+  }
+}
+
+/* Màn cảm ứng còn rộng (máy tính bảng nằm ngang — màn ≤ 860px đã có luật 48px ở trên): mục menu, nút
+   và thẻ "Quản lý" đủ to cho ngón tay. Máy dùng chuột giữ cỡ gọn như cũ. */
+@media (pointer: coarse) and (min-width: 861px) {
+  .nav-item {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .btn {
+    min-height: 44px;
+  }
+  .topbar__manager {
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 }
 

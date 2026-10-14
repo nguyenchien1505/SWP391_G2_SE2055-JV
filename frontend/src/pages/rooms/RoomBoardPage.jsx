@@ -105,7 +105,8 @@ export default function RoomBoardPage() {
   // Bảng chi tiết phòng chỉ đi cùng dạng sơ đồ.
   const showPanel = view === 'grid';
 
-  // Giám đốc: thêm / sửa phòng (form S-03 trong hộp thoại) và xóa phòng ngay trên danh sách.
+  // Giám đốc: thêm / sửa phòng (form S-03 trong hộp thoại — sửa từ dòng danh sách hoặc bảng chi
+  // tiết) và xóa phòng ngay trên danh sách.
   const roomTypes = useRoomTypes(isDirector);
   const [roomForm, setRoomForm] = useState(null); // null | { mode: 'create' } | { mode: 'edit', room }
   const [deleting, setDeleting] = useState(null);
@@ -273,6 +274,8 @@ export default function RoomBoardPage() {
     try {
       const saved = editing ? await updateRoom(editing.id, payload) : await createRoom(payload);
       setRoomForm(null);
+      // Màn hẹp: sửa từ bảng chi tiết (đang đè lên trang) thì đóng bảng để câu báo hiện ra.
+      if (!wideRef.current) setSelectedId(null);
       setBanner({
         type: 'success',
         text: editing
@@ -301,14 +304,16 @@ export default function RoomBoardPage() {
     }
   }
 
+  function editRoom(room) {
+    setBanner(null);
+    setRoomForm({ mode: 'edit', room });
+  }
+
   /** Nút thao tác trên từng dòng của dạng danh sách — cùng bộ với màn Danh sách phòng cũ. */
   const rowActions = {
     isDirector,
     isManager,
-    onEdit: (room) => {
-      setBanner(null);
-      setRoomForm({ mode: 'edit', room });
-    },
+    onEdit: editRoom,
     onDelete: setDeleting,
     onEditNote: setNoteRoom,
     // Khóa / mở khóa đi qua cùng luồng với bảng chi tiết (hộp thoại S-08).
@@ -383,6 +388,7 @@ export default function RoomBoardPage() {
     },
     onAssign: setAssigning,
     onEditNote: setNoteRoom,
+    onEditInfo: editRoom,
     // Hộp thoại thêm tài sản hàng loạt, chọn sẵn phòng này làm vị trí đặt.
     onAddAsset: setAddingAssetTo,
     reports: reportsByRoom[selectedRoom.id] ?? [],

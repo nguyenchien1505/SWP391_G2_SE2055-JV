@@ -97,10 +97,29 @@ class ShiftTemplateControllerTest {
             verify(shiftTemplateService).getTemplates(eq(false), eq(LOCATION_ID), any());
         }
 
+        /**
+         * Lịch cá nhân / lịch dọn của nhân viên cần đủ các ca của chi nhánh làm hàng (chốt 12/10/2026).
+         * Phạm vi (bộ mẫu của chi nhánh mình, chỉ mẫu đang dùng) do service ép.
+         */
         @Test
         @WithMockUser(roles = "STAFF")
-        void shouldForbidStaff() throws Exception {
-            mockMvc.perform(get("/scheduling/shift-templates")).andExpect(status().isForbidden());
+        void shouldLetStaffListTemplates() throws Exception {
+            when(shiftTemplateService.getTemplates(eq(false), isNull(), any()))
+                .thenReturn(new PageImpl<>(List.of(nightTemplate())));
+
+            mockMvc.perform(get("/scheduling/shift-templates"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].name").value("Ca đêm"));
+        }
+
+        /** Chỉ mở danh sách: chi tiết từng mẫu và mọi thao tác sửa vẫn không dành cho nhân viên. */
+        @Test
+        @WithMockUser(roles = "STAFF")
+        void shouldStillForbidStaffFromTemplateDetailAndChanges() throws Exception {
+            mockMvc.perform(get("/scheduling/shift-templates/{id}", TEMPLATE_ID)).andExpect(status().isForbidden());
+            mockMvc.perform(post("/scheduling/shift-templates")
+                    .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isForbidden());
             verifyNoInteractions(shiftTemplateService);
         }
     }

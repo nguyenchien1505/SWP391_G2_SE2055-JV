@@ -154,6 +154,7 @@
   color: #fff;
   font-size: 11px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .person-cell b {
@@ -601,6 +602,297 @@
 .my-shift__time {
   font-size: 13px;
   white-space: nowrap;
+}
+
+/* ── Lịch của MỘT người (Lịch cá nhân / Lịch dọn của tôi) ─────────────────
+ * Máy tính bảng / laptop: bảng gọn hơn bảng xếp lịch của quản lý (mỗi ô chỉ có ca của một người) để
+ * vừa đủ 7 ngày không phải kéo ngang. Cột hẹp thì giờ ca xuống dòng thay vì tràn khỏi khối.
+ * Điện thoại (≤ 640px) không dùng bảng — xem dải ngày bên dưới.
+ */
+.sched-grid.sched-grid--personal {
+  min-width: 640px;
+}
+.sched-grid.sched-grid--personal .sched-grid__person {
+  width: 132px;
+}
+.sched-grid--personal .my-shift__time {
+  white-space: normal;
+}
+/* Một nửa của "06:00 – 14:00" (TimeRangeText) — chỉ ngắt dòng giữa hai nửa. */
+.time-range__part {
+  white-space: nowrap;
+}
+
+/* ── Điện thoại: thời khóa biểu tuần (WeekTimetable) — kiểu "Weekly timetable" ─────
+ * Đầu: tuần và tháng kèm ◀ ▶ đổi tuần — dính trên cùng khi cuộn (không có dải nút chọn ngày). Dưới:
+ * danh sách gom theo ngày; mỗi mục một ca: vạch + chip màu ca, giờ vào / ra xếp dọc, thẻ chi tiết bên
+ * phải (ô xám nổi bật + các dòng chi tiết + nhãn trạng thái / nút).
+ */
+/* Mục không có giờ ca (việc dọn ngoài ca): màu xám trung tính. */
+.shift-tone--other { --tone: #5b6472; --tone-bg: #eef1f5; --tone-border: #d5dbe3; }
+
+.tt {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.tt-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 10px 8px 6px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+.tt-week {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.tt-week__back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-left: 4px;
+  padding: 0 6px;
+  font-size: 13px;
+}
+.tt-month {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tt-month b {
+  font-size: 17px;
+}
+.tt-month__nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+.tt-month__nav:hover {
+  background: #eef3f9;
+}
+.tt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* Một ngày: cột ngày bên trái, các ca bên phải; ngày không có lịch gọn một dòng. */
+.tt-group {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  padding: 14px 12px 14px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.tt-group:last-child {
+  border-bottom: 0;
+}
+.tt-group.is-empty {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.tt-group__date {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.tt-group__date b {
+  font-size: 20px;
+}
+.tt-group__date span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.tt-group__date .today-chip {
+  margin-top: 2px;
+  color: #fff;
+}
+.tt-group.is-today .tt-group__date b {
+  color: var(--accent);
+}
+.tt-group__empty {
+  margin: 0;
+  align-self: center;
+  font-size: 14px;
+  color: var(--muted);
+}
+.tt-entries {
+  display: grid;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* Một ca: vạch màu ca bên trái, cột giờ (chip + giờ vào / ra), thẻ chi tiết. */
+.tt-entry {
+  display: grid;
+  /* Đủ cho chip "Ca chiều" nằm một dòng; nhãn dài hơn ("Ca giờ khác") mới xuống dòng. */
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+  padding-left: 8px;
+  border-left: 4px solid var(--tone);
+  border-radius: 2px;
+}
+.tt-entry__slot {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 6px;
+}
+.tt-chip {
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--tone-bg);
+  color: var(--tone);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
+}
+.tt-time {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.tt-time__sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+}
+.tt-time--none {
+  font-size: 12px;
+  text-align: center;
+}
+.tt-entry__card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+/* Ô xám nổi bật đầu thẻ — "khách sạn" / "phòng dọn" (như ô "Room" của ảnh mẫu). */
+.tt-box {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: #f1f3f6;
+}
+.tt-box__label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.tt-box__value {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.tt-box__value.is-muted {
+  font-weight: 500;
+  color: var(--muted);
+}
+.tt-line {
+  margin: 0;
+  font-size: 14px;
+}
+.tt-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tt-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.tt-pill--in {
+  background: #2e7d32;
+  color: #fff;
+}
+.tt-pill--out {
+  background: #e9f5ea;
+  color: #2e7d32;
+}
+.tt-pill--upcoming {
+  background: #e7eff8;
+  color: var(--accent);
+}
+.tt-rooms {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+}
+.tt-rooms li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding-left: 8px;
+  border-left: 3px solid var(--tone, var(--border));
+}
+.tt-rooms__name {
+  font-weight: 600;
+}
+/* Nút hành động của thẻ — viên thuốc đậm như "Meet URL" của ảnh mẫu, cao 44px cho ngón tay. */
+.tt-action {
+  justify-self: start;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #0f8a6c;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tt-action:hover {
+  background: #0b7158;
+}
+.tt-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 860px) {
+  /* Điện thoại / máy tính bảng: chữ nhỏ nhất là 12px. */
+  .today-chip,
+  .cell-block__meta {
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 860px) {

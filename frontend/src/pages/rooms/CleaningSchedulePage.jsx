@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
 import { fetchTasks } from '../../api/housekeeping';
-import { fetchShifts } from '../../api/scheduling';
+import { fetchShiftTemplates, fetchShifts } from '../../api/scheduling';
 import { fetchStaffDirectory } from '../../api/users';
 import CleaningStatusBadge, { cleaningTone } from '../../components/rooms/CleaningStatusBadge';
 import MyCleaningShiftBoard from '../../components/rooms/MyCleaningShiftBoard';
+import { TIMETABLE_QUERY } from '../../components/scheduling/WeekTimetable';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import RoomStatusBadge from '../../components/rooms/RoomStatusBadge';
 import TaskStatusBadge from '../../components/rooms/TaskStatusBadge';
@@ -36,9 +38,9 @@ const PAGE_SIZE = 500;
  *   các phòng họ dọn ("301 - Deluxe" kèm trạng thái). Gồm mọi nhân viên có quyền Dọn dẹp của khách sạn,
  *   cộng những người khác còn việc dọn trong tuần (mất quyền, đã chuyển đi). Bấm một phòng để xem chi
  *   tiết, có tên những người dọn cùng.
- * - Nhân viên dọn: cùng cách chia với bảng xếp lịch của quản lý — hàng là CA của mình, cột là ngày; ca
- *   có việc thì hiện khối phòng, bấm khối để xem chi tiết ({@link MyCleaningShiftBoard}). Backend chỉ
- *   trả việc có mình trong nhóm và ca của mình.
+ * - Nhân viên dọn: cùng cách chia với bảng xếp lịch của quản lý — hàng là MỌI ca của chi nhánh (chốt
+ *   12/10/2026), cột là ngày; ca có lịch thì hiện khối của ca đó, có việc thì khối phòng, bấm khối để xem
+ *   chi tiết ({@link MyCleaningShiftBoard}). Backend chỉ trả việc có mình trong nhóm và ca của mình.
  *
  * Trạng thái cạnh phòng xem {@link CleaningStatusBadge}. Chỉ xem: giao việc, thêm / gỡ người, kiểm tra
  * phòng làm ở màn «Công việc dọn phòng».
@@ -47,6 +49,10 @@ export default function CleaningSchedulePage() {
   const { user } = useAuth();
   const isManager = user?.role === 'MANAGER' || user?.role === 'PLATFORM_ADMIN';
   const today = todayIso();
+  // Nhân viên trên điện thoại xem thời khóa biểu dạng danh sách (có sẵn nút đổi tuần) chứ không theo
+  // bảng — câu hướng dẫn và thanh chọn tuần đổi theo.
+  const phone = useMediaQuery(TIMETABLE_QUERY);
+  const staffPhone = phone && !isManager;
 
   const [weekStart, setWeekStart] = useState(() => weekStartOf(today));
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
@@ -64,6 +70,20 @@ export default function CleaningSchedulePage() {
     fetchStaffDirectory({ size: 500 })
       .then((data) => !cancelled && setDirectory(data?.content ?? data ?? []))
       .catch(() => !cancelled && setDirectory([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [isManager]);
+
+  // Nhân viên: mẫu ca đang dùng của chi nhánh — bảng của mình luôn đủ các ca làm hàng. Lỗi thì như cũ:
+  // chỉ hàng của các ca mình có.
+  const [templates, setTemplates] = useState(null);
+  useEffect(() => {
+    if (isManager) return undefined;
+    let cancelled = false;
+    fetchShiftTemplates()
+      .then((list) => !cancelled && setTemplates(list))
+      .catch(() => !cancelled && setTemplates([]));
     return () => {
       cancelled = true;
     };
@@ -138,34 +158,39 @@ export default function CleaningSchedulePage() {
           <p className="muted">
             {isManager
               ? 'Mỗi ô là ca làm và các phòng dọn trong ngày. Bấm vào một phòng để xem chi tiết và người dọn cùng.'
-              : 'Hàng là ca làm của bạn, cột là ngày. Ca có việc dọn hiện khối các phòng — bấm vào để xem chi tiết và người dọn cùng.'}
+              : phone
+                ? 'Mỗi mục là một ca của bạn kèm các phòng dọn, xếp theo ngày — bấm «Xem chi tiết» để biết người dọn cùng.'
+                : 'Hàng là các ca của khách sạn, cột là ngày. Ca bạn làm hiện khối của ca đó; có việc dọn thì khối liệt kê phòng — bấm vào để xem chi tiết và người dọn cùng.'}
           </p>
         </div>
       </div>
 
       <div className="sched-toolbar">
-        <div className="week-nav" role="group" aria-label="Chọn tuần">
-          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>
-            ‹ Tuần trước
-          </button>
-          <div className="week-nav__label" aria-live="polite">
-            Tuần {isoWeekNumber(weekStart)}
-            <small>
-              {formatDate(days[0])} – {formatDate(days[6])}
-            </small>
+        {/* Nhân viên trên điện thoại: đổi tuần ngay trên thời khóa biểu (◀ tháng ▶). */}
+        {!staffPhone && (
+          <div className="week-nav" role="group" aria-label="Chọn tuần">
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>
+              ‹ Tuần trước
+            </button>
+            <div className="week-nav__label" aria-live="polite">
+              Tuần {isoWeekNumber(weekStart)}
+              <small>
+                {formatDate(days[0])} – {formatDate(days[6])}
+              </small>
+            </div>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>
+              Tuần sau ›
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setWeekStart(weekStartOf(today))}
+              disabled={days.includes(today)}
+            >
+              Tuần này
+            </button>
           </div>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>
-            Tuần sau ›
-          </button>
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            onClick={() => setWeekStart(weekStartOf(today))}
-            disabled={days.includes(today)}
-          >
-            Tuần này
-          </button>
-        </div>
+        )}
         {week && (
           <div className="sched-summary">
             <span className="chip">{counts.total} lượt dọn</span>
@@ -178,16 +203,22 @@ export default function CleaningSchedulePage() {
 
       {error && <div className="alert alert--error" role="alert">{error}</div>}
       {loading && !week && <p className="state">Đang tải lịch dọn…</p>}
+      {week && !isManager && templates === null && <p className="state">Đang tải lịch dọn…</p>}
 
-      {week && !isManager && (
+      {/* Chờ cả mẫu ca: vẽ bảng trước rồi mới thêm hàng thì bảng nhảy từ 1 lên 3 hàng. */}
+      {week && !isManager && templates !== null && (
         <div aria-busy={loading}>
           <MyCleaningShiftBoard
             days={days}
             today={today}
             shifts={week.shifts}
             tasks={week.tasks}
+            templates={templates}
             meId={user?.id}
             onShowPreviousInspection={setPreviousOf}
+            onPrevWeek={() => setWeekStart(addDays(weekStart, -7))}
+            onNextWeek={() => setWeekStart(addDays(weekStart, 7))}
+            onThisWeek={() => setWeekStart(weekStartOf(today))}
           />
         </div>
       )}

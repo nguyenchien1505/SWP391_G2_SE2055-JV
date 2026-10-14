@@ -39,10 +39,11 @@ public class ShiftTemplateController {
      * @param includeInactive true để quản trị danh mục (thấy cả mẫu đã tắt); mặc định false
      *                        cho màn hình xếp ca — BR-SCH-22.
      * @param locationId      chỉ lấy bộ mẫu chi nhánh này đang dùng (chung hoặc riêng). Bỏ trống =
-     *                        mọi mẫu. Manager luôn bị giới hạn ở bộ của chi nhánh mình.
+     *                        mọi mẫu. Manager luôn bị giới hạn ở bộ của chi nhánh mình; nhân viên cũng
+     *                        vậy và chỉ thấy mẫu đang dùng — đủ để lịch cá nhân / lịch dọn hiện mọi ca.
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER','STAFF')")
     public ResponseEntity<Page<ShiftTemplateResponse>> getTemplates(
             @RequestParam(defaultValue = "false") boolean includeInactive,
             @RequestParam(required = false) UUID locationId,
