@@ -114,7 +114,7 @@ export function roomCardHint(room, tasks = []) {
  */
 export function whyNoRoomActions(room, { isDirector, isManager, isReception }) {
   if (isDirector) {
-    return 'Giám đốc theo dõi sơ đồ; thao tác trên phòng do Quản lý chi nhánh và Lễ tân thực hiện.';
+    return 'Đổi trạng thái phòng (nhận / trả phòng, khóa phòng) do Lễ tân và Quản lý chi nhánh thực hiện.';
   }
   if (isManager) {
     return room.status === 'OCCUPIED'
