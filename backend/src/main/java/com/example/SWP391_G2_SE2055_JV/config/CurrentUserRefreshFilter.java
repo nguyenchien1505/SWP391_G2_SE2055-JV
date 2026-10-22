@@ -66,6 +66,13 @@ public class CurrentUserRefreshFilter extends OncePerRequestFilter {
         Set.of("/auth/change-password", "/auth/logout");
     private static final String BILLING_PATH = "/billing";
 
+    /**
+     * Chưa chọn gói (Giám đốc của Tenant mới chưa chọn Dùng thử / Mua gói): chặn MỌI request, kể cả
+     * đọc. Chỉ cho các endpoint tài khoản dưới đây và /billing/** (để chọn gói, thanh toán).
+     */
+    private static final Set<String> ALLOWED_WHILE_PLAN_REQUIRED =
+        Set.of("/auth/me", "/auth/change-password", "/auth/logout");
+
     private final UserRepository         userRepository;
     private final UserDetailsServiceImpl userDetailsService;
     private final ObjectMapper           objectMapper;
@@ -131,7 +138,23 @@ public class CurrentUserRefreshFilter extends OncePerRequestFilter {
             return;
         }
 
+        // Tenant mới chưa chọn gói: Giám đốc chỉ vào được Gói dịch vụ.
+        if (fresh.isPlanRequired() && !isAllowedWhilePlanRequired(request)) {
+            writeError(request, response, HttpStatus.FORBIDDEN,
+                "Vui lòng chọn Dùng thử hoặc Mua gói để bắt đầu sử dụng hệ thống.");
+            return;
+        }
+
         chain.doFilter(request, response);
+    }
+
+    /** Endpoint tài khoản cần thiết hoặc /billing/** — mọi method. */
+    private static boolean isAllowedWhilePlanRequired(HttpServletRequest request) {
+        String path = pathWithinApplication(request);
+        return "OPTIONS".equals(request.getMethod())
+            || ALLOWED_WHILE_PLAN_REQUIRED.contains(path)
+            || path.equals(BILLING_PATH)
+            || path.startsWith(BILLING_PATH + "/");
     }
 
     /** Request đọc, hoặc thuộc nhóm ngoại lệ được phép ghi khi ở chế độ chỉ đọc. */

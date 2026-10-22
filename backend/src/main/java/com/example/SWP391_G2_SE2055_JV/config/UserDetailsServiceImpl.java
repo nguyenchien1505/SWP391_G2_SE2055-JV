@@ -55,6 +55,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             .mustChangePassword(user.isMustChangePassword())
             .enabled(user.isActive() && access != TenantAccessPolicy.Mode.BLOCKED)
             .readOnly(access == TenantAccessPolicy.Mode.READ_ONLY)
+            .planRequired(access == TenantAccessPolicy.Mode.PLAN_REQUIRED)
             .build();
     }
 

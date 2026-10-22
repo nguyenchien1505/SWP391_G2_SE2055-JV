@@ -163,9 +163,13 @@ export default function AppLayout({ children }) {
   }, [navOpen]);
 
   // Bỏ cả nhóm khi vai trò này không còn mục nào — không để tiêu đề nhóm trơ trọi.
+  // Giám đốc của Tenant mới chưa chọn Dùng thử / Mua gói chỉ thấy mục Gói dịch vụ.
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !item.visible || item.visible(user)),
+    items: group.items.filter(
+      (item) =>
+        (!user?.planRequired || item.to === '/goi-dich-vu') && (!item.visible || item.visible(user)),
+    ),
   })).filter((group) => group.items.length > 0);
 
   return (
