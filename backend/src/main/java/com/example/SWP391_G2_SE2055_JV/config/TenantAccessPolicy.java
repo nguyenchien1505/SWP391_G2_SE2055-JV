@@ -4,10 +4,14 @@ import com.example.SWP391_G2_SE2055_JV.entity.Tenant;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.SuspendReason;
+import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
+import com.example.SWP391_G2_SE2055_JV.repository.SubscriptionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 /**
  * MỘT chỗ duy nhất quyết định "trạng thái của Tenant cho phép người này vào tới đâu".
@@ -17,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <pre>
  *   Tenant                                        Giám đốc    Manager, Staff
+ *   TRIAL chưa chọn gói (trial_ends_at NULL)      PLAN_REQUIRED  BLOCKED
  *   TRIAL / ACTIVE / PAYMENT_OVERDUE              FULL        FULL
  *   SUSPENDED do ADMIN_LOCKED (hoặc thiếu lý do)  BLOCKED     BLOCKED
  *   SUSPENDED do TRIAL_EXPIRED / PAYMENT_FAILED   READ_ONLY   BLOCKED
@@ -40,6 +45,11 @@ public class TenantAccessPolicy {
         FULL,
         /** Đăng nhập được nhưng chỉ xem — filter chặn mọi thao tác ghi. */
         READ_ONLY,
+        /**
+         * Tenant mới, Giám đốc chưa chọn Dùng thử / Mua gói: đăng nhập được nhưng filter chỉ cho vào
+         * Gói dịch vụ ({@code /billing/**}) và vài endpoint tài khoản — chặn cả request đọc.
+         */
+        PLAN_REQUIRED,
         /** Không đăng nhập được, session đang mở bị cắt. */
         BLOCKED
     }
@@ -48,6 +58,7 @@ public class TenantAccessPolicy {
     public record Decision(Mode mode, SuspendReason reason) {}
 
     private final TenantRepository tenantRepository;
+    private final SubscriptionRepository subscriptionRepository;
 
     @Transactional(readOnly = true)
     public Decision evaluate(User user) {
@@ -59,6 +70,10 @@ public class TenantAccessPolicy {
         if (tenant == null) {
             return new Decision(Mode.BLOCKED, null);         // tham chiếu mồ côi: chặn cho an toàn
         }
+        // Tenant mới chưa chọn gói: chỉ Giám đốc vào được, và chỉ để chọn Dùng thử / Mua gói.
+        if (tenant.getStatus() == TenantStatus.TRIAL && planNotChosen(tenant.getId())) {
+            return new Decision(user.getRole() == Role.DIRECTOR ? Mode.PLAN_REQUIRED : Mode.BLOCKED, null);
+        }
         if (!tenant.isLoginBlocked()) {
             return new Decision(Mode.FULL, null);            // chưa bị khóa
         }
@@ -69,5 +84,12 @@ public class TenantAccessPolicy {
             return new Decision(Mode.READ_ONLY, reason);
         }
         return new Decision(Mode.BLOCKED, reason);
+    }
+
+    /** Gói còn dùng thử nhưng chưa có hạn dùng thử = Giám đốc chưa chọn Dùng thử / Mua gói. */
+    private boolean planNotChosen(UUID tenantId) {
+        return subscriptionRepository.findByTenantId(tenantId)
+            .map(sub -> sub.isTrial() && sub.getTrialEndsAt() == null)
+            .orElse(false);
     }
 }

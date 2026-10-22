@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
@@ -33,12 +33,18 @@ import BillingPage from './pages/BillingPage';
 import PaymentResultPage from './pages/PaymentResultPage';
 
 
+/** Trang Giám đốc chưa chọn gói được mở: chọn Dùng thử / Mua gói và nhận kết quả VNPay. */
+const PLAN_REQUIRED_PATHS = ['/goi-dich-vu', '/thanh-toan/ket-qua'];
+
 /**
  * Đã đăng nhập mới vào được; còn mật khẩu tạm thì phải đổi trước (BR-USER-07). Quản lý dự bị
  * (chưa gán khách sạn) chỉ thấy màn chờ — backend chặn mọi API quản lý của họ.
+ * Giám đốc của Tenant mới chưa chọn Dùng thử / Mua gói chỉ vào được Gói dịch vụ và trang kết quả
+ * thanh toán ({@link PLAN_REQUIRED_PATHS}) — backend cũng chặn mọi API khác.
  */
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
+  const { pathname } = useLocation();
 
   if (loading) {
     return <div className="boot-screen">Đang tải…</div>;
@@ -48,6 +54,9 @@ function RequireAuth({ children }) {
   }
   if (user.mustChangePassword) {
     return <Navigate to="/doi-mat-khau" replace />;
+  }
+  if (user.planRequired && !PLAN_REQUIRED_PATHS.includes(pathname)) {
+    return <Navigate to="/goi-dich-vu" replace />;
   }
   return user.role === 'MANAGER' && !user.locationId ? <ReserveManagerPage /> : children;
 }

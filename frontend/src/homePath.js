@@ -9,10 +9,12 @@ import { hasPermission } from './permissions';
  *   (BR-PERM-05).
  * - Staff còn lại (có quyền Lễ tân, kể cả kiêm Dọn dẹp, hoặc chỉ quyền chung) → sơ đồ phòng của
  *   khách sạn mình: Staff KHÔNG gọi được GET /locations (403) nên không thể vào /khach-san.
+ * - Giám đốc của Tenant mới chưa chọn Dùng thử / Mua gói → Gói dịch vụ (trang duy nhất mở được).
  * - Giám đốc, Manager → danh sách khách sạn.
  */
 export function homePathFor(user) {
   if (user?.role === 'PLATFORM_ADMIN') return '/quan-tri/tenant';
+  if (user?.planRequired) return '/goi-dich-vu';
   if (user?.role === 'STAFF') {
     const housekeepingOnly = hasPermission(user, 'HOUSEKEEPING') && !hasPermission(user, 'RECEPTION');
     return housekeepingOnly ? '/don-phong/cua-toi' : '/so-do-phong';

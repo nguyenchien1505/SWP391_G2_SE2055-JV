@@ -107,6 +107,7 @@ public class BillingService {
             .staff(usage.getStaff())
             .rooms(usage.getRooms())
             .currentPricing(PricingConfigResponse.fromEntity(platformConfigService.resolvePricing(today)))
+            .trialDays(platformConfigService.loadSystemConfig().getTrialDays())
             .build();
     }
 
@@ -129,6 +130,37 @@ public class BillingService {
                     : i.getId().equals(firstPeriodicId) ? InvoiceResponse.Kind.MUA_GOI
                     : InvoiceResponse.Kind.GIA_HAN))
             .toList();
+    }
+
+    // ── Chọn gói lần đầu: Dùng thử ──────────────────────────────────────────
+
+    /**
+     * Tenant mới (đã xác thực email, chưa chọn gói) chọn Dùng thử: bắt đầu dùng thử từ hôm nay, số
+     * ngày theo SystemConfig — BR-SAAS-08. Từ đây dùng chung luồng dùng thử có sẵn (job hết hạn dùng
+     * thử, mua gói khi đang dùng thử). Lựa chọn còn lại — Mua gói — đi thẳng {@link #purchase}.
+     *
+     * <p>Còn giao dịch mua gói dở thì hỏi VNPay trước như {@link #purchase}: nếu giao dịch đó đã
+     * thành công thì gói đã được kích hoạt, không bắt đầu dùng thử nữa. Không ném lỗi ở nhánh này để
+     * kết quả vừa áp vẫn được lưu.
+     */
+    @Transactional
+    public PaymentUrlResponse startTrial() {
+        Locked ctx = lockCurrentTenant();
+        Subscription sub = ctx.sub();
+        if (!sub.isTrial() || sub.getTrialEndsAt() != null || ctx.tenant().getStatus() != TenantStatus.TRIAL) {
+            throw new BusinessException("Bạn đã chọn gói dịch vụ rồi.");
+        }
+        PaymentUrlResponse blocked = resolvePendingPayments(ctx);
+        if (blocked != null) {
+            return blocked;
+        }
+
+        LocalDate trialEndsAt = ctx.today().plusDays(platformConfigService.loadSystemConfig().getTrialDays());
+        sub.setTrialEndsAt(trialEndsAt);
+        subscriptionRepository.save(sub);
+        log.info("Tenant {} bắt đầu dùng thử, hết hạn {}", ctx.tenant().getId(), trialEndsAt);
+        return PaymentUrlResponse.message(String.format(
+            "Đã bắt đầu dùng thử. Bạn được dùng miễn phí tới hết ngày %s.", trialEndsAt.minusDays(1)), true);
     }
 
     // ── Ba thao tác thanh toán ──────────────────────────────────────────────

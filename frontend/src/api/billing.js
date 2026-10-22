@@ -12,6 +12,12 @@ export async function fetchInvoices() {
   return data;
 }
 
+/** Tenant mới chọn Dùng thử — trả { message, activated } (activated = true khi đã bắt đầu dùng thử). */
+export async function startTrial() {
+  const { data } = await api.post('/billing/start-trial');
+  return data;
+}
+
 /** Mua gói lần đầu — trả { paymentUrl } để chuyển sang VNPay, hoặc { message, activated }. */
 export async function purchasePlan({ quotaLocation, quotaUser, quotaRoom }) {
   const { data } = await api.post('/billing/purchase', { quotaLocation, quotaUser, quotaRoom });

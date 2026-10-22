@@ -102,8 +102,8 @@ export default function RegisterPage() {
         <div className="login-card__body">
           <h1>Đăng ký doanh nghiệp</h1>
           <p className="muted">
-            Tạo không gian làm việc cho công ty của bạn. Tài khoản Giám đốc được tạo cùng lúc và
-            được dùng thử miễn phí.
+            Tạo không gian làm việc cho công ty của bạn. Sau khi xác thực email và đăng nhập, bạn
+            chọn dùng thử miễn phí hoặc mua gói ngay.
           </p>
 
           <form onSubmit={handleSubmit} noValidate>
@@ -156,7 +156,7 @@ export default function RegisterPage() {
             )}
 
             <button type="submit" className="btn btn--primary btn--block" disabled={submitting}>
-              {submitting ? 'Đang đăng ký…' : 'Đăng ký dùng thử'}
+              {submitting ? 'Đang đăng ký…' : 'Đăng ký'}
               {!submitting && <span aria-hidden="true"> →</span>}
             </button>
           </form>
