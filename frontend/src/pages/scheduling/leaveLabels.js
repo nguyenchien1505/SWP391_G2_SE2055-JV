@@ -27,6 +27,17 @@ export function daysInclusive(fromIso, toIso) {
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000) + 1;
 }
 
+/**
+ * Đơn đã duyệt bị người duyệt hủy phần ngày chưa tới (BR-SCH-16 sửa 28/10/2026): hủy cả đơn hay rút ngắn.
+ * `null` nếu đơn không bị hủy kiểu này.
+ */
+export function revokeSummary(leave) {
+  if (!leave.revokedAt) return null;
+  return leave.originalToDate
+    ? `Rút ngắn, vốn nghỉ tới ${formatLeaveRange(leave.originalToDate)}`
+    : 'Hủy cả đơn trước ngày nghỉ';
+}
+
 /** "28/10/2026", "28/10 – 30/10/2026" hoặc "30/12/2026 – 02/01/2027". */
 export function formatLeaveRange(fromIso, toIso) {
   if (!fromIso) return '—';

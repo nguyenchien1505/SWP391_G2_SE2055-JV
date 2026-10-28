@@ -63,6 +63,8 @@ import java.util.stream.Stream;
  *   <li>Duyệt đơn: gỡ người khỏi các ca từ NGÀY MAI trở đi trong khoảng nghỉ, lý do LEAVE_APPROVED; ca của chính
  *       hôm nay giữ nguyên để Manager tự quyết (BR-SCH-17). Ca theo mẫu mất lễ tân duy nhất chỉ cảnh báo, vẫn
  *       duyệt được (BR-SCH-29).</li>
+ *   <li>Đơn đã duyệt: người gửi không tự hủy; người duyệt hủy được phần ngày chưa tới, bắt buộc lý do, quỹ phép
+ *       tự hoàn (BR-SCH-16 bản sửa 28/10/2026).</li>
  * </ul>
  *
  * <p>Việc dọn phòng của người nghỉ (BR-HK-07) không phải gỡ ở đây: việc dọn chỉ giao được cho HÔM NAY
@@ -229,6 +231,48 @@ public class LeaveRequestService {
         leave.setApproverId(SecurityUtils.getCurrentUserId());
         leave.setDecidedAt(nowAt(leave.getLocationId(), leave.getTenantId()));
         log.info("Từ chối đơn nghỉ {}", id);
+        return toResponse(leaveRequestRepository.save(leave));
+    }
+
+    /**
+     * Hủy phần ngày CHƯA TỚI của đơn đã duyệt — BR-SCH-16 bản sửa 28/10/2026. Người gửi vẫn không tự hủy được;
+     * việc này của người duyệt (cùng phạm vi BR-SCH-08), bắt buộc lý do.
+     *
+     * <ul>
+     *   <li>Chưa tới ngày nghỉ → hủy cả đơn (CANCELLED, vẫn giữ người duyệt).</li>
+     *   <li>Đang nghỉ dở → rút ngắn tới hết hôm nay: hôm nay coi như đã tới, cùng mốc với BR-SCH-17.</li>
+     * </ul>
+     * Quỹ phép không lưu số dư mà cộng lại từ các đơn đã duyệt ({@link LeaveQuota}), nên tự hoàn đúng số ngày bị
+     * hủy. Ca đã gỡ lúc duyệt KHÔNG tự gán lại — Manager xếp lại nếu cần.
+     */
+    @Transactional
+    public LeaveRequestResponse revokeLeaveRequest(UUID id, String reason) {
+        LeaveRequest leave = getOwnedRequest(id);
+        requesterInReviewScope(leave);
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException("Nhập lý do hủy để người gửi biết vì sao kỳ nghỉ bị cắt.");
+        }
+        if (leave.getStatus() != LeaveRequestStatus.APPROVED) {
+            throw new BusinessException("Chỉ hủy được đơn đã duyệt — đơn đang chờ thì từ chối.");
+        }
+        LocalDate today = todayAt(leave.getLocationId(), leave.getTenantId());
+        if (!leave.getToDate().isAfter(today)) {
+            throw new BusinessException("Đơn này không còn ngày nghỉ nào chưa tới để hủy.");
+        }
+
+        int restored;
+        if (leave.getFromDate().isAfter(today)) {
+            restored = leave.days();
+            leave.setStatus(LeaveRequestStatus.CANCELLED);
+        } else {
+            restored = (int) ChronoUnit.DAYS.between(today, leave.getToDate());
+            leave.setOriginalToDate(leave.getToDate());
+            leave.setToDate(today);
+        }
+        leave.setRevokedBy(SecurityUtils.getCurrentUserId());
+        leave.setRevokedAt(nowAt(leave.getLocationId(), leave.getTenantId()));
+        leave.setRevokeReason(reason.trim());
+        log.info("Hủy {} ngày chưa tới của đơn nghỉ {}", restored, id);
         return toResponse(leaveRequestRepository.save(leave));
     }
 
@@ -416,10 +460,10 @@ public class LeaveRequestService {
         return new PageImpl<>(toResponses(page.getContent()), page.getPageable(), page.getTotalElements());
     }
 
-    /** Người gửi, người duyệt, vị trí và khách sạn cho CẢ trang — mỗi loại một câu truy vấn, tránh N+1. */
+    /** Người gửi, người duyệt / hủy, vị trí và khách sạn cho CẢ trang — mỗi loại một câu truy vấn, tránh N+1. */
     private List<LeaveRequestResponse> toResponses(List<LeaveRequest> leaves) {
         Set<UUID> userIds = leaves.stream()
-            .flatMap(leave -> Stream.of(leave.getRequesterId(), leave.getApproverId()))
+            .flatMap(leave -> Stream.of(leave.getRequesterId(), leave.getApproverId(), leave.getRevokedBy()))
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
         Map<UUID, User> users = userIds.isEmpty() ? Map.of()
@@ -437,8 +481,9 @@ public class LeaveRequestService {
             String positionName = requester == null || requester.getPositionId() == null
                 ? null : positionNames.get(requester.getPositionId());
             User approver = leave.getApproverId() == null ? null : users.get(leave.getApproverId());
+            User revoker = leave.getRevokedBy() == null ? null : users.get(leave.getRevokedBy());
             return LeaveRequestResponse.fromEntity(leave, requester, positionName,
-                locationNames.get(leave.getLocationId()), approver);
+                locationNames.get(leave.getLocationId()), approver, revoker);
         }).toList();
     }
 

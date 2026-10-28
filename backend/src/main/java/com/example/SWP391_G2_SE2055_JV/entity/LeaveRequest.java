@@ -71,6 +71,23 @@ public class LeaveRequest extends AuditableEntity {
     @Column(name = "decided_at")
     private LocalDateTime decidedAt;
 
+    /**
+     * Người duyệt hủy phần ngày chưa tới của đơn đã duyệt — BR-SCH-16 bản sửa 28/10/2026. Hủy cả đơn thì đơn sang
+     * CANCELLED; rút ngắn thì đơn vẫn APPROVED với {@link #originalToDate}.
+     */
+    @Column(name = "revoked_by", length = 36)
+    private UUID revokedBy;
+
+    @Column(name = "revoked_at")
+    private LocalDateTime revokedAt;
+
+    @Column(name = "revoke_reason", length = 500)
+    private String revokeReason;
+
+    /** Ngày kết thúc trước khi rút ngắn; {@code null} nếu đơn không bị rút ngắn. */
+    @Column(name = "original_to_date")
+    private LocalDate originalToDate;
+
     /** BR-SCH-16: chỉ đơn PENDING mới được người gửi tự hủy. */
     public boolean isPending() {
         return status == LeaveRequestStatus.PENDING;

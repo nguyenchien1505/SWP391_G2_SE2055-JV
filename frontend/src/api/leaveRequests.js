@@ -72,3 +72,13 @@ export async function rejectLeaveRequest(id) {
   const { data } = await api.patch(`/scheduling/leave-requests/${id}/reject`);
   return data;
 }
+
+/**
+ * PATCH /{id}/revoke — người duyệt hủy phần ngày chưa tới của đơn đã duyệt, bắt buộc lý do (BR-SCH-16 sửa
+ * 28/10/2026). Chưa tới ngày nghỉ → hủy cả đơn (CANCELLED); đang nghỉ dở → rút ngắn tới hết hôm nay
+ * (`originalToDate` giữ ngày kết thúc cũ).
+ */
+export async function revokeLeaveRequest(id, reason) {
+  const { data } = await api.patch(`/scheduling/leave-requests/${id}/revoke`, { reason });
+  return data;
+}

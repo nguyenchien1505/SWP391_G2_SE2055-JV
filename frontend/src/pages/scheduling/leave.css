@@ -43,6 +43,16 @@
   font-size: 13.5px;
   color: var(--muted);
 }
+/* Đơn đã duyệt bị người duyệt hủy phần chưa tới (BR-SCH-16 sửa 28/10/2026) — cùng màu .alert--warn. */
+.leave-ticket__revoke {
+  font-size: 13.5px;
+  background: #fdf0dc;
+  border-left: 3px solid #f6d3a1;
+  color: #7a3e00;
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
+  overflow-wrap: anywhere;
+}
 .leave-ticket__actions {
   display: flex;
   gap: 8px;

@@ -214,7 +214,71 @@ class LeaveRequestFlowTest {
             .hasMessageContaining("ck_leave_requests_decision");
     }
 
+    /**
+     * BR-SCH-16 bản sửa 28/10/2026: hủy cả đơn chưa tới ngày nghỉ — V10 cho phép đơn CANCELLED giữ người duyệt
+     * khi có người hủy, và quỹ phép tự hoàn vì được cộng lại từ đơn đã duyệt.
+     */
+    @Test
+    void shouldRevokeWholeApprovedLeaveAndRestoreQuota() {
+        LocalDate day = today.plusDays(5);
+        LeaveRequest leave = persist(approvedAnnual(day, day));
+        flushAndClear();
+        User stored = em.find(User.class, cleaner.getId());
+        assertThat(leaveQuota.balanceOf(stored, day.getYear(), today).getUsedDays()).isEqualTo(1);
+
+        loginAs(manager);
+        leaveRequestService.revokeLeaveRequest(leave.getId(), "Khách đoàn đến sớm, cần người");
+        flushAndClear();
+
+        LeaveRequest reloaded = em.find(LeaveRequest.class, leave.getId());
+        assertThat(reloaded.getStatus()).isEqualTo(LeaveRequestStatus.CANCELLED);
+        assertThat(reloaded.getApproverId()).isEqualTo(manager.getId());
+        assertThat(reloaded.getRevokedBy()).isEqualTo(manager.getId());
+        assertThat(reloaded.getRevokeReason()).isEqualTo("Khách đoàn đến sớm, cần người");
+        assertThat(leaveQuota.balanceOf(stored, day.getYear(), today).getUsedDays()).isZero();
+    }
+
+    /** Đang nghỉ dở: rút ngắn tới hôm nay — đơn vẫn APPROVED, có người hủy và ngày kết thúc cũ. */
+    @Test
+    void shouldShortenOngoingLeaveInDatabase() {
+        LeaveRequest leave = persist(LeaveRequest.builder().tenantId(tenantId).locationId(hanoi)
+            .requesterId(cleaner.getId()).leaveType(LeaveType.UNPAID).fromDate(today.minusDays(1))
+            .toDate(today.plusDays(2)).reason("Ốm").status(LeaveRequestStatus.APPROVED)
+            .approverId(manager.getId()).decidedAt(today.minusDays(3).atTime(9, 0)).build());
+        flushAndClear();
+
+        loginAs(manager);
+        leaveRequestService.revokeLeaveRequest(leave.getId(), "Đã khỏe, xin đi làm lại");
+        flushAndClear();
+
+        LeaveRequest reloaded = em.find(LeaveRequest.class, leave.getId());
+        assertThat(reloaded.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
+        assertThat(reloaded.getToDate()).isEqualTo(today);
+        assertThat(reloaded.getOriginalToDate()).isEqualTo(today.plusDays(2));
+    }
+
+    /** V10: có người hủy thì phải có lý do — DB chặn dù có đường ghi nào bỏ sót ở service. */
+    @Test
+    void shouldRequireRevokeReasonAtDatabaseLevel() {
+        LeaveRequest broken = approvedAnnual(today.plusDays(5), today.plusDays(5));
+        broken.setStatus(LeaveRequestStatus.CANCELLED);
+        broken.setRevokedBy(manager.getId());
+        broken.setRevokedAt(today.atTime(10, 0));
+
+        assertThatThrownBy(() -> leaveRequestRepository.saveAndFlush(broken))
+            .isInstanceOf(DataAccessException.class)
+            .hasMessageContaining("ck_leave_requests_revoke");
+    }
+
     // ── Tiện ích ────────────────────────────────────────────────────────────
+
+    /** Phép năm của người dọn Hoa, Manager đã duyệt từ 3 ngày trước. */
+    private LeaveRequest approvedAnnual(LocalDate from, LocalDate to) {
+        return LeaveRequest.builder().tenantId(tenantId).locationId(hanoi).requesterId(cleaner.getId())
+            .leaveType(LeaveType.ANNUAL).fromDate(from).toDate(to).reason("Nghỉ phép")
+            .status(LeaveRequestStatus.APPROVED).approverId(manager.getId())
+            .decidedAt(today.minusDays(3).atTime(9, 0)).build();
+    }
 
     private void loginAs(User person) {
         PositionType type = person.getRole() == Role.STAFF ? PositionType.OTHER : null;

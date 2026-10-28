@@ -4,6 +4,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.CreateLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveRequestResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.RevokeLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
 import com.example.SWP391_G2_SE2055_JV.service.LeaveRequestService;
 import jakarta.validation.Valid;
@@ -24,8 +25,8 @@ import java.util.UUID;
  *
  * <p>Người gửi (Staff, Manager) chỉ làm việc với đơn của chính mình. Người duyệt theo cấp (BR-SCH-08): Manager
  * duyệt đơn Staff khách sạn mình, Giám đốc duyệt đơn Manager — chặn theo ROLE nên Giám sát vận hành (Staff)
- * không duyệt được (BR-PERM-07). Rule URL trong {@code SecurityConfig}: duyệt / từ chối / xem hàng duyệt chỉ
- * Admin, Giám đốc, Manager; các path còn lại cho cả 4 role, phân tiếp ở {@code @PreAuthorize}.
+ * không duyệt được (BR-PERM-07). Rule URL trong {@code SecurityConfig}: duyệt / từ chối / hủy phần còn lại / xem
+ * hàng duyệt chỉ Admin, Giám đốc, Manager; các path còn lại cho cả 4 role, phân tiếp ở {@code @PreAuthorize}.
  */
 @RestController
 @RequestMapping("/scheduling/leave-requests")
@@ -94,5 +95,14 @@ public class LeaveRequestController {
     @PreAuthorize("hasAnyRole('MANAGER','DIRECTOR')")
     public ResponseEntity<LeaveRequestResponse> rejectLeaveRequest(@PathVariable UUID id) {
         return ResponseEntity.ok(leaveRequestService.rejectLeaveRequest(id));
+    }
+
+    /** BR-SCH-16 bản sửa 28/10/2026: người duyệt hủy phần ngày chưa tới của đơn đã duyệt, bắt buộc lý do. */
+    @PatchMapping("/{id}/revoke")
+    @PreAuthorize("hasAnyRole('MANAGER','DIRECTOR')")
+    public ResponseEntity<LeaveRequestResponse> revokeLeaveRequest(
+            @PathVariable UUID id,
+            @Valid @RequestBody RevokeLeaveRequestRequest request) {
+        return ResponseEntity.ok(leaveRequestService.revokeLeaveRequest(id, request.getReason()));
     }
 }

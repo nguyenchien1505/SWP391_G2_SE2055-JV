@@ -221,8 +221,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/scheduling/leave-requests/review",
                         "/scheduling/leave-requests/*/approval-preview")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+                // Hủy phần ngày chưa tới của đơn đã duyệt cũng là việc của người duyệt (BR-SCH-16 sửa 28/10/2026).
                 .requestMatchers(HttpMethod.PATCH, "/scheduling/leave-requests/*/approve",
-                        "/scheduling/leave-requests/*/reject")
+                        "/scheduling/leave-requests/*/reject", "/scheduling/leave-requests/*/revoke")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
                 // Mọi người lao động đều xin nghỉ / đổi ca / check-in-out được (BR-PERM-06).
                 .requestMatchers("/scheduling/leave-requests/**", "/scheduling/shift-swap-requests/**")
