@@ -1950,6 +1950,40 @@ button.area-report:hover {
 .my-shift__none {
   color: var(--muted);
 }
+/* M2: nút Vào ca / Kết thúc ca cạnh giờ ca; mục Việc đang chờ nhận (S-21). */
+.my-shift__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.my-shift__action {
+  min-height: 48px;
+}
+/* Điện thoại hẹp: tiêu đề một hàng, chip + Tải lại xuống hàng dưới — không bóp chữ giữa chừng. */
+.open-tasks .panel__head {
+  flex-wrap: wrap;
+}
+.open-tasks__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.open-tasks__tools .chip,
+.open-tasks__tools .btn {
+  white-space: nowrap;
+}
+/* Việc dọn lại: cùng tông cam cảnh báo với nhãn tồn đọng — phòng đã chờ hai lần. */
+.open-tasks__redo {
+  font-weight: 600;
+  color: #b85300;
+}
+@media (max-width: 860px) {
+  .my-shift__item,
+  .my-shift__action {
+    width: 100%;
+  }
+}
 
 @media (max-width: 1100px) {
   .day-board {

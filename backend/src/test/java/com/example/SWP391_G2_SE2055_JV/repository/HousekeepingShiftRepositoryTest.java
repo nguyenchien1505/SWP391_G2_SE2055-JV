@@ -107,6 +107,14 @@ class HousekeepingShiftRepositoryTest {
         assertThat(shifts).extracting(Shift::getId).containsExactly(nightShiftOfYesterday.getId());
     }
 
+    /** Bản khóa dòng (FOR UPDATE, F8) chạy được trên MySQL và trả đúng như bản thường. */
+    @Test
+    void shouldLockShiftsOfStaffBetween() {
+        assertThat(repository.findOfStaffBetweenForUpdate(cleaner, hanoi, yesterday, today))
+            .extracting(Shift::getId)
+            .containsExactly(nightShiftOfYesterday.getId(), dayShiftOfToday.getId());
+    }
+
     /** Ca ngày hôm qua không bao giờ kéo dài sang hôm nay. */
     @Test
     void shouldIgnoreDayShifts() {

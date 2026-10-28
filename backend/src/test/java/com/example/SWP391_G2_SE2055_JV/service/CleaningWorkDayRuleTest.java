@@ -160,6 +160,36 @@ class CleaningWorkDayRuleTest {
         }
     }
 
+    // ── Ca đang trong ngày làm — BR-HK-15 (tự nhận việc) ────────────────────
+
+    @Nested
+    class CurrentWorkShifts {
+
+        /** Lệnh tự nhận khóa ca của mình (BR-HK-16): hỏi bằng bản FOR UPDATE, hôm qua → hôm nay. */
+        @Test
+        void shouldUseLockingQueryWhenAsked() {
+            Shift night = nightShift(YESTERDAY);
+            when(shiftRepository.findOfStaffBetweenForUpdate(STAFF_ID, LOCATION_ID, YESTERDAY, TODAY))
+                .thenReturn(List.of(night));
+
+            assertThat(rule.currentWorkShifts(STAFF_ID, LOCATION_ID, TWO_AM, true)).containsExactly(night);
+            verify(shiftRepository, never()).findOfStaffBetween(any(), any(), any(), any());
+        }
+
+        /** Ca ngày hôm qua và ca đêm hôm qua đã hết giờ đều không còn thuộc ngày làm hiện tại. */
+        @Test
+        void shouldKeepOnlyShiftsOfCurrentWorkDay() {
+            Shift endedNight = nightShift(YESTERDAY);
+            endedNight.setEndTime(LocalTime.of(1, 0));
+            Shift today = dayShift(TODAY);
+            when(shiftRepository.findOfStaffBetween(STAFF_ID, LOCATION_ID, YESTERDAY, TODAY))
+                .thenReturn(List.of(dayShift(YESTERDAY), endedNight, today));
+
+            assertThat(rule.currentWorkShifts(STAFF_ID, LOCATION_ID, TWO_AM, false)).containsExactly(today);
+            verify(shiftRepository, never()).findOfStaffBetweenForUpdate(any(), any(), any(), any());
+        }
+    }
+
     // ── «Tồn đọng» — BR-HK-04 ───────────────────────────────────────────────
 
     @Nested

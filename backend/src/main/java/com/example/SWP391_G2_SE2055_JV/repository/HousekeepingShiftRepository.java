@@ -1,6 +1,8 @@
 package com.example.SWP391_G2_SE2055_JV.repository;
 
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
@@ -34,6 +36,24 @@ public interface HousekeepingShiftRepository extends Repository<Shift, UUID> {
                                    @Param("locationId") UUID locationId,
                                    @Param("from") LocalDate from,
                                    @Param("to") LocalDate to);
+
+    /**
+     * Như {@link #findOfStaffBetween} nhưng KHÓA các dòng ca tới hết transaction — lệnh tự nhận việc khóa
+     * ca của CHÍNH người nhận để hai lần bấm của cùng một người phải xếp hàng (BR-HK-16), và để "nhận
+     * việc" không chen giữa "Kết thúc ca" của chính họ.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select s from Shift s
+        where s.staffId = :staffId
+          and s.locationId = :locationId
+          and s.shiftDate between :from and :to
+        order by s.shiftDate, s.startTime
+        """)
+    List<Shift> findOfStaffBetweenForUpdate(@Param("staffId") UUID staffId,
+                                            @Param("locationId") UUID locationId,
+                                            @Param("from") LocalDate from,
+                                            @Param("to") LocalDate to);
 
     /**
      * Ca QUA ĐÊM của nhiều người trong một ngày — tính cờ "Tồn đọng" cho cả trang việc dọn bằng một câu

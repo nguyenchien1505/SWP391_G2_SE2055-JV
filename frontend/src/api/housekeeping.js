@@ -74,6 +74,29 @@ export async function unassignTask(id, staffId) {
 }
 
 /**
+ * GET /housekeeping/tasks/open — việc đang chờ nhận của khách sạn mình (BR-HK-14), kèm luôn
+ * `{ canClaim, blockedReason, workDay }`: BACKEND nói người đang đăng nhập có tự nhận được không và vì
+ * sao (chưa có ca, chưa vào ca, đã kết thúc ca, đang dọn dở phòng khác). Màn hình chỉ hiện ra, không tự
+ * suy luật. `workDay` là ngày làm của ca đang làm — ca đêm từ hôm qua thì là hôm qua.
+ *
+ * Chỉ nhân viên có quyền Dọn dẹp gọi được.
+ */
+export async function fetchOpenTasks() {
+  const { data } = await api.get('/housekeeping/tasks/open');
+  return data;
+}
+
+/**
+ * PATCH .../claim — nhân viên Dọn dẹp tự nhận một việc chưa phân công. Nhận = giao: backend chuyển phòng
+ * sang «Đang dọn» trong cùng transaction. Người khác vừa nhận trước thì trả 400 kèm câu báo — tải lại
+ * danh sách sau mọi lần bấm, thành công hay không.
+ */
+export async function claimTask(id) {
+  const { data } = await api.patch(`/housekeeping/tasks/${id}/claim`);
+  return data;
+}
+
+/**
  * PATCH .../complete — bất kỳ ai trong nhóm dọn bấm được, và là xong cho cả nhóm (BR-PERM-05, chốt
  * 05/10/2026). Việc sang «Chờ kiểm tra» chứ chưa phải hoàn thành — còn chờ Quản lý nghiệm thu.
  */

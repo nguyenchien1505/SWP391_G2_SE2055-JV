@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
@@ -369,6 +370,89 @@ class HousekeepingTaskControllerTest {
                 .andExpect(status().isOk());
 
             verify(housekeepingService).unassignTask(TASK_ID, STAFF_ID);
+        }
+    }
+
+    // ── Việc chờ nhận + tự nhận (M2): chỉ người có quyền Dọn dẹp ─────────────
+
+    @Nested
+    class OpenTasksAndClaim {
+
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldListOpenTasksForHousekeepingStaff() throws Exception {
+            when(housekeepingService.getOpenTasks()).thenReturn(OpenTasksResponse.builder()
+                .canClaim(false).blockedReason("Bạn cần bấm «Vào ca» trước khi nhận việc.")
+                .tasks(List.of(sampleTask())).build());
+
+            mockMvc.perform(get("/housekeeping/tasks/open"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.canClaim").value(false))
+                .andExpect(jsonPath("$.blockedReason").value("Bạn cần bấm «Vào ca» trước khi nhận việc."))
+                .andExpect(jsonPath("$.tasks[0].id").value(TASK_ID.toString()));
+            verify(housekeepingService, never()).getTask(any());
+        }
+
+        /** Lễ tân, Giám sát (không kiêm Dọn dẹp) và Quản lý không có danh sách này — chặn ở @PreAuthorize. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_STAFF,POSITION_RECEPTION", "ROLE_STAFF,POSITION_SUPERVISION", "ROLE_MANAGER"})
+        void shouldForbidOpenTasksWithoutHousekeepingPermission(String authorities) throws Exception {
+            mockMvc.perform(get("/housekeeping/tasks/open").with(authorities(authorities)))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldClaimTaskForHousekeepingStaff() throws Exception {
+            HousekeepingTaskResponse claimed = sampleTask();
+            claimed.setStatus(HousekeepingTaskStatus.IN_PROGRESS);
+            when(housekeepingService.claimTask(TASK_ID)).thenReturn(claimed);
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/claim", TASK_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
+        }
+
+        /** Tự nhận là việc của chính nhân viên dọn — Quản lý và Giám sát bị chặn ngay ở tầng URL. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_MANAGER", "ROLE_STAFF,POSITION_SUPERVISION", "ROLE_STAFF,POSITION_RECEPTION"})
+        void shouldForbidClaimWithoutHousekeepingPermission(String authorities) throws Exception {
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/claim", TASK_ID).with(authorities(authorities)))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        @Test
+        void shouldReturnUnauthorizedWithoutLogin() throws Exception {
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/claim", TASK_ID))
+                .andExpect(status().isUnauthorized());
+            mockMvc.perform(get("/housekeeping/tasks/open"))
+                .andExpect(status().isUnauthorized());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** Người khác vừa nhận trước — lỗi nghiệp vụ 400 kèm câu cho người dùng. */
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldReturnBadRequestWhenSomeoneClaimedFirst() throws Exception {
+            when(housekeepingService.claimTask(TASK_ID))
+                .thenThrow(new BusinessException("Phòng 201 vừa có người nhận. Danh sách đã được cập nhật — chọn phòng khác."));
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/claim", TASK_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(
+                    "Phòng 201 vừa có người nhận. Danh sách đã được cập nhật — chọn phòng khác."));
+        }
+
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldReturnNotFoundForTaskOutOfScope() throws Exception {
+            when(housekeepingService.claimTask(TASK_ID))
+                .thenThrow(new ResourceNotFoundException("HousekeepingTask", "id", TASK_ID));
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/claim", TASK_ID))
+                .andExpect(status().isNotFound());
         }
     }
 

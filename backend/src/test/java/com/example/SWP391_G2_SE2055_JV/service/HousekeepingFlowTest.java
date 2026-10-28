@@ -4,6 +4,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.Department;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
@@ -23,6 +24,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.TaskAssignmentSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
@@ -503,6 +505,56 @@ class HousekeepingFlowTest {
         flushAndClear();
 
         assertThat(em.find(Shift.class, cleanerShiftToday.getId()).getStaffId()).isNull();
+    }
+
+    // ── Tự nhận việc — BR-HK-02 (sửa), BR-HK-12 (sửa), BR-HK-14, BR-HK-15 (M2) ─
+
+    /**
+     * Nhân viên đã vào ca tự nhận 201 trên DB thật: việc «Đang thực hiện» có đúng người nhận, cách giao
+     * ghi xuống cột mới của V10, phòng «Đang dọn» và đúng MỘT dòng lịch sử nguồn Hệ thống.
+     */
+    @Test
+    void shouldClaimOnRealDb() {
+        em.find(Shift.class, cleanerShiftToday.getId()).setCheckInAt(LocalDateTime.now());
+        flushAndClear();
+        loginAsCleaner();
+
+        housekeepingService.claimTask(checkoutTaskOf201.getId());
+        flushAndClear();
+
+        HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
+        assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.IN_PROGRESS);
+        assertThat(task.getAssigneeIds()).containsExactly(cleaner.getId());
+        assertThat(task.getAssignmentSource()).isEqualTo(TaskAssignmentSource.SELF_CLAIM);
+        assertThat(task.getAssignedBy()).isEqualTo(cleaner.getId());
+        assertThat(task.getAssignedDate()).isEqualTo(today);
+        assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.CLEANING);
+
+        loginAsManager();
+        assertThat(historyOf(dirty201)).singleElement().satisfies(row -> {
+            assertThat(row.getFromStatus()).isEqualTo(RoomStatus.DIRTY);
+            assertThat(row.getToStatus()).isEqualTo(RoomStatus.CLEANING);
+            assertThat(row.getChangeSource()).isEqualTo(ChangeSource.SYSTEM);
+        });
+    }
+
+    /**
+     * BR-HK-14: việc dọn lại (kiểm tra không đạt) tự vào danh sách chờ nhận — Quản lý không phải mở.
+     * Người chưa vào ca vẫn thấy danh sách, kèm lý do chưa nhận được.
+     */
+    @Test
+    void shouldListRedoTaskInOpenListAfterInspectionFails() {
+        runCleaningCycleThenInspect(InspectionResult.FAIL, "Gương nhà tắm còn vết");
+        loginAs(secondCleaner);
+
+        OpenTasksResponse open = housekeepingService.getOpenTasks();
+
+        assertThat(open.getTasks()).singleElement().satisfies(redo -> {
+            assertThat(redo.getRoomNumber()).isEqualTo("201");
+            assertThat(redo.getCreatedSource()).isEqualTo(TaskCreatedSource.INSPECTION_FAILED);
+        });
+        assertThat(open.isCanClaim()).isFalse();
+        assertThat(open.getBlockedReason()).contains("Vào ca");
     }
 
     // ── Tiện ích ────────────────────────────────────────────────────────────

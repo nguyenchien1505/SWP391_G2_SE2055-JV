@@ -14,6 +14,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.TaskAssignmentSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
@@ -185,6 +186,32 @@ class HousekeepingTaskRepositoryTest {
 
         assertThatThrownBy(() -> repository.saveAndFlush(task))
             .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /** Bản khóa dòng (FOR UPDATE) vẫn mang chốt cách ly Tenant — Tenant khác không tải được. */
+    @Test
+    void shouldLoadForUpdateOnlyWithinTenant() {
+        HousekeepingTask task = repository.saveAndFlush(task(HousekeepingTaskStatus.UNASSIGNED));
+        em.clear();
+
+        assertThat(repository.findByIdAndTenantIdForUpdate(task.getId(), tenantId)).isPresent();
+        assertThat(repository.findByIdAndTenantIdForUpdate(task.getId(), UUID.randomUUID())).isEmpty();
+    }
+
+    /**
+     * BR-HK-12 (sửa M2): đủ 3 cách giao ghi được xuống DB — tên hằng enum phải khớp CHECK
+     * {@code ck_hk_assignment_source} (V10), lệch là 500 chứ không phải 409.
+     */
+    @Test
+    void shouldPersistEveryAssignmentSource() {
+        for (TaskAssignmentSource source : TaskAssignmentSource.values()) {
+            HousekeepingTask task = task(HousekeepingTaskStatus.COMPLETED, today);   // việc đã đóng: không đụng BR-HK-11
+            task.setAssignmentSource(source);
+            UUID id = repository.saveAndFlush(task).getId();
+            em.clear();
+
+            assertThat(repository.findById(id).orElseThrow().getAssignmentSource()).isEqualTo(source);
+        }
     }
 
     // ── Dữ liệu ─────────────────────────────────────────────────────────────

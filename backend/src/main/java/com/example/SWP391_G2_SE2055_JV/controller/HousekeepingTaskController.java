@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.service.HousekeepingService;
@@ -35,7 +36,7 @@ import java.util.UUID;
  * <p>Rule URL trong {@code SecurityConfig}: {@code GET /housekeeping/**} cho cả 4 role,
  * {@code PATCH /housekeeping/tasks/*}{@code /complete} thêm {@code POSITION_HOUSEKEEPING},
  * giao việc và kiểm tra phòng thêm {@code POSITION_SUPERVISION} (Giám sát vận hành — BR-PERM-07),
- * các path còn lại chỉ Admin và Manager.
+ * tự nhận việc ({@code /claim}) chỉ {@code POSITION_HOUSEKEEPING}, các path còn lại chỉ Admin và Manager.
  */
 @RestController
 @RequestMapping("/housekeeping/tasks")
@@ -82,6 +83,17 @@ public class HousekeepingTaskController {
         return ResponseEntity.ok(housekeepingService.getAssignableStaff(date, ongoingOnly));
     }
 
+    /**
+     * S-21 — việc đang chờ nhận của khách sạn mình, kèm "bạn có tự nhận được không, vì sao" (BR-HK-14,
+     * BR-HK-15, BR-HK-16). Chỉ nhân viên có quyền Dọn dẹp — Quản lý / Giám sát đã có bảng điều phối.
+     * Path cố định, khai báo trước {@code /{id}} như {@code /assignable-staff}.
+     */
+    @GetMapping("/open")
+    @PreAuthorize("hasAuthority('POSITION_HOUSEKEEPING')")
+    public ResponseEntity<OpenTasksResponse> getOpenTasks() {
+        return ResponseEntity.ok(housekeepingService.getOpenTasks());
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER','STAFF')")
     public ResponseEntity<HousekeepingTaskResponse> getTask(@PathVariable UUID id) {
@@ -113,6 +125,17 @@ public class HousekeepingTaskController {
             @PathVariable UUID id,
             @RequestParam(required = false) UUID staffId) {
         return ResponseEntity.ok(housekeepingService.unassignTask(id, staffId));
+    }
+
+    /**
+     * Nhân viên Dọn dẹp tự nhận một việc chưa phân công của khách sạn mình (BR-HK-02 bản sửa, BR-HK-15,
+     * BR-HK-16, BR-HK-18). Không có body: ngày làm lấy từ ca đang làm. Chỉ người có quyền Dọn dẹp —
+     * Quản lý / Giám sát giao việc ở {@code /assign}.
+     */
+    @PatchMapping("/{id}/claim")
+    @PreAuthorize("hasAuthority('POSITION_HOUSEKEEPING')")
+    public ResponseEntity<HousekeepingTaskResponse> claimTask(@PathVariable UUID id) {
+        return ResponseEntity.ok(housekeepingService.claimTask(id));
     }
 
     /**

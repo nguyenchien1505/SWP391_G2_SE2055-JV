@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
  * trong "ngày làm D". Lớp này gom các luật của việc dọn suy ra từ đó:
  * <ul>
  *   <li>giao việc với ngày làm nào thì hợp lệ — {@link #assertIsCurrentWorkDay};</li>
+ *   <li>người đó đang có ca nào trong ngày làm hiện tại — {@link #currentWorkShifts} (tự nhận việc);</li>
  *   <li>việc nào đang «Tồn đọng» — {@link #overdueTaskIds}.</li>
  * </ul>
  * Điều kiện "ca thuộc ngày làm hiện tại" dùng chung với Giám sát trực ca qua
@@ -78,6 +79,21 @@ public class CleaningWorkDayRule {
     }
 
     /**
+     * Ca thuộc ngày làm hiện tại của một người tại một khách sạn — BR-HK-15 (tự nhận việc): ca hôm nay,
+     * và ca qua đêm bắt đầu hôm qua chưa tới giờ kết thúc.
+     *
+     * @param lock lệnh tự nhận khóa các dòng ca này tới hết transaction, để hai lần bấm của cùng một người
+     *             phải xếp hàng (BR-HK-16); màn danh sách chỉ đọc
+     */
+    public List<Shift> currentWorkShifts(UUID staffId, UUID locationId, LocalDateTime now, boolean lock) {
+        LocalDate today = now.toLocalDate();
+        List<Shift> shifts = lock
+            ? shiftRepository.findOfStaffBetweenForUpdate(staffId, locationId, today.minusDays(1), today)
+            : shiftRepository.findOfStaffBetween(staffId, locationId, today.minusDays(1), today);
+        return shifts.stream().filter(shift -> inCurrentWorkDay(shift, now)).toList();
+    }
+
+    /**
      * Những việc đang «Tồn đọng» trong {@code tasks} — BR-HK-04: hết ca chưa xong thì để yên ở «Đang
      * thực hiện» và gắn nhãn tồn đọng. Mọi khách sạn chạy giờ Hà Nội (BR-ORG-04 bản sửa) nên một trang
      * việc của nhiều khách sạn dùng chung một mốc "bây giờ".
@@ -127,14 +143,16 @@ public class CleaningWorkDayRule {
     /** Trong số những người này, ai còn đang làm dở ca qua đêm bắt đầu ngày {@code date}. */
     private Set<UUID> stillOnNightShift(Collection<UUID> staffIds, LocalDate date, LocalDateTime now) {
         return shiftRepository.findOvernightOf(staffIds, date).stream()
-            .filter(shift -> ShiftTimeUtils.isInCurrentWorkDay(
-                shift.getShiftDate(), shift.isOvernight(), shift.getEndTime(), now))
+            .filter(shift -> inCurrentWorkDay(shift, now))
             .map(Shift::getStaffId)
             .collect(Collectors.toSet());
     }
 
     private static boolean hasShiftInCurrentWorkDay(Collection<Shift> shifts, LocalDateTime now) {
-        return shifts.stream().anyMatch(shift -> ShiftTimeUtils.isInCurrentWorkDay(
-            shift.getShiftDate(), shift.isOvernight(), shift.getEndTime(), now));
+        return shifts.stream().anyMatch(shift -> inCurrentWorkDay(shift, now));
+    }
+
+    private static boolean inCurrentWorkDay(Shift shift, LocalDateTime now) {
+        return ShiftTimeUtils.isInCurrentWorkDay(shift.getShiftDate(), shift.isOvernight(), shift.getEndTime(), now);
     }
 }

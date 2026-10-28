@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.TaskAssignmentSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
@@ -48,6 +49,11 @@ public class HousekeepingTaskResponse {
     private boolean                overdue;
     private UUID                   assignedBy;
     private LocalDateTime          assignedAt;
+    /**
+     * Việc được bắt đầu bằng cách nào — Quản lý giao, Giám sát giao hay tự nhận (BR-HK-12 sửa M2). Cùng
+     * {@code assignedBy}, màn "Việc của tôi" biết ai được trả lại việc (BR-HK-17).
+     */
+    private TaskAssignmentSource   assignmentSource;
     private LocalDateTime          completedAt;
     private TaskCreatedSource      createdSource;
     private UUID                   parentTaskId;
@@ -86,6 +92,7 @@ public class HousekeepingTaskResponse {
             .overdue(overdue)
             .assignedBy(task.getAssignedBy())
             .assignedAt(task.getAssignedAt())
+            .assignmentSource(task.getAssignmentSource())
             .completedAt(task.getCompletedAt())
             .createdSource(task.getCreatedSource())
             .parentTaskId(task.getParentTaskId())

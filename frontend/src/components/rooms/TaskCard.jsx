@@ -1,6 +1,8 @@
 import TaskStatusBadge from './TaskStatusBadge';
 import { formatDate } from '../../pages/rooms/format';
-import { taskSourceLabel, taskStatusMeta, teamNames, unassignedReasonLabel } from '../../pages/rooms/roomLabels';
+import {
+  assignmentSourceLabel, taskSourceLabel, taskStatusMeta, teamNames, unassignedReasonLabel,
+} from '../../pages/rooms/roomLabels';
 
 /**
  * Một việc dọn phòng dạng thẻ — S-09 / S-11 (bảng lịch dọn của Quản lý chi nhánh).
@@ -33,6 +35,8 @@ export default function TaskCard({ task, actions = [], onShowPreviousInspection 
         <p className="task-card__meta">
           <b>{team}</b>
           {task.assignedDate ? ` · ${formatDate(task.assignedDate)}` : ''}
+          {/* BR-HK-12 (sửa M2): Quản lý giao / Giám sát giao / Tự nhận. */}
+          {assignmentSourceLabel(task.assignmentSource) ? ` · ${assignmentSourceLabel(task.assignmentSource)}` : ''}
         </p>
       )}
 
