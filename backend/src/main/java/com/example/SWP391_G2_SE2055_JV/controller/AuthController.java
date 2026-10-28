@@ -2,6 +2,7 @@ package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.config.CustomUserDetails;
 import com.example.SWP391_G2_SE2055_JV.dto.ChangePasswordRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.ForgotPasswordRequest;
 import com.example.SWP391_G2_SE2055_JV.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +59,16 @@ public class AuthController {
             "error",   "access_denied",
             "message", "Tài khoản Google của bạn chưa được đăng ký. Vui lòng liên hệ quản lý."
         ));
+    }
+
+    /**
+     * Nhân viên quên mật khẩu: email cho Quản lý khách sạn của họ để Quản lý cấp mật khẩu tạm. Công khai (chưa
+     * đăng nhập được) và luôn trả 204 dù email có tài khoản hay không — không cho dò tài khoản.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.requestPasswordReset(request.getEmail());
+        return ResponseEntity.noContent().build();
     }
 
     /** Tự đổi mật khẩu — bắt buộc ở lần đăng nhập đầu tiên (BR-USER-07). */

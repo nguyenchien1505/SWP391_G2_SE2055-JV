@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { STAFF_PERMISSIONS, canReportDamage, hasPermission, isSupervisor } from '../permissions';
 import Logo from './Logo';
@@ -46,6 +46,12 @@ const hasShifts = (user) => user?.role === 'STAFF';
 
 /** Manager và Staff thuộc đúng một khách sạn — hiện tên khách sạn trên thanh tiêu đề. */
 const worksAtLocation = (user) => user?.role === 'MANAGER' || user?.role === 'STAFF';
+
+/**
+ * Có hồ sơ cá nhân để xem — mọi người làm việc trong Tenant (BR-PERM-06). Giám đốc chưa chọn gói chỉ mở được Gói
+ * dịch vụ nên chưa hiện.
+ */
+const hasProfile = (user) => (isManagement(user) || isStaff(user)) && !user?.planRequired;
 
 /**
  * Khung màn hình sau đăng nhập. Các mục điều hướng chưa có màn hình tương ứng được để ở
@@ -194,6 +200,11 @@ export default function AppLayout({ children }) {
               👤 Quản lý: {user.locationManagerEmail}
             </a>
           )}
+          {hasProfile(user) && (
+            <Link to="/ho-so" className="btn btn--ghost" onClick={() => setNavOpen(false)}>
+              Hồ sơ cá nhân
+            </Link>
+          )}
           <button type="button" className="btn btn--ghost" onClick={signOut}>
             Đăng xuất
           </button>
@@ -267,6 +278,11 @@ export default function AppLayout({ children }) {
               <b>{user?.email}</b>
               <small>{roleLabelOf(user)}</small>
             </div>
+            {hasProfile(user) && (
+              <Link to="/ho-so" className="btn btn--ghost">
+                Hồ sơ
+              </Link>
+            )}
             <button type="button" className="btn btn--ghost" onClick={signOut}>
               Đăng xuất
             </button>

@@ -58,3 +58,11 @@ export async function verifyEmail(token) {
 export async function resendVerification(email) {
   await api.post('/auth/resend-verification', { email });
 }
+
+/**
+ * Nhân viên quên mật khẩu: backend email cho Quản lý khách sạn của họ để Quản lý cấp mật khẩu tạm. Không đổi gì
+ * trên tài khoản; luôn trả thành công để không lộ email nào có tài khoản.
+ */
+export async function requestPasswordReset(email) {
+  await api.post('/auth/forgot-password', { email });
+}

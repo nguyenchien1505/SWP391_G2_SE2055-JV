@@ -31,6 +31,8 @@ import { homePathFor } from './homePath';
 import { canReportDamage, hasPermission, isSupervisor } from './permissions';
 import RegisterPage from './pages/RegisterPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ProfilePage from './pages/ProfilePage';
 import BillingPage from './pages/BillingPage';
 import PaymentResultPage from './pages/PaymentResultPage';
 
@@ -181,6 +183,16 @@ function RequireLeaveApprover({ children }) {
 }
 
 /**
+ * Hồ sơ cá nhân — ai làm việc trong Tenant (BR-PERM-06). Admin Platform không có hồ sơ nhân sự nên về trang chủ.
+ * Chỉ là lớp giao diện; backend chỉ trả hồ sơ của chính người đăng nhập.
+ */
+function RequireTenantUser({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role === 'DIRECTOR' || user?.role === 'MANAGER' || user?.role === 'STAFF';
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
  * Báo hỏng của tôi — chỉ nhân viên có quyền Lễ tân / Dọn dẹp (BR-ASSET-05). Vai trò khác về trang
  * chủ của mình. Chỉ là lớp giao diện; quyền thật do backend quyết định.
  */
@@ -294,6 +306,19 @@ export default function App() {
       />
       {/* Mở từ nút trong email xác thực — công khai vì tài khoản chưa đăng nhập được. */}
       <Route path="/xac-thuc-email" element={<VerifyEmailPage />} />
+      {/* Nhân viên quên mật khẩu — gửi yêu cầu cho Quản lý khách sạn; công khai, đã đăng nhập thì về trang chủ. */}
+      <Route
+        path="/quen-mat-khau"
+        element={
+          loading ? (
+            <div className="boot-screen">Đang tải…</div>
+          ) : user ? (
+            <Navigate to={homePathFor(user)} replace />
+          ) : (
+            <ForgotPasswordPage />
+          )
+        }
+      />
       <Route
         path="/doi-mat-khau"
         element={
@@ -348,6 +373,8 @@ export default function App() {
       {/* Đơn xin nghỉ — BR-SCH-06..08: nhân viên, quản lý gửi đơn của mình; quản lý / giám đốc duyệt theo cấp. */}
       <Route path="/don-nghi" element={inShell(<RequireLeaveRequester><MyLeavePage /></RequireLeaveRequester>)} />
       <Route path="/duyet-don-nghi" element={inShell(<RequireLeaveApprover><LeaveReviewPage /></RequireLeaveApprover>)} />
+      {/* Hồ sơ cá nhân — BR-PERM-06: chỉ xem; mở từ nút «Hồ sơ» trên thanh tiêu đề. */}
+      <Route path="/ho-so" element={inShell(<RequireTenantUser><ProfilePage /></RequireTenantUser>)} />
       {/* Gói dịch vụ — chỉ Giám đốc (trang tự đưa vai trò khác về trang chủ). */}
       <Route path="/goi-dich-vu" element={inShell(<BillingPage />)} />
       {/* VNPay đưa Giám đốc về đây sau khi thanh toán (?vnp_...). */}

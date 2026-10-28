@@ -1,0 +1,24 @@
+/* Hồ sơ cá nhân — thẻ hẹp như pop-up hồ sơ nhân viên, không kéo giãn hết bề ngang màn lớn. */
+.profile-card {
+  max-width: 640px;
+}
+.profile-card .pw-dialog__info {
+  margin-bottom: 0;
+}
+.profile-card .pw-dialog__info dd {
+  overflow-wrap: break-word;
+}
+
+/* Điện thoại: cột giá trị quá hẹp làm email, địa chỉ gãy giữa chữ — xếp nhãn ở trên, giá trị ở dưới. */
+@media (max-width: 640px) {
+  .profile-card .pw-dialog__info {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .profile-card .pw-dialog__info dt:not(:first-child) {
+    margin-top: 8px;
+  }
+  .profile-card .pw-dialog__info dd {
+    text-align: left;
+  }
+}

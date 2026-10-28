@@ -74,6 +74,10 @@ p {
   opacity: 0.55;
   cursor: not-allowed;
 }
+/* Link trông như nút (vd. «Hồ sơ» trên thanh tiêu đề) — bỏ gạch chân mặc định của thẻ <a>. */
+a.btn {
+  text-decoration: none;
+}
 .btn--primary {
   background: var(--primary);
   color: #fff;

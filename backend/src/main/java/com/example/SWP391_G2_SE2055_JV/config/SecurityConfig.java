@@ -81,7 +81,9 @@ public class SecurityConfig {
         "/auth/register-tenant",
         // Xác thực email sau khi đăng ký — người dùng chưa đăng nhập được nên phải công khai.
         "/auth/verify-email",
-        "/auth/resend-verification"
+        "/auth/resend-verification",
+        // Nhân viên quên mật khẩu — chưa đăng nhập được; chỉ gửi yêu cầu cho Quản lý, không đổi gì trên tài khoản.
+        "/auth/forgot-password"
     };
 
     /** Origin của frontend. Dev: Vite chạy cổng 3000; đổi khi deploy bằng biến môi trường. */

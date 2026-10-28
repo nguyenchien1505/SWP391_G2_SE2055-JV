@@ -15,7 +15,8 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * Gửi email mật khẩu tạm cho tài khoản mới / tài khoản được cấp lại mật khẩu.
+ * Gửi email mật khẩu tạm cho tài khoản mới / tài khoản được cấp lại mật khẩu, và báo Quản lý khi nhân viên
+ * của họ quên mật khẩu.
  *
  * <p><b>Mặc định TẮT</b> — chỉ bật khi {@code .env} có {@code MAIL_ENABLED=true}
  * ({@code app.mail.enabled}). Khi tắt, bean này không được tạo và sự kiện bị bỏ qua: hệ
@@ -67,6 +68,47 @@ public class AccountEmailService {
             // để thông báo thủ công (BR-USER-03).
             log.warn("Gửi email mật khẩu tạm tới {} thất bại: {}", event.email(), e.getMessage());
         }
+    }
+
+    /**
+     * Nhân viên quên mật khẩu → báo Quản lý khách sạn của họ. Email chỉ là lời nhắn: Quản lý tự quyết cấp mật
+     * khẩu tạm, và mật khẩu tạm đó đến tay nhân viên qua {@link #onCredentialsIssued}. Chạy sau commit, chạy nền,
+     * gửi lỗi chỉ ghi log — giống email mật khẩu tạm.
+     */
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onPasswordResetRequested(PasswordResetRequestedEvent event) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
+            helper.setFrom(from);
+            helper.setTo(event.managerEmail());
+            helper.setSubject("Nhân viên " + event.staffName() + " xin cấp lại mật khẩu");
+            helper.setText(buildResetRequestBody(event));
+
+            mailSender.send(message);
+            log.info("Đã báo Quản lý {} yêu cầu quên mật khẩu của {}", event.managerEmail(), event.staffEmail());
+        } catch (MessagingException | MailException e) {
+            log.warn("Gửi yêu cầu quên mật khẩu tới {} thất bại: {}", event.managerEmail(), e.getMessage());
+        }
+    }
+
+    private String buildResetRequestBody(PasswordResetRequestedEvent event) {
+        String location = event.locationName() == null ? "khách sạn của bạn" : event.locationName();
+        return """
+            Xin chào %s,
+
+            Nhân viên %s (%s) ở %s vừa báo quên mật khẩu trên hệ thống quản lý khách sạn.
+
+            Để cấp mật khẩu tạm mới: đăng nhập, vào «Nhân viên chi nhánh», tìm %s và bấm «Cấp lại mật khẩu».
+            Mật khẩu tạm hiện trên màn hình của bạn và được gửi tới email của nhân viên.
+            Nhân viên phải đổi mật khẩu ở lần đăng nhập tới.
+
+            Đăng nhập tại: %s
+
+            Nếu nhân viên không gửi yêu cầu này, bạn có thể bỏ qua email — mật khẩu hiện tại vẫn giữ nguyên.
+            """.formatted(event.managerName(), event.staffName(), event.staffEmail(), location, event.staffName(),
+            loginUrl);
     }
 
     private String buildBody(AccountCredentialsIssuedEvent event) {

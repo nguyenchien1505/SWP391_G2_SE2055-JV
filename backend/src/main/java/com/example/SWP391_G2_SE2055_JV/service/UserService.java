@@ -1,11 +1,13 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.CreateUserRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.MyProfileResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.TempPasswordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.TerminateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.TerminationResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.UserResponse;
+import com.example.SWP391_G2_SE2055_JV.entity.Department;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
@@ -98,6 +100,28 @@ public class UserService {
     @Transactional(readOnly = true)
     public UserResponse getUserById(UUID id) {
         return UserResponse.fromEntity(getOwnedUser(id));
+    }
+
+    /**
+     * Hồ sơ của chính người đang đăng nhập — BR-PERM-06 "xem hồ sơ cá nhân". Tra theo id trong phiên, vẫn lọc
+     * Tenant như mọi truy vấn của codebase. Vị trí / phòng ban / khách sạn không tra được thì để trống.
+     */
+    @Transactional(readOnly = true)
+    public MyProfileResponse getMyProfile() {
+        UUID id = SecurityUtils.getCurrentUserId();
+        User me = userRepository.findByIdAndTenantId(id, SecurityUtils.getCurrentTenantId())
+            .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
+        Position position = me.getPositionId() == null ? null
+            : positionRepository.findByIdAndTenantId(me.getPositionId(), me.getTenantId()).orElse(null);
+        String departmentName = position == null || position.getDepartmentId() == null ? null
+            : departmentRepository.findByIdAndTenantId(position.getDepartmentId(), me.getTenantId())
+                .map(Department::getName)
+                .orElse(null);
+        String locationName = me.getLocationId() == null ? null
+            : locationRepository.findByIdAndTenantId(me.getLocationId(), me.getTenantId())
+                .map(Location::getName)
+                .orElse(null);
+        return MyProfileResponse.of(me, position == null ? null : position.getName(), departmentName, locationName);
     }
 
     /**
