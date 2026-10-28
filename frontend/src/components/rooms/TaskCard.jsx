@@ -12,8 +12,9 @@ import {
  *
  * @param actions    [{ key, label, danger, onClick }] — nút hiện dưới thẻ
  * @param onShowPreviousInspection  mở biên bản lần kiểm tra trước; chỉ có nghĩa với việc dọn lại
+ * @param onShowReturns  mở lịch sử trả lại; chỉ hiện khi việc đã từng bị trả lại (BR-HK-17)
  */
-export default function TaskCard({ task, actions = [], onShowPreviousInspection }) {
+export default function TaskCard({ task, actions = [], onShowPreviousInspection, onShowReturns }) {
   const tone = taskStatusMeta(task.status).tone;
   const team = teamNames(task);
 
@@ -54,6 +55,13 @@ export default function TaskCard({ task, actions = [], onShowPreviousInspection 
       {task.parentTaskId && onShowPreviousInspection && (
         <button type="button" className="link-btn" onClick={() => onShowPreviousInspection(task)}>
           Xem lần kiểm tra trước
+        </button>
+      )}
+
+      {/* BR-HK-17: nhóm còn người thì lần trả không vào lịch sử phòng — chỉ đọc được ở đây. */}
+      {task.returnCount > 0 && onShowReturns && (
+        <button type="button" className="link-btn" onClick={() => onShowReturns(task)}>
+          Lịch sử trả lại ({task.returnCount})
         </button>
       )}
 

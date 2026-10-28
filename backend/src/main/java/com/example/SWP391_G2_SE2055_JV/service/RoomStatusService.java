@@ -132,6 +132,16 @@ public class RoomStatusService {
     }
 
     /**
+     * Người tự nhận trả lại việc và nhóm không còn ai: Đang dọn → Chờ dọn (BR-ROOM-02 bản sửa M2,
+     * BR-HK-17). Nguồn là NHÂN VIÊN DỌN — có người trả và lý do — khác {@link #revertToDirty} (Hệ thống,
+     * gỡ người tự động / Quản lý gỡ). Việc vẫn mở (Chưa phân công) nên không gọi hook sinh việc mới.
+     */
+    @Transactional
+    public void returnToQueue(Room room, UUID taskId, String reason) {
+        transition(room, RoomStatus.CLEANING, RoomStatus.DIRTY, ChangeSource.HOUSEKEEPING, normalize(reason), taskId);
+    }
+
+    /**
      * Manager hoặc Giám sát vận hành kiểm tra phòng: ĐẠT → Trống/Sẵn sàng, KHÔNG ĐẠT → Chờ dọn
      * (BR-ROOM-02 bản sửa M2, BR-HK-06). Nguồn ghi vào lịch sử theo tư cách người đang đăng nhập —
      * Giám sát là nhân viên, không ghi thành Manager. Task dọn lại khi không đạt do Housekeeping tự

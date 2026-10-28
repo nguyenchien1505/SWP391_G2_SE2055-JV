@@ -17,6 +17,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskAssignmentSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TenantStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -211,6 +212,22 @@ class HousekeepingTaskRepositoryTest {
             em.clear();
 
             assertThat(repository.findById(id).orElseThrow().getAssignmentSource()).isEqualTo(source);
+        }
+    }
+
+    /**
+     * BR-HK-17: lý do gỡ thứ 5 {@code SELF_RETURNED} — CHECK {@code ck_hk_unassigned_reason} (V11) phải nhận
+     * đủ mọi giá trị enum, lệch là 500.
+     */
+    @Test
+    void shouldPersistEveryUnassignedReason() {
+        for (UnassignedReason reason : UnassignedReason.values()) {
+            HousekeepingTask task = task(HousekeepingTaskStatus.COMPLETED, today);   // việc đã đóng: không đụng BR-HK-11
+            task.setUnassignedReason(reason);
+            UUID id = repository.saveAndFlush(task).getId();
+            em.clear();
+
+            assertThat(repository.findById(id).orElseThrow().getUnassignedReason()).isEqualTo(reason);
         }
     }
 

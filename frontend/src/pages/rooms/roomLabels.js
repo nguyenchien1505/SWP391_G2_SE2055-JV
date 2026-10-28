@@ -132,6 +132,7 @@ export const UNASSIGNED_REASON = {
   TERMINATION: 'Người làm đã nghỉ việc',
   LEAVE_APPROVED: 'Người làm được duyệt nghỉ',
   MANAGER_MANUAL: 'Quản lý gỡ người',
+  SELF_RETURNED: 'Nhân viên trả lại',
 };
 
 export const unassignedReasonLabel = (reason) => UNASSIGNED_REASON[reason] ?? reason ?? null;

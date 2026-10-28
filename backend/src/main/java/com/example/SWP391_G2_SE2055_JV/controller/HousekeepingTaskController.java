@@ -6,6 +6,8 @@ import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.TaskReturnResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.service.HousekeepingService;
@@ -36,7 +38,8 @@ import java.util.UUID;
  * <p>Rule URL trong {@code SecurityConfig}: {@code GET /housekeeping/**} cho cả 4 role,
  * {@code PATCH /housekeeping/tasks/*}{@code /complete} thêm {@code POSITION_HOUSEKEEPING},
  * giao việc và kiểm tra phòng thêm {@code POSITION_SUPERVISION} (Giám sát vận hành — BR-PERM-07),
- * tự nhận việc ({@code /claim}) chỉ {@code POSITION_HOUSEKEEPING}, các path còn lại chỉ Admin và Manager.
+ * tự nhận và trả lại việc ({@code /claim}, {@code /return}) chỉ {@code POSITION_HOUSEKEEPING}, các path còn
+ * lại chỉ Admin và Manager.
  */
 @RestController
 @RequestMapping("/housekeeping/tasks")
@@ -136,6 +139,25 @@ public class HousekeepingTaskController {
     @PreAuthorize("hasAuthority('POSITION_HOUSEKEEPING')")
     public ResponseEntity<HousekeepingTaskResponse> claimTask(@PathVariable UUID id) {
         return ResponseEntity.ok(housekeepingService.claimTask(id));
+    }
+
+    /**
+     * Người đã tự nhận trả lại việc khi chưa bấm hoàn thành, bắt buộc lý do (BR-HK-17). Chỉ người tự nhận
+     * mới trả được — kiểm ở service; việc do Quản lý / Giám sát giao thì Quản lý gỡ người ở {@code /unassign}.
+     */
+    @PatchMapping("/{id}/return")
+    @PreAuthorize("hasAuthority('POSITION_HOUSEKEEPING')")
+    public ResponseEntity<HousekeepingTaskResponse> returnTask(
+            @PathVariable UUID id,
+            @Valid @RequestBody ReturnTaskRequest request) {
+        return ResponseEntity.ok(housekeepingService.returnTask(id, request));
+    }
+
+    /** Lịch sử trả lại của một việc, mới nhất trước (BR-HK-17). Phạm vi xem như {@code GET /{id}}. */
+    @GetMapping("/{id}/returns")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER','STAFF')")
+    public ResponseEntity<List<TaskReturnResponse>> getTaskReturns(@PathVariable UUID id) {
+        return ResponseEntity.ok(housekeepingService.getTaskReturns(id));
     }
 
     /**

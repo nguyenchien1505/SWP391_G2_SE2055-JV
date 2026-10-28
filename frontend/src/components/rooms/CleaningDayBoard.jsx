@@ -46,6 +46,7 @@ export default function CleaningDayBoard({
   actionsFor,
   onAssignToPerson,
   onShowPreviousInspection,
+  onShowReturns,
 }) {
   const [date, setDate] = useState(today);
   const [data, setData] = useState(null);
@@ -197,6 +198,7 @@ export default function CleaningDayBoard({
                   task={task}
                   actions={queueActions(task)}
                   onShowPreviousInspection={onShowPreviousInspection}
+                  onShowReturns={onShowReturns}
                 />
               ))}
             </section>
@@ -216,6 +218,7 @@ export default function CleaningDayBoard({
                     task={task}
                     actions={readOnly ? [] : actionsFor(task)}
                     onShowPreviousInspection={onShowPreviousInspection}
+                    onShowReturns={onShowReturns}
                   />
                 ))}
               </section>
@@ -241,6 +244,7 @@ export default function CleaningDayBoard({
                       who={offShift.map((member) => member.fullName ?? 'Nhân viên đã nghỉ').join(', ')}
                       actions={readOnly ? [] : actionsFor(task)}
                       onShowPreviousInspection={onShowPreviousInspection}
+                      onShowReturns={onShowReturns}
                     />
                   ))}
                 </ul>
@@ -309,6 +313,7 @@ export default function CleaningDayBoard({
                         who={teamNames(task, row.person.id) && `Cùng: ${teamNames(task, row.person.id)}`}
                         actions={readOnly ? [] : actionsFor(task)}
                         onShowPreviousInspection={onShowPreviousInspection}
+                        onShowReturns={onShowReturns}
                       />
                     ))}
                   </ul>
@@ -323,7 +328,7 @@ export default function CleaningDayBoard({
 }
 
 /** Một việc dạng gọn trong hàng của một người — "301 - Deluxe", trạng thái, người dọn cùng và nút. */
-function TaskChip({ task, who, actions, onShowPreviousInspection }) {
+function TaskChip({ task, who, actions, onShowPreviousInspection, onShowReturns }) {
   return (
     <li className={`hk-chip room-tone--${taskStatusMeta(task.status).tone}`}>
       <div className="hk-chip__main">
@@ -335,6 +340,11 @@ function TaskChip({ task, who, actions, onShowPreviousInspection }) {
       {isRedo(task) && task.parentTaskId && (
         <button type="button" className="link-btn" onClick={() => onShowPreviousInspection(task)}>
           Dọn lại · xem lý do
+        </button>
+      )}
+      {task.returnCount > 0 && (
+        <button type="button" className="link-btn" onClick={() => onShowReturns(task)}>
+          Lịch sử trả lại ({task.returnCount})
         </button>
       )}
       {actions.length > 0 && (

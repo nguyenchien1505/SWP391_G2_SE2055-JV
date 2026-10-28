@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.Department;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
@@ -31,6 +32,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskReturnRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.InspectionRecordRepository;
 import com.example.SWP391_G2_SE2055_JV.support.TestAuth;
 import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
@@ -79,6 +81,7 @@ class HousekeepingFlowTest {
     @Autowired RoomService                 roomService;
     @Autowired HousekeepingTaskRepository  taskRepository;
     @Autowired InspectionRecordRepository inspectionRepository;
+    @Autowired HousekeepingTaskReturnRepository returnRepository;
     @Autowired EntityManager               em;
 
     private UUID tenantId;
@@ -557,6 +560,87 @@ class HousekeepingFlowTest {
         assertThat(open.getBlockedReason()).contains("Vào ca");
     }
 
+    // ── Trả lại việc đã tự nhận — BR-HK-17, BR-ROOM-02 (sửa) (M2) ───────────
+
+    /**
+     * Nhận rồi trả trên DB thật: việc về hàng chờ với lý do gỡ mới (CHECK V11 nhận), phòng về «Chờ dọn» kèm
+     * dòng lịch sử nguồn Nhân viên dọn có tên và lý do, một dòng trả lại — rồi nhận lại được CHÍNH việc đó
+     * (vẫn là một việc nên unique {@code open_task_key} không cản).
+     */
+    @Test
+    void shouldReturnClaimedTaskOnRealDb() {
+        em.find(Shift.class, cleanerShiftToday.getId()).setCheckInAt(LocalDateTime.now());
+        flushAndClear();
+        loginAsCleaner();
+        housekeepingService.claimTask(checkoutTaskOf201.getId());
+
+        housekeepingService.returnTask(checkoutTaskOf201.getId(), returnRequest("Thiếu hóa chất tẩy rửa"));
+        flushAndClear();
+
+        HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
+        assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
+        assertThat(task.getUnassignedReason()).isEqualTo(UnassignedReason.SELF_RETURNED);
+        assertThat(task.getAssigneeIds()).isEmpty();
+        assertThat(task.getAssignmentSource()).isNull();
+        assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.DIRTY);
+        assertThat(returnRepository.findByTenantIdAndTaskIdOrderByReturnedAtDesc(tenantId, task.getId()))
+            .singleElement()
+            .satisfies(row -> {
+                assertThat(row.getStaffId()).isEqualTo(cleaner.getId());
+                assertThat(row.getReason()).isEqualTo("Thiếu hóa chất tẩy rửa");
+                assertThat(row.isTaskReleased()).isTrue();
+            });
+        assertThat(housekeepingService.getOpenTasks().getTasks())
+            .singleElement()
+            .satisfies(open -> assertThat(open.getReturnCount()).isEqualTo(1));
+
+        housekeepingService.claimTask(checkoutTaskOf201.getId());
+        flushAndClear();
+        assertThat(em.find(HousekeepingTask.class, checkoutTaskOf201.getId()).getStatus())
+            .isEqualTo(HousekeepingTaskStatus.IN_PROGRESS);
+
+        // Cả ba bước rơi vào cùng một giây (changed_at là DATETIME) — tìm đúng dòng thay vì lấy theo thứ tự.
+        loginAsManager();
+        assertThat(historyOf(dirty201)).hasSize(3)
+            .filteredOn(row -> row.getFromStatus() == RoomStatus.CLEANING)
+            .singleElement()
+            .satisfies(row -> {
+                assertThat(row.getToStatus()).isEqualTo(RoomStatus.DIRTY);
+                assertThat(row.getChangeSource()).isEqualTo(ChangeSource.HOUSEKEEPING);
+                assertThat(row.getChangedByName()).isEqualTo("Phạm Dọn Dẹp");
+                assertThat(row.getReason()).isEqualTo("Thiếu hóa chất tẩy rửa");
+            });
+    }
+
+    /** Hoa được Quản lý thêm vào nhóm: người tự nhận trả lại thì Hoa dọn tiếp, phòng vẫn «Đang dọn». */
+    @Test
+    void shouldKeepRoomCleaningWhenTeammateStays() {
+        em.find(Shift.class, cleanerShiftToday.getId()).setCheckInAt(LocalDateTime.now());
+        flushAndClear();
+        loginAsCleaner();
+        housekeepingService.claimTask(checkoutTaskOf201.getId());
+        loginAsManager();
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today, secondCleaner.getId()));
+
+        loginAsCleaner();
+        housekeepingService.returnTask(checkoutTaskOf201.getId(), returnRequest("Phải xuống hỗ trợ lễ tân"));
+        loginAs(secondCleaner);
+        housekeepingService.completeTask(checkoutTaskOf201.getId());
+        flushAndClear();
+
+        HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
+        assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.PENDING_INSPECTION);
+        assertThat(task.getAssigneeIds()).containsExactly(secondCleaner.getId());
+        assertThat(task.getAssignmentSource()).isEqualTo(TaskAssignmentSource.SELF_CLAIM);
+        assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.INSPECTION);
+        assertThat(returnRepository.findByTenantIdAndTaskIdOrderByReturnedAtDesc(tenantId, task.getId()))
+            .singleElement()
+            .satisfies(row -> assertThat(row.isTaskReleased()).isFalse());
+
+        loginAsManager();
+        assertThat(historyOf(dirty201)).noneMatch(row -> row.getToStatus() == RoomStatus.DIRTY);
+    }
+
     // ── Tiện ích ────────────────────────────────────────────────────────────
 
     /**
@@ -607,6 +691,12 @@ class HousekeepingFlowTest {
         AssignTaskRequest request = new AssignTaskRequest();
         request.setStaffIds(staffIds.length == 0 ? List.of(cleaner.getId()) : List.of(staffIds));
         request.setAssignedDate(date);
+        return request;
+    }
+
+    private static ReturnTaskRequest returnRequest(String reason) {
+        ReturnTaskRequest request = new ReturnTaskRequest();
+        request.setReason(reason);
         return request;
     }
 

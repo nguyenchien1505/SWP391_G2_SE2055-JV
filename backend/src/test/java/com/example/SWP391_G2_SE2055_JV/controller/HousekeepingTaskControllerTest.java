@@ -6,6 +6,8 @@ import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.TaskReturnResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
@@ -452,6 +454,122 @@ class HousekeepingTaskControllerTest {
                 .thenThrow(new ResourceNotFoundException("HousekeepingTask", "id", TASK_ID));
 
             mockMvc.perform(patch("/housekeeping/tasks/{id}/claim", TASK_ID))
+                .andExpect(status().isNotFound());
+        }
+    }
+
+    // ── M2 F9: trả lại việc đã tự nhận — BR-HK-17 ───────────────────────────
+
+    @Nested
+    class ReturnTask {
+
+        private static final String BODY = """
+            {"reason": "Thiếu hóa chất tẩy rửa"}
+            """;
+
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldReturnTaskForHousekeepingStaff() throws Exception {
+            when(housekeepingService.returnTask(eq(TASK_ID), any())).thenReturn(sampleTask());
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/return", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UNASSIGNED"));
+
+            ArgumentCaptor<ReturnTaskRequest> captor = ArgumentCaptor.forClass(ReturnTaskRequest.class);
+            verify(housekeepingService).returnTask(eq(TASK_ID), captor.capture());
+            assertThat(captor.getValue().getReason()).isEqualTo("Thiếu hóa chất tẩy rửa");
+        }
+
+        /** Lý do bắt buộc — chặn ở {@code @NotBlank}, service không bị gọi. */
+        @ParameterizedTest
+        @ValueSource(strings = {"{}", "{\"reason\": \"\"}", "{\"reason\": \"   \"}"})
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldRejectMissingReason(String body) throws Exception {
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/return", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldRejectReasonLongerThan500() throws Exception {
+            String body = "{\"reason\": \"" + "x".repeat(501) + "\"}";
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/return", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** Trả lại là việc của chính người dọn — Quản lý và Giám sát bị chặn ngay ở tầng URL. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_MANAGER", "ROLE_STAFF,POSITION_SUPERVISION", "ROLE_STAFF,POSITION_RECEPTION"})
+        void shouldForbidReturnWithoutHousekeepingPermission(String authorities) throws Exception {
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/return", TASK_ID).with(authorities(authorities))
+                    .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        @Test
+        void shouldReturnUnauthorizedWithoutLogin() throws Exception {
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/return", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isUnauthorized());
+            mockMvc.perform(get("/housekeeping/tasks/{id}/returns", TASK_ID))
+                .andExpect(status().isUnauthorized());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** Việc do Quản lý giao — lỗi nghiệp vụ 400 kèm câu cho người dùng. */
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldReturnBadRequestWhenNotSelfClaimed() throws Exception {
+            String message = "Chỉ trả lại được việc bạn tự nhận. Việc do quản lý hoặc giám sát giao thì nhờ quản lý gỡ tên.";
+            when(housekeepingService.returnTask(eq(TASK_ID), any())).thenThrow(new BusinessException(message));
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/return", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(message));
+        }
+
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldReturnNotFoundWhenNotInTeam() throws Exception {
+            when(housekeepingService.returnTask(eq(TASK_ID), any()))
+                .thenThrow(new ResourceNotFoundException("HousekeepingTask", "id", TASK_ID));
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/return", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isNotFound());
+        }
+
+        /** Lịch sử trả lại: mọi role xem việc dọn đều gọi được — phạm vi lọc ở service. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_MANAGER", "ROLE_STAFF,POSITION_SUPERVISION", "ROLE_STAFF,POSITION_HOUSEKEEPING",
+            "ROLE_DIRECTOR"})
+        void shouldListReturnsForAnyRoleThatSeesTasks(String authorities) throws Exception {
+            when(housekeepingService.getTaskReturns(TASK_ID)).thenReturn(List.of(TaskReturnResponse.builder()
+                .taskId(TASK_ID).staffId(STAFF_ID).staffName("Phạm Dọn Dẹp").reason("Thiếu hóa chất tẩy rửa")
+                .returnedAt(LocalDateTime.now()).taskReleased(true).build()));
+
+            mockMvc.perform(get("/housekeeping/tasks/{id}/returns", TASK_ID).with(authorities(authorities)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].staffName").value("Phạm Dọn Dẹp"))
+                .andExpect(jsonPath("$[0].taskReleased").value(true));
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldReturnNotFoundForReturnsOutOfScope() throws Exception {
+            when(housekeepingService.getTaskReturns(TASK_ID))
+                .thenThrow(new ResourceNotFoundException("HousekeepingTask", "id", TASK_ID));
+
+            mockMvc.perform(get("/housekeeping/tasks/{id}/returns", TASK_ID))
                 .andExpect(status().isNotFound());
         }
     }

@@ -54,6 +54,8 @@ public class HousekeepingTaskResponse {
      * {@code assignedBy}, màn "Việc của tôi" biết ai được trả lại việc (BR-HK-17).
      */
     private TaskAssignmentSource   assignmentSource;
+    /** Số lần việc này bị người tự nhận trả lại (BR-HK-17) — thẻ việc hiện liên kết "Lịch sử trả lại". */
+    private int                    returnCount;
     private LocalDateTime          completedAt;
     private TaskCreatedSource      createdSource;
     private UUID                   parentTaskId;
@@ -69,9 +71,11 @@ public class HousekeepingTaskResponse {
      * @param roomTypeName có thể {@code null}
      * @param staffNames   họ tên theo id; người không tra được (dữ liệu cũ) để tên trống
      * @param overdue      việc đang tồn đọng — do {@code CleaningWorkDayRule} tính
+     * @param returnCount  số lần bị trả lại
      */
     public static HousekeepingTaskResponse fromEntity(HousekeepingTask task, Room room, String roomTypeName,
-                                                      Map<UUID, String> staffNames, boolean overdue) {
+                                                      Map<UUID, String> staffNames, boolean overdue,
+                                                      int returnCount) {
         List<Assignee> assignees = task.getAssigneeIds().stream()
             .map(id -> new Assignee(id, staffNames.get(id)))
             .sorted(Comparator.comparing(a -> a.fullName() == null ? "" : a.fullName()))
@@ -93,6 +97,7 @@ public class HousekeepingTaskResponse {
             .assignedBy(task.getAssignedBy())
             .assignedAt(task.getAssignedAt())
             .assignmentSource(task.getAssignmentSource())
+            .returnCount(returnCount)
             .completedAt(task.getCompletedAt())
             .createdSource(task.getCreatedSource())
             .parentTaskId(task.getParentTaskId())

@@ -97,6 +97,25 @@ export async function claimTask(id) {
 }
 
 /**
+ * PATCH .../return — người ĐÃ TỰ NHẬN trả lại việc khi chưa bấm hoàn thành; lý do bắt buộc (BR-HK-17).
+ * Dọn một mình thì việc về danh sách chờ nhận và phòng về «Chờ dọn»; nhóm còn người thì chỉ rút tên mình.
+ * Việc do Quản lý / Giám sát giao thì backend trả 400 kèm câu báo.
+ */
+export async function returnTask(id, reason) {
+  const { data } = await api.patch(`/housekeeping/tasks/${id}/return`, { reason });
+  return data;
+}
+
+/**
+ * GET .../returns — lịch sử trả lại của một việc, mới nhất trước: `[{ staffName, reason, returnedAt,
+ * taskReleased }]`. `taskReleased` = phòng về «Chờ dọn»; `false` = nhóm còn người dọn tiếp.
+ */
+export async function fetchTaskReturns(id) {
+  const { data } = await api.get(`/housekeeping/tasks/${id}/returns`);
+  return data;
+}
+
+/**
  * PATCH .../complete — bất kỳ ai trong nhóm dọn bấm được, và là xong cho cả nhóm (BR-PERM-05, chốt
  * 05/10/2026). Việc sang «Chờ kiểm tra» chứ chưa phải hoàn thành — còn chờ Quản lý nghiệm thu.
  */

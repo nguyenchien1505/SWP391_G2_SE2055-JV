@@ -507,6 +507,35 @@ class RoomStatusServiceTest {
             assertNothingWritten(room, RoomStatus.OCCUPIED);
         }
 
+        /** BR-HK-17, BR-ROOM-02 bản sửa: người tự nhận trả lại việc — nguồn Nhân viên dọn, có tên và lý do. */
+        @Test
+        void shouldReturnCleaningRoomToDirtyAsHousekeepingWithReason() {
+            CustomUserDetails cleaner = TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            Room room = room(RoomStatus.CLEANING);
+
+            service.returnToQueue(room, TASK_ID, "  Thiếu hóa chất tẩy rửa ");
+
+            assertThat(room.getStatus()).isEqualTo(RoomStatus.DIRTY);
+            RoomStatusHistory row = savedHistory();
+            assertThat(row.getFromStatus()).isEqualTo(RoomStatus.CLEANING);
+            assertThat(row.getChangeSource()).isEqualTo(ChangeSource.HOUSEKEEPING);
+            assertThat(row.getChangedBy()).isEqualTo(cleaner.getId());
+            assertThat(row.getReason()).isEqualTo("Thiếu hóa chất tẩy rửa");
+            assertThat(row.getRelatedTaskId()).isEqualTo(TASK_ID);
+        }
+
+        /** Phòng vừa bị khóa giữa chừng: chặn để cả transaction trả lại việc rollback. */
+        @Test
+        void shouldRejectReturnToQueueWhenRoomNotCleaning() {
+            TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            Room room = room(RoomStatus.UNAVAILABLE);
+
+            assertThatThrownBy(() -> service.returnToQueue(room, TASK_ID, "Bận việc khác"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("cần «Đang dọn»");
+            assertNothingWritten(room, RoomStatus.UNAVAILABLE);
+        }
+
         @Test
         void shouldApplyPassToAvailableAndFailToDirtyWithReason() {
             CustomUserDetails manager = TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
@@ -560,6 +589,7 @@ class RoomStatusServiceTest {
             service.startCleaning(room(RoomStatus.DIRTY), TASK_ID);
             service.markPendingInspection(room(RoomStatus.CLEANING), TASK_ID);
             service.revertToDirty(room(RoomStatus.CLEANING), TASK_ID, "Gỡ người");
+            service.returnToQueue(room(RoomStatus.CLEANING), TASK_ID, "Trả lại việc");
             service.applyInspection(room(RoomStatus.INSPECTION), InspectionResult.FAIL, "Chưa đạt", TASK_ID);
 
             verifyNoInteractions(hooks);

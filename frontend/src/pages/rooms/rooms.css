@@ -1978,9 +1978,33 @@ button.area-report:hover {
   font-weight: 600;
   color: #b85300;
 }
+/* M2 F9: «Trả lại» nằm dưới «Hoàn thành» trong cùng một cột nút (S-16); lịch sử trả lại (BR-HK-17). */
+.task-row__buttons {
+  display: grid;
+  gap: 8px;
+}
+/* Việc dọn lại từng bị trả: hai liên kết chữ đứng cạnh nhau thì cần khoảng thở. */
+.link-btn + .link-btn {
+  margin-left: 16px;
+}
+.task-returns {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.task-returns .readonly-box {
+  margin-bottom: 0;
+}
+.task-returns p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 @media (max-width: 860px) {
   .my-shift__item,
-  .my-shift__action {
+  .my-shift__action,
+  .task-row__buttons {
     width: 100%;
   }
 }

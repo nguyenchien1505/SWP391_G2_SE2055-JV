@@ -6,7 +6,10 @@ import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.TaskReturnResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
+import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTaskReturn;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
@@ -26,6 +29,8 @@ import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.AssignableStaffRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskReturnRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskReturnRepository.TaskReturnCount;
 import com.example.SWP391_G2_SE2055_JV.repository.InspectionRecordRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
@@ -79,6 +84,9 @@ import java.util.stream.Collectors;
  * phòng trong Location của mình, chỉ trong ngày có ca ({@link SupervisorDutyRule}); gỡ người khỏi
  * việc dọn vẫn chỉ Manager.
  *
+ * <p>Open-task (M2): nhân viên Dọn dẹp tự nhận việc chưa phân công ({@link #claimTask}) và trả lại việc
+ * mình đã tự nhận ({@link #returnTask}).
+ *
  * <p>Phản ứng khi PHÒNG đổi trạng thái (sinh/hủy task) nằm ở {@link HousekeepingRoomHooks}.
  * Ngoại lệ DUY NHẤT đi ngược chiều đó là bước nghiệm thu không đạt (F6): lớp này tự sinh việc
  * dọn lại để giữ đúng nguồn {@code INSPECTION_FAILED} — xem {@code createFollowUpTask}.
@@ -105,6 +113,7 @@ public class HousekeepingService {
     private final LocationRepository         locationRepository;
     private final AssignableStaffRepository  assignableStaffRepository;
     private final InspectionRecordRepository inspectionRepository;
+    private final HousekeepingTaskReturnRepository returnRepository;
     private final RoomStatusService          roomStatusService;
     private final SupervisorDutyRule         supervisorDutyRule;
     private final CleaningWorkDayRule        cleaningWorkDayRule;
@@ -323,6 +332,58 @@ public class HousekeepingService {
         roomStatusService.startCleaning(room, task.getId());                   // Chờ dọn → Đang dọn, Hệ thống
         log.info("Staff {} tự nhận task {} ngày {}", me, id, check.workDay());
         return toResponse(taskRepository.save(task));
+    }
+
+    /**
+     * RM-22 — người đã tự nhận trả lại việc khi chưa bấm hoàn thành, bắt buộc lý do (BR-HK-17). Nhóm còn
+     * người khác (Quản lý / Giám sát thêm vào — BR-HK-18) thì chỉ rút tên người trả, việc và phòng đứng yên;
+     * hết người thì việc về hàng chờ và phòng về «Chờ dọn», nguồn Nhân viên dọn (BR-ROOM-02 bản sửa).
+     * Lần trả nào cũng ghi một dòng {@link HousekeepingTaskReturn}.
+     *
+     * <p>Không cần đang trong ca: việc tồn đọng từ hôm qua vẫn trả được. Khóa dòng việc như mọi đường ghi —
+     * đồng đội có thể đang bấm «Hoàn thành» cùng lúc.
+     */
+    @Transactional
+    public HousekeepingTaskResponse returnTask(UUID id, ReturnTaskRequest request) {
+        HousekeepingTask task = getOwnedTaskForUpdate(id);
+        UUID me = SecurityUtils.getCurrentUserId();
+        if (!task.isAssignedTo(me)) {
+            throw new ResourceNotFoundException("HousekeepingTask", "id", id);   // như assertCanView
+        }
+        assertReturnable(task, me);
+        String reason = normalize(request.getReason());
+        if (reason == null) {
+            throw new BusinessException("Nhập lý do trả lại việc.");
+        }
+
+        task.getAssigneeIds().remove(me);
+        boolean released = !task.isAssigned();
+        if (released) {
+            release(task, UnassignedReason.SELF_RETURNED);
+            // Việc vẫn MỞ (Chưa phân công) nên không đi qua hook sinh việc mới — như unassignTask.
+            roomStatusService.returnToQueue(roomOf(task), task.getId(), reason);
+        }
+        returnRepository.save(taskReturn(task, me, reason, released));
+        log.info("Staff {} trả lại task {} — {}", me, id, released ? "về hàng chờ" : "nhóm còn người");
+        return toResponse(taskRepository.save(task));
+    }
+
+    /**
+     * Lịch sử trả lại của một việc, mới nhất trước — liên kết "Lịch sử trả lại" trên thẻ việc (BR-HK-17).
+     * Cùng phạm vi xem với {@link #getTask}.
+     */
+    @Transactional(readOnly = true)
+    public List<TaskReturnResponse> getTaskReturns(UUID taskId) {
+        HousekeepingTask task = getOwnedTask(taskId);
+        assertCanView(task);
+
+        List<HousekeepingTaskReturn> returns =
+            returnRepository.findByTenantIdAndTaskIdOrderByReturnedAtDesc(task.getTenantId(), taskId);
+        Map<UUID, String> names = staffNamesOf(
+            returns.stream().map(HousekeepingTaskReturn::getStaffId).collect(Collectors.toSet()));
+        return returns.stream()
+            .map(taskReturn -> TaskReturnResponse.fromEntity(taskReturn, names.get(taskReturn.getStaffId())))
+            .toList();
     }
 
     /**
@@ -568,6 +629,24 @@ public class HousekeepingService {
     }
 
     /**
+     * BR-HK-17: chỉ trả lại được việc CHƯA bấm hoàn thành, và chỉ người đã tự nhận nó — cách giao là tự nhận
+     * và người giao là chính mình. Người được Quản lý / Giám sát giao, hay được thêm vào nhóm của việc người
+     * khác tự nhận, thì nhờ Quản lý gỡ tên.
+     */
+    private static void assertReturnable(HousekeepingTask task, UUID staffId) {
+        if (task.getStatus() == HousekeepingTaskStatus.CANCELLED) {
+            throw new BusinessException("Việc dọn này đã bị hủy vì phòng chuyển sang Không khả dụng.");
+        }
+        if (task.getStatus() != HousekeepingTaskStatus.IN_PROGRESS) {
+            throw new BusinessException("Việc này đã báo hoàn thành nên không trả lại được.");
+        }
+        if (task.getAssignmentSource() != TaskAssignmentSource.SELF_CLAIM || !staffId.equals(task.getAssignedBy())) {
+            throw new BusinessException("Chỉ trả lại được việc bạn tự nhận. "
+                + "Việc do quản lý hoặc giám sát giao thì nhờ quản lý gỡ tên.");
+        }
+    }
+
+    /**
      * Việc chưa phân công BẮT ĐẦU: có nhóm, có ngày làm, ghi ai giao, lúc nào và giao bằng cách nào
      * (BR-HK-12 sửa M2). Dùng chung cho gán tay và tự nhận. BR-HK-06: không có trạng thái "đã gán" riêng —
      * gán là bắt đầu thực hiện. Phòng do nơi gọi chuyển trạng thái.
@@ -603,8 +682,8 @@ public class HousekeepingService {
     /**
      * Ai được XEM một task — BR-PERM-05. Nhân viên chỉ thấy việc có mình trong nhóm dọn, Manager và
      * Giám sát vận hành (BR-PERM-07) thấy task trong Location của mình, Giám đốc thấy cả Tenant. Ngoài
-     * phạm vi trả 404 để không lộ task có tồn tại. Dùng chung cho {@link #getTask} và
-     * {@link #getInspection}.
+     * phạm vi trả 404 để không lộ task có tồn tại. Dùng chung cho {@link #getTask},
+     * {@link #getInspection} và {@link #getTaskReturns}.
      */
     private void assertCanView(HousekeepingTask task) {
         boolean locationScoped = SecurityUtils.hasRole(Role.MANAGER) || SecurityUtils.isSupervisor();
@@ -670,6 +749,19 @@ public class HousekeepingService {
             .build();
     }
 
+    /** Một dòng lịch sử trả lại — người trả luôn là người đang đăng nhập (BR-HK-17). */
+    private static HousekeepingTaskReturn taskReturn(HousekeepingTask task, UUID staffId, String reason,
+                                                     boolean released) {
+        return HousekeepingTaskReturn.builder()
+            .tenantId(task.getTenantId())
+            .taskId(task.getId())
+            .staffId(staffId)
+            .reason(reason)
+            .returnedAt(LocalDateTime.now())
+            .taskReleased(released)
+            .build();
+    }
+
     /** Ô lý do để trống hoặc toàn khoảng trắng coi như không nhập. */
     private static String normalize(String reason) {
         return StringUtils.hasText(reason) ? reason.trim() : null;
@@ -685,6 +777,8 @@ public class HousekeepingService {
             case TRANSFER       -> "Người dọn phòng được điều chuyển";
             case LEAVE_APPROVED -> "Người dọn phòng được duyệt nghỉ";
             case MANAGER_MANUAL -> "Quản lý gỡ người khỏi việc dọn";
+            // Đường trả lại ghi lý do người dùng nhập (returnTask), không dùng câu này — chỉ để switch đủ nhánh.
+            case SELF_RETURNED  -> "Người dọn phòng trả lại việc";
         };
     }
 
@@ -814,8 +908,8 @@ public class HousekeepingService {
     }
 
     /**
-     * Phòng, loại phòng, tên người dọn và cờ «Tồn đọng» cho CẢ một trang task, mỗi loại một câu truy
-     * vấn. Mọi id lấy từ chính các task đã lọc theo Tenant nên không cần lọc lại.
+     * Phòng, loại phòng, tên người dọn, cờ «Tồn đọng» và số lần bị trả lại cho CẢ một trang task, mỗi loại
+     * một câu truy vấn. Mọi id lấy từ chính các task đã lọc theo Tenant nên không cần lọc lại.
      *
      * <p>BR-HK-04: việc nào tồn đọng do backend quyết định ({@link CleaningWorkDayRule#overdueTaskIds}) —
      * FE không tự so ngày, vì việc của ca qua đêm bắt đầu hôm qua chưa tồn đọng khi ca chưa hết.
@@ -828,24 +922,39 @@ public class HousekeepingService {
             : roomTypeRepository.findAllById(typeIds).stream()
                 .collect(Collectors.toMap(RoomType::getId, RoomType::getName));
 
-        Set<UUID> staffIds = tasks.stream()
+        Map<UUID, String> staffNames = staffNamesOf(tasks.stream()
             .flatMap(task -> task.getAssigneeIds().stream())
-            .collect(Collectors.toSet());
-        Map<UUID, String> staffNames = staffIds.isEmpty() ? Map.of()
+            .collect(Collectors.toSet()));
+
+        return new ResponseLookups(rooms, typeNames, staffNames, cleaningWorkDayRule.overdueTaskIds(tasks),
+            countReturns(tasks));
+    }
+
+    /** Họ tên theo id, một câu truy vấn; người không tra được không có mặt. */
+    private Map<UUID, String> staffNamesOf(Set<UUID> staffIds) {
+        return staffIds.isEmpty() ? Map.of()
             : userRepository.findAllById(staffIds).stream()
                 .collect(Collectors.toMap(User::getId, User::getFullName));
+    }
 
-        return new ResponseLookups(rooms, typeNames, staffNames, cleaningWorkDayRule.overdueTaskIds(tasks));
+    /** Số lần bị trả lại của từng việc (BR-HK-17), một câu đếm; việc chưa bị trả lần nào không có mặt. */
+    private Map<UUID, Long> countReturns(Collection<HousekeepingTask> tasks) {
+        Set<UUID> taskIds = tasks.stream().map(HousekeepingTask::getId).filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        return taskIds.isEmpty() ? Map.of()
+            : returnRepository.countGroupedByTask(taskIds).stream()
+                .collect(Collectors.toMap(TaskReturnCount::getTaskId, TaskReturnCount::getTotal));
     }
 
     private record ResponseLookups(Map<UUID, Room> rooms, Map<UUID, String> typeNames,
-                                   Map<UUID, String> staffNames, Set<UUID> overdueTaskIds) {
+                                   Map<UUID, String> staffNames, Set<UUID> overdueTaskIds,
+                                   Map<UUID, Long> returnCounts) {
 
         HousekeepingTaskResponse toResponse(HousekeepingTask task) {
             Room room = rooms.get(task.getRoomId());
             return HousekeepingTaskResponse.fromEntity(
                 task, room, room == null ? null : typeNames.get(room.getRoomTypeId()), staffNames,
-                overdueTaskIds.contains(task.getId()));
+                overdueTaskIds.contains(task.getId()), returnCounts.getOrDefault(task.getId(), 0L).intValue());
         }
     }
 }

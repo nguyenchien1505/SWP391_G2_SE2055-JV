@@ -6,7 +6,10 @@ import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.TaskReturnResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
+import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTaskReturn;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
@@ -28,6 +31,8 @@ import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.AssignableStaffRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskReturnRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskReturnRepository.TaskReturnCount;
 import com.example.SWP391_G2_SE2055_JV.repository.InspectionRecordRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.RoomRepository;
@@ -62,6 +67,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
@@ -105,6 +111,7 @@ class HousekeepingServiceTest {
     @Mock LocationRepository         locationRepository;
     @Mock AssignableStaffRepository  assignableStaffRepository;
     @Mock InspectionRecordRepository inspectionRepository;
+    @Mock HousekeepingTaskReturnRepository returnRepository;
     @Mock RoomStatusService          roomStatusService;
     @Mock SupervisorDutyRule         supervisorDutyRule;
     @Mock CleaningWorkDayRule        cleaningWorkDayRule;
@@ -1407,6 +1414,270 @@ class HousekeepingServiceTest {
         }
     }
 
+    // ── Trả lại việc đã tự nhận — BR-HK-17 ──────────────────────────────────
+
+    @Nested
+    class ReturnTask {
+
+        @BeforeEach
+        void loginAsCleaner() {
+            TestAuth.loginAs(STAFF_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+        }
+
+        /** Dọn một mình: việc về hàng chờ, phòng về «Chờ dọn» kèm lý do người trả nhập (BR-ROOM-02 bản sửa). */
+        @Test
+        void shouldReleaseTaskAndRevertRoomWhenSoleClaimerReturns() {
+            HousekeepingTask task = claimedTask(STAFF_ID, STAFF_ID);
+            Room room = stubTaskAndRoom(task);
+
+            HousekeepingTaskResponse response =
+                service.returnTask(task.getId(), returnRequest("Đau lưng, không dọn tiếp được"));
+
+            assertThat(response.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
+            assertThat(task.getAssigneeIds()).isEmpty();
+            assertThat(task.getUnassignedReason()).isEqualTo(UnassignedReason.SELF_RETURNED);
+            assertThat(task.getAssignmentSource()).isNull();
+            assertThat(task.getAssignedBy()).isNull();
+            assertThat(task.getAssignedDate()).isNull();
+            verify(roomStatusService).returnToQueue(room, task.getId(), "Đau lưng, không dọn tiếp được");
+
+            HousekeepingTaskReturn saved = capturedReturn();
+            assertThat(saved.getTenantId()).isEqualTo(TENANT_ID);
+            assertThat(saved.getTaskId()).isEqualTo(task.getId());
+            assertThat(saved.getStaffId()).isEqualTo(STAFF_ID);
+            assertThat(saved.getReason()).isEqualTo("Đau lưng, không dọn tiếp được");
+            assertThat(saved.getReturnedAt()).isNotNull();
+            assertThat(saved.isTaskReleased()).isTrue();
+        }
+
+        /** Nhóm còn người Quản lý thêm vào: chỉ rút tên người trả — việc, cách giao và phòng đứng yên. */
+        @Test
+        void shouldOnlyRemoveReturnerWhenTeamHasOthers() {
+            HousekeepingTask task = claimedTask(STAFF_ID, STAFF_ID, STAFF_2_ID);
+            stubTask(task);
+            stubSave();
+
+            service.returnTask(task.getId(), returnRequest("Phải xuống hỗ trợ lễ tân"));
+
+            assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.IN_PROGRESS);
+            assertThat(task.getAssigneeIds()).containsExactly(STAFF_2_ID);
+            assertThat(task.getAssignmentSource()).isEqualTo(TaskAssignmentSource.SELF_CLAIM);
+            assertThat(task.getAssignedBy()).isEqualTo(STAFF_ID);
+            assertThat(task.getUnassignedReason()).isNull();
+            assertThat(capturedReturn().isTaskReleased()).isFalse();
+            verifyNoInteractions(roomStatusService);
+        }
+
+        /** Lý do bắt buộc — lưới sau {@code @NotBlank} của controller; không ghi gì cả. */
+        @Test
+        void shouldRequireReason() {
+            HousekeepingTask task = claimedTask(STAFF_ID, STAFF_ID);
+            stubTask(task);
+
+            for (String blank : new String[] {null, "", "   "}) {
+                assertThatThrownBy(() -> service.returnTask(task.getId(), returnRequest(blank)))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("Nhập lý do trả lại việc")
+                    .hasMessageNotContaining("BR-");
+            }
+            assertThat(task.getAssigneeIds()).containsExactly(STAFF_ID);
+            verifyNoInteractions(roomStatusService, returnRepository);
+        }
+
+        @Test
+        void shouldTrimReason() {
+            HousekeepingTask task = claimedTask(STAFF_ID, STAFF_ID);
+            Room room = stubTaskAndRoom(task);
+
+            service.returnTask(task.getId(), returnRequest("  Thiếu hóa chất tẩy rửa  "));
+
+            verify(roomStatusService).returnToQueue(room, task.getId(), "Thiếu hóa chất tẩy rửa");
+            assertThat(capturedReturn().getReason()).isEqualTo("Thiếu hóa chất tẩy rửa");
+        }
+
+        @Test
+        void shouldRejectReturnOfManagerAssignedTask() {
+            HousekeepingTask task = inProgressTask(STAFF_ID);
+            task.setAssignmentSource(TaskAssignmentSource.MANAGER);
+            task.setAssignedBy(UUID.randomUUID());
+
+            assertReturnRejected(task, "Chỉ trả lại được việc bạn tự nhận");
+        }
+
+        @Test
+        void shouldRejectReturnOfSupervisionAssignedTask() {
+            HousekeepingTask task = inProgressTask(STAFF_ID);
+            task.setAssignmentSource(TaskAssignmentSource.SUPERVISION);
+            task.setAssignedBy(UUID.randomUUID());
+
+            assertReturnRejected(task, "Chỉ trả lại được việc bạn tự nhận");
+        }
+
+        /** Hoa tự nhận, Quản lý thêm mình vào nhóm: mình không trả lại được — người giao là Hoa. */
+        @Test
+        void shouldRejectReturnByTeammateAddedLater() {
+            HousekeepingTask task = claimedTask(STAFF_2_ID, STAFF_2_ID, STAFF_ID);
+
+            assertReturnRejected(task, "Chỉ trả lại được việc bạn tự nhận");
+        }
+
+        @Test
+        void shouldRejectReturnAfterCompletion() {
+            HousekeepingTask task = claimedTask(STAFF_ID, STAFF_ID);
+            task.setStatus(HousekeepingTaskStatus.PENDING_INSPECTION);
+
+            assertReturnRejected(task, "đã báo hoàn thành");
+        }
+
+        /** Phòng vừa bị khóa (BR-HK-09): việc đã hủy, nhóm vẫn còn tên. */
+        @Test
+        void shouldRejectReturnOfCancelledTask() {
+            HousekeepingTask task = claimedTask(STAFF_ID, STAFF_ID);
+            task.setStatus(HousekeepingTaskStatus.CANCELLED);
+
+            assertReturnRejected(task, "đã bị hủy");
+        }
+
+        /** Không có mình trong nhóm: 404 như xem việc — không lộ việc có tồn tại. */
+        @Test
+        void shouldThrowNotFoundWhenNotInTeam() {
+            HousekeepingTask task = claimedTask(STAFF_2_ID, STAFF_2_ID);
+            stubTask(task);
+
+            assertThatThrownBy(() -> service.returnTask(task.getId(), returnRequest("Bận việc khác")))
+                .isInstanceOf(ResourceNotFoundException.class);
+            assertThat(task.getAssigneeIds()).containsExactly(STAFF_2_ID);
+            verifyNoInteractions(roomStatusService, returnRepository);
+        }
+
+        @Test
+        void shouldThrowNotFoundForTaskOfAnotherTenant() {
+            UUID foreignTaskId = UUID.randomUUID();
+            when(taskRepository.findByIdAndTenantIdForUpdate(foreignTaskId, TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.returnTask(foreignTaskId, returnRequest("Bận việc khác")))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(roomStatusService, returnRepository);
+        }
+
+        /** Trả lại không đòi đang trong ca: việc tồn đọng từ hôm qua vẫn trả được. */
+        @Test
+        void shouldAllowReturnOfOverdueTaskWithoutCheckingShift() {
+            HousekeepingTask task = claimedTask(STAFF_ID, STAFF_ID);
+            task.setAssignedDate(today.minusDays(1));
+            stubTaskAndRoom(task);
+
+            service.returnTask(task.getId(), returnRequest("Hết ca, không kịp dọn"));
+
+            assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
+            verify(cleaningWorkDayRule, never()).currentWorkShifts(any(), any(), any(), anyBoolean());
+            verifyNoInteractions(shiftRepository, locationRepository);
+        }
+
+        private void assertReturnRejected(HousekeepingTask task, String message) {
+            stubTask(task);
+            Set<UUID> teamBefore = Set.copyOf(task.getAssigneeIds());
+
+            assertThatThrownBy(() -> service.returnTask(task.getId(), returnRequest("Bận việc khác")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining(message)
+                .hasMessageNotContaining("BR-");
+            assertThat(task.getAssigneeIds()).containsExactlyInAnyOrderElementsOf(teamBefore);
+            verifyNoInteractions(roomStatusService, returnRepository);
+        }
+
+        private HousekeepingTaskReturn capturedReturn() {
+            ArgumentCaptor<HousekeepingTaskReturn> captor = ArgumentCaptor.forClass(HousekeepingTaskReturn.class);
+            verify(returnRepository).save(captor.capture());
+            return captor.getValue();
+        }
+    }
+
+    // ── Lịch sử trả lại — BR-HK-17 ──────────────────────────────────────────
+
+    @Nested
+    class TaskReturns {
+
+        @Test
+        void shouldListNewestFirstWithStaffNames() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            HousekeepingTask task = unassignedTask();
+            stubTask(task);
+            HousekeepingTaskReturn newer = taskReturn(task, STAFF_2_ID, "Phải đi họp", true);
+            HousekeepingTaskReturn older = taskReturn(task, STAFF_ID, "Thiếu hóa chất", true);
+            when(returnRepository.findByTenantIdAndTaskIdOrderByReturnedAtDesc(TENANT_ID, task.getId()))
+                .thenReturn(List.of(newer, older));
+            when(userRepository.findAllById(Set.of(STAFF_ID, STAFF_2_ID)))
+                .thenReturn(List.of(housekeepingStaff(), secondStaff()));
+
+            List<TaskReturnResponse> returns = service.getTaskReturns(task.getId());
+
+            assertThat(returns).extracting(TaskReturnResponse::getReason).containsExactly("Phải đi họp", "Thiếu hóa chất");
+            assertThat(returns).extracting(TaskReturnResponse::getStaffName)
+                .containsExactly("Nguyễn Thị Hoa", "Phạm Dọn Dẹp");
+        }
+
+        /** Q8: Quản lý khách sạn khác — 404, không đọc lịch sử. */
+        @Test
+        void shouldThrowNotFoundForManagerOfAnotherLocation() {
+            TestAuth.loginAsManager(TENANT_ID, OTHER_LOCATION_ID);
+            HousekeepingTask task = unassignedTask();
+            stubTask(task);
+
+            assertThatThrownBy(() -> service.getTaskReturns(task.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(returnRepository);
+        }
+
+        /** BR-PERM-05: nhân viên chỉ xem việc đang có mình trong nhóm. */
+        @Test
+        void shouldThrowNotFoundForStaffNotInTeam() {
+            TestAuth.loginAs(STAFF_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            HousekeepingTask task = inProgressTask(STAFF_2_ID);
+            stubTask(task);
+
+            assertThatThrownBy(() -> service.getTaskReturns(task.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(returnRepository);
+        }
+
+        /** Thẻ việc biết đã bị trả mấy lần — một câu đếm cho cả trang. */
+        @Test
+        void shouldReportReturnCountOnTask() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            HousekeepingTask task = unassignedTask();
+            stubTask(task);
+            when(returnRepository.countGroupedByTask(Set.of(task.getId())))
+                .thenReturn(List.of(returnCount(task.getId(), 2)));
+
+            assertThat(service.getTask(task.getId()).getReturnCount()).isEqualTo(2);
+        }
+
+        @Test
+        void shouldReportZeroReturnsWhenNeverReturned() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            HousekeepingTask task = unassignedTask();
+            stubTask(task);
+
+            assertThat(service.getTask(task.getId()).getReturnCount()).isZero();
+        }
+
+        private HousekeepingTaskReturn taskReturn(HousekeepingTask task, UUID staffId, String reason,
+                                                  boolean released) {
+            return HousekeepingTaskReturn.builder()
+                .id(UUID.randomUUID()).tenantId(TENANT_ID).taskId(task.getId()).staffId(staffId)
+                .reason(reason).returnedAt(LocalDateTime.now()).taskReleased(released)
+                .build();
+        }
+
+        private TaskReturnCount returnCount(UUID taskId, long total) {
+            return new TaskReturnCount() {
+                @Override public UUID getTaskId() { return taskId; }
+                @Override public long getTotal() { return total; }
+            };
+        }
+    }
+
     // ── Cách giao việc — BR-HK-12 (sửa M2) ──────────────────────────────────
 
     @Nested
@@ -1532,6 +1803,18 @@ class HousekeepingServiceTest {
             assertLoadedWithLock(task);
         }
 
+        /** Đồng đội có thể đang bấm «Hoàn thành» đúng lúc người tự nhận trả lại việc. */
+        @Test
+        void shouldLockTaskOnReturn() {
+            TestAuth.loginAs(STAFF_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            HousekeepingTask task = claimedTask(STAFF_ID, STAFF_ID);
+            stubTaskAndRoom(task);
+
+            service.returnTask(task.getId(), returnRequest("Bận việc khác"));
+
+            assertLoadedWithLock(task);
+        }
+
         private void assertLoadedWithLock(HousekeepingTask task) {
             verify(taskRepository).findByIdAndTenantIdForUpdate(task.getId(), TENANT_ID);
             verify(taskRepository, never()).findByIdAndTenantId(any(), any());
@@ -1613,6 +1896,20 @@ class HousekeepingServiceTest {
             task.setId(UUID.randomUUID());
         }
         return task;
+    }
+
+    /** Việc đang làm do {@code claimer} tự nhận; nhóm hiện tại là {@code team} (có thể đã được thêm người). */
+    private HousekeepingTask claimedTask(UUID claimer, UUID... team) {
+        HousekeepingTask task = inProgressTask(team);
+        task.setAssignmentSource(TaskAssignmentSource.SELF_CLAIM);
+        task.setAssignedBy(claimer);
+        return task;
+    }
+
+    private static ReturnTaskRequest returnRequest(String reason) {
+        ReturnTaskRequest request = new ReturnTaskRequest();
+        request.setReason(reason);
+        return request;
     }
 
     private static InspectTaskRequest inspectRequest(InspectionResult result, String reason) {

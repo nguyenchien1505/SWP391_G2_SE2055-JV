@@ -6,6 +6,7 @@ import { fetchShifts } from '../../api/scheduling';
 import MyShiftCard from '../../components/rooms/MyShiftCard';
 import OpenTaskList from '../../components/rooms/OpenTaskList';
 import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
+import ReturnTaskModal from '../../components/rooms/ReturnTaskModal';
 import TaskStatusBadge from '../../components/rooms/TaskStatusBadge';
 import { formatDate, todayIso } from './format';
 import { compareNatural, taskRoomLabel, teamNames } from './roomLabels';
@@ -15,8 +16,8 @@ import './rooms.css';
 const DONE_STATUSES = ['PENDING_INSPECTION', 'COMPLETED'];
 
 /**
- * S-16 Việc của tôi + S-17 Hoàn thành + S-21 Việc đang chờ nhận — RM-17, RM-18, RM-21, BR-PERM-05,
- * BR-HK-14 → BR-HK-16.
+ * S-16 Việc của tôi + S-17 Hoàn thành + S-21 Việc đang chờ nhận + S-22 Trả lại việc — RM-17, RM-18, RM-21,
+ * RM-22, BR-PERM-05, BR-HK-14 → BR-HK-17.
  *
  * Màn hình được dùng nhiều nhất hệ thống, và dùng khi đang đứng trong hành lang: làm
  * **mobile-first** thật sự — không có bảng, mỗi việc là một dòng với số phòng cỡ lớn và đúng
@@ -29,7 +30,8 @@ const DONE_STATUSES = ['PENDING_INSPECTION', 'COMPLETED'];
  * Các mục, theo thứ tự quan trọng khi đang làm:
  *   - **Ca hôm nay** — kèm nút Vào ca / Kết thúc ca: tự nhận việc đòi đã vào ca (BR-HK-15).
  *   - **Cần làm** — mọi việc đang làm, KHÔNG lọc theo ngày: việc tồn đọng từ hôm qua vẫn phải
- *     hiện, nếu không nhân viên sẽ không bao giờ thấy nó nữa (BR-HK-04).
+ *     hiện, nếu không nhân viên sẽ không bao giờ thấy nó nữa (BR-HK-04). Việc mình tự nhận có thêm nút
+ *     «Trả lại» nằm dưới «Hoàn thành» (BR-HK-17).
  *   - **Việc đang chờ nhận** — tự nhận việc chưa phân công (M2); được nhận hay không do backend nói.
  *   - **Đã xong hôm nay** — để tự đối chiếu cuối ca; tính theo NGÀY LÀM của ca đang làm (ca đêm từ hôm
  *     qua thì là hôm qua — BR-SCH-03).
@@ -50,6 +52,7 @@ export default function MyTasksPage() {
   const [submittingId, setSubmittingId] = useState(null);
   const [claimingId, setClaimingId] = useState(null);
   const [previousOf, setPreviousOf] = useState(null);   // việc dọn lại đang xem lý do không đạt
+  const [returning, setReturning] = useState(null);     // việc đang mở hộp thoại trả lại (S-22)
   const [shifts, setShifts] = useState(null);           // ca thuộc ngày làm hiện tại; null = chưa tải / lỗi
 
   const load = useCallback(async () => {
@@ -137,6 +140,17 @@ export default function MyTasksPage() {
     }
   }
 
+  /** Trả xong: nói rõ phòng đi đâu — về danh sách chờ nhận, hay đồng đội dọn tiếp. */
+  async function handleReturned(updated) {
+    setReturning(null);
+    const staying = teamNames(updated);   // mình đã rời nhóm, còn lại là đồng đội
+    setBanner({
+      type: 'success',
+      text: `Đã trả lại phòng ${taskRoomLabel(updated)}` + (staying ? ` — ${staying} vẫn dọn tiếp.` : '.'),
+    });
+    await load();
+  }
+
   /** Vào / kết thúc ca xong thì được nhận việc hay không cũng đổi theo — tải lại cả hai. */
   function handleShiftChanged(message) {
     setBanner(message);
@@ -208,14 +222,28 @@ export default function MyTasksPage() {
                   </button>
                 )}
               </div>
-              <button
-                type="button"
-                className="btn btn--primary task-row__action"
-                disabled={submittingId === task.id}
-                onClick={() => handleComplete(task)}
-              >
-                {submittingId === task.id ? 'Đang gửi…' : 'Hoàn thành'}
-              </button>
+              <div className="task-row__buttons">
+                <button
+                  type="button"
+                  className="btn btn--primary task-row__action"
+                  disabled={submittingId === task.id}
+                  onClick={() => handleComplete(task)}
+                >
+                  {submittingId === task.id ? 'Đang gửi…' : 'Hoàn thành'}
+                </button>
+                {/* BR-HK-17: chỉ người tự nhận trả lại được — ẩn bớt cho dễ dùng, backend vẫn kiểm lại.
+                    Nằm DƯỚI «Hoàn thành» và là nút phụ để khó bấm nhầm. */}
+                {task.assignmentSource === 'SELF_CLAIM' && task.assignedBy === user?.id && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost task-row__action"
+                    disabled={submittingId === task.id}
+                    onClick={() => setReturning(task)}
+                  >
+                    Trả lại
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
@@ -268,6 +296,15 @@ export default function MyTasksPage() {
 
       {previousOf && (
         <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />
+      )}
+
+      {returning && (
+        <ReturnTaskModal
+          task={returning}
+          meId={user?.id}
+          onClose={() => setReturning(null)}
+          onReturned={handleReturned}
+        />
       )}
     </div>
   );
