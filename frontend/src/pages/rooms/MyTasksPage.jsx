@@ -8,6 +8,7 @@ import TaskStatusBadge from '../../components/rooms/TaskStatusBadge';
 import { formatClock, formatDate, todayIso } from './format';
 import { timeRange } from '../scheduling/scheduleFormat';
 import { compareNatural, taskRoomLabel, teamNames } from './roomLabels';
+import { isInCurrentWorkDay, yesterdayIso } from './workDay';
 import './rooms.css';
 
 const DONE_STATUSES = ['PENDING_INSPECTION', 'COMPLETED'];
@@ -62,11 +63,12 @@ export default function MyTasksPage() {
     load();
   }, [load]);
 
-  // Ca hôm nay: backend chỉ trả ca của chính nhân viên. Lỗi thì ẩn thẻ — không chặn việc dọn.
+  // Ca hôm nay: backend chỉ trả ca của chính nhân viên. Lỗi thì ẩn thẻ — không chặn việc dọn. Lấy cả
+  // hôm qua để hiện ca qua đêm bắt đầu từ hôm qua mà người đó còn đang làm (BR-SCH-03).
   useEffect(() => {
     let cancelled = false;
-    fetchShifts({ from: today, to: today })
-      .then((list) => !cancelled && setShifts(list))
+    fetchShifts({ from: yesterdayIso(), to: today })
+      .then((list) => !cancelled && setShifts(list.filter((shift) => isInCurrentWorkDay(shift))))
       .catch(() => !cancelled && setShifts(null));
     return () => {
       cancelled = true;
@@ -128,6 +130,7 @@ export default function MyTasksPage() {
           ) : (
             shifts.map((shift) => (
               <span key={shift.id} className="my-shift__time">
+                {shift.shiftDate !== today && `Ca đêm từ ${formatDate(shift.shiftDate)} · `}
                 {timeRange(shift.startTime, shift.endTime)}
                 {shift.checkInAt && (
                   <small> · đã vào ca {formatClock(new Date(shift.checkInAt))}</small>
@@ -163,8 +166,9 @@ export default function MyTasksPage() {
                 {teamNames(task, user?.id) && (
                   <span className="task-row__meta">Dọn cùng: {teamNames(task, user?.id)}</span>
                 )}
-                {/* BR-HK-04: việc của hôm trước chưa xong thì vẫn phải làm, không tự hủy. */}
-                {task.assignedDate && task.assignedDate < today && (
+                {/* BR-HK-04: việc của hôm trước chưa xong thì vẫn phải làm, không tự hủy. Cờ do backend
+                    tính — việc của ca đêm từ hôm qua chưa tồn đọng khi ca chưa hết. */}
+                {task.overdue && (
                   <span className="task-card__flag">Tồn đọng từ {formatDate(task.assignedDate)}</span>
                 )}
                 {/* BR-HK-12: người dọn lại cần biết lần trước không đạt ở chỗ nào. */}

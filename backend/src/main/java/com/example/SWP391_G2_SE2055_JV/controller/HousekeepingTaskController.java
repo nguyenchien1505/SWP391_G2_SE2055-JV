@@ -70,12 +70,16 @@ public class HousekeepingTaskController {
      *
      * <p>Không nhận {@code locationId}: phạm vi luôn là Location của người đang đăng nhập.
      * Khai báo trước {@code /{id}} cho dễ đọc — Spring vẫn ưu tiên path cố định hơn path có biến.
+     *
+     * @param ongoingOnly hộp phân công bật để chỉ nhận người gán được ngay — kể cả người đang làm dở
+     *                    ca qua đêm bắt đầu hôm qua (BR-SCH-03). Bỏ trống = mọi người có ca ngày đó.
      */
     @GetMapping("/assignable-staff")
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER') or hasAuthority('POSITION_SUPERVISION')")
     public ResponseEntity<List<AssignableStaffResponse>> getAssignableStaff(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(housekeepingService.getAssignableStaff(date));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(defaultValue = "false") boolean ongoingOnly) {
+        return ResponseEntity.ok(housekeepingService.getAssignableStaff(date, ongoingOnly));
     }
 
     @GetMapping("/{id}")

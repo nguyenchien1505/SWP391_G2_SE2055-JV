@@ -207,8 +207,17 @@
 }
 /* Vùng bấm ≥ 48px (design.md mục 3) cho mọi nút thao tác trạng thái và nút trong hộp thoại. */
 .room-actions .btn,
-.room-modal .btn {
+.room-modal .btn,
+.room-modal .view-toggle__btn {
   min-height: 48px;
+}
+/* S-10: chọn "Ca hôm nay" / "Ca đêm từ hôm qua" — hai nút chia đều bề ngang hộp thoại, chữ dài xuống dòng. */
+.room-modal .view-toggle {
+  display: flex;
+}
+.room-modal .view-toggle__btn {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 /* ── F2: tab Thông tin / Lịch sử trạng thái ────────────────────────── */

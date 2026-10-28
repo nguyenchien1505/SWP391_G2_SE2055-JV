@@ -322,7 +322,6 @@ export default function HousekeepingPage() {
                   <TaskCard
                     key={task.id}
                     task={task}
-                    today={today}
                     actions={actionsFor(task)}
                     onShowPreviousInspection={setPreviousOf}
                   />

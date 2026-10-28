@@ -156,7 +156,7 @@ class HousekeepingTaskControllerTest {
         @Test
         @WithMockUser(roles = "MANAGER")
         void shouldListAssignableStaffForManager() throws Exception {
-            when(housekeepingService.getAssignableStaff(LocalDate.of(2026, 9, 23)))
+            when(housekeepingService.getAssignableStaff(LocalDate.of(2026, 9, 23), false))
                 .thenReturn(List.of(AssignableStaffResponse.builder()
                     .id(STAFF_ID).fullName("Phạm Dọn Dẹp").phone("0900000000").build()));
 
@@ -170,20 +170,43 @@ class HousekeepingTaskControllerTest {
         @Test
         @WithMockUser(roles = "MANAGER")
         void shouldNotBeSwallowedByTaskIdRoute() throws Exception {
-            when(housekeepingService.getAssignableStaff(any())).thenReturn(List.of());
+            when(housekeepingService.getAssignableStaff(any(), anyBoolean())).thenReturn(List.of());
 
             mockMvc.perform(get("/housekeeping/tasks/assignable-staff").param("date", "2026-09-23"))
                 .andExpect(status().isOk());
 
-            verify(housekeepingService).getAssignableStaff(LocalDate.of(2026, 9, 23));
+            verify(housekeepingService).getAssignableStaff(LocalDate.of(2026, 9, 23), false);
             verify(housekeepingService, never()).getTask(any());
+        }
+
+        /** Hộp phân công hỏi người gán được NGAY — kể cả người đang làm dở ca đêm từ hôm qua (BR-SCH-03). */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldPassOngoingOnlyFlagToService() throws Exception {
+            when(housekeepingService.getAssignableStaff(LocalDate.of(2026, 10, 28), true)).thenReturn(List.of());
+
+            mockMvc.perform(get("/housekeeping/tasks/assignable-staff")
+                    .param("date", "2026-10-28").param("ongoingOnly", "true"))
+                .andExpect(status().isOk());
+
+            verify(housekeepingService).getAssignableStaff(LocalDate.of(2026, 10, 28), true);
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldRejectMalformedOngoingOnlyFlag() throws Exception {
+            mockMvc.perform(get("/housekeeping/tasks/assignable-staff")
+                    .param("date", "2026-10-28").param("ongoingOnly", "abc"))
+                .andExpect(status().isBadRequest());
+
+            verify(housekeepingService, never()).getAssignableStaff(any(), anyBoolean());
         }
 
         /** Giám sát vận hành giao việc nên cần danh sách người nhận được — BR-PERM-07. */
         @Test
         @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_SUPERVISION"})
         void shouldListAssignableStaffForSupervisor() throws Exception {
-            when(housekeepingService.getAssignableStaff(LocalDate.of(2026, 9, 23))).thenReturn(List.of());
+            when(housekeepingService.getAssignableStaff(LocalDate.of(2026, 9, 23), false)).thenReturn(List.of());
 
             mockMvc.perform(get("/housekeeping/tasks/assignable-staff").param("date", "2026-09-23"))
                 .andExpect(status().isOk());

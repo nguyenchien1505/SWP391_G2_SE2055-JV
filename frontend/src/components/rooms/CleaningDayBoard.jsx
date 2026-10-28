@@ -71,8 +71,9 @@ export default function CleaningDayBoard({
           shifts,
           dayTasks: (ofDay.content ?? []).filter((task) => task.status !== 'CANCELLED'),
           queue: [...(unassigned.content ?? [])].sort(compareQueue),
+          // BR-HK-04: cờ tồn đọng do backend tính — việc ca đêm từ hôm qua chưa tồn đọng khi ca chưa hết.
           backlog: (inProgress?.content ?? [])
-            .filter((task) => task.assignedDate && task.assignedDate < date)
+            .filter((task) => task.overdue)
             .sort((a, b) => compareNatural(a.roomNumber, b.roomNumber)),
         });
       })
@@ -194,7 +195,6 @@ export default function CleaningDayBoard({
                 <TaskCard
                   key={task.id}
                   task={task}
-                  today={today}
                   actions={queueActions(task)}
                   onShowPreviousInspection={onShowPreviousInspection}
                 />
@@ -214,7 +214,6 @@ export default function CleaningDayBoard({
                   <TaskCard
                     key={task.id}
                     task={task}
-                    today={today}
                     actions={readOnly ? [] : actionsFor(task)}
                     onShowPreviousInspection={onShowPreviousInspection}
                   />

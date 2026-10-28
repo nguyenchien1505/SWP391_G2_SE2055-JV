@@ -35,13 +35,18 @@ export async function fetchTask(id) {
 }
 
 /**
- * GET /housekeeping/tasks/assignable-staff?date= — nhân viên dọn phòng gán được việc trong ngày
- * đó: đang làm việc, cùng khách sạn, và CÓ CA ngày đó (BR-HK-03).
+ * GET /housekeeping/tasks/assignable-staff?date= — nhân viên dọn phòng có ca ngày đó: đang làm việc,
+ * cùng khách sạn, có quyền Dọn dẹp, và CÓ CA ngày đó tại khách sạn này (BR-HK-03).
+ *
+ * `ongoingOnly: true` — hộp phân công: chỉ người gán được NGAY. Ngày hôm qua thì là người đang làm dở ca
+ * qua đêm bắt đầu hôm qua (BR-SCH-03, chốt 28/10/2026); ngày khác hôm nay / hôm qua thì rỗng.
  *
  * Trả về MẢNG (không phân trang). Chỉ Quản lý chi nhánh và Giám sát vận hành gọi được.
  */
-export async function fetchAssignableStaff(date) {
-  const { data } = await api.get('/housekeeping/tasks/assignable-staff', { params: { date } });
+export async function fetchAssignableStaff(date, { ongoingOnly } = {}) {
+  const { data } = await api.get('/housekeeping/tasks/assignable-staff', {
+    params: withoutEmpty({ date, ongoingOnly }),
+  });
   return data;
 }
 

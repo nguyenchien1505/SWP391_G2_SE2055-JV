@@ -102,6 +102,7 @@ public class HousekeepingService {
     private final InspectionRecordRepository inspectionRepository;
     private final RoomStatusService          roomStatusService;
     private final SupervisorDutyRule         supervisorDutyRule;
+    private final CleaningWorkDayRule        cleaningWorkDayRule;
 
     /**
      * Lịch dọn. Nhân viên chỉ thấy việc có mình trong nhóm dọn (BR-PERM-05); Manager chỉ thấy
@@ -348,20 +349,23 @@ public class HousekeepingService {
      * S-10 — ai gán được việc dọn trong ngày {@code date} (BR-HK-02, BR-HK-03, BR-PERM-05).
      *
      * <p>Chỉ Manager và Giám sát vận hành gọi: phạm vi là Location của chính họ, không nhận tham số
-     * locationId để không có đường xem nhân sự khách sạn khác. Điều kiện lọc trùng khớp
-     * {@link #assertCanReceiveTask} nên mọi người trả về đều gán được.
+     * locationId để không có đường xem nhân sự khách sạn khác.
+     *
+     * @param ongoingOnly hộp phân công bật cờ này để chỉ nhận người gán ĐƯỢC NGAY, trùng khớp
+     *                    {@link #assertCanReceiveTask}: hôm nay là người có ca hôm nay, hôm qua là người
+     *                    đang làm dở ca qua đêm bắt đầu hôm qua (BR-SCH-03), ngày khác thì rỗng. Không bật
+     *                    thì trả mọi người có ca ngày đó — bảng "Theo nhân viên" dựng hàng cho cả ngày đã
+     *                    qua / tương lai để xem.
      */
     @Transactional(readOnly = true)
-    public List<AssignableStaffResponse> getAssignableStaff(LocalDate date) {
+    public List<AssignableStaffResponse> getAssignableStaff(LocalDate date, boolean ongoingOnly) {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
         UUID locationId = SecurityUtils.getCurrentLocationId();
 
-        return assignableStaffRepository
-            .findAssignable(tenantId, locationId, date,
-                Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING)
-            .stream()
-            .map(AssignableStaffResponse::fromEntity)
-            .toList();
+        List<User> staff = ongoingOnly
+            ? findAssignableNow(tenantId, locationId, date)
+            : findAssignable(tenantId, locationId, date);
+        return staff.stream().map(AssignableStaffResponse::fromEntity).toList();
     }
 
     /**
@@ -423,22 +427,10 @@ public class HousekeepingService {
 
     /**
      * MỌI điều kiện để MỘT người nhận việc nằm ở đây — BR-HK-02, BR-HK-03, BR-PERM-05. Team đổi quy
-     * tắc (ví dụ chỉ cho gán trong ngày) thì chỉ sửa hàm này.
+     * tắc thì chỉ sửa hàm này; riêng "ngày làm nào giao được" (hôm nay, hoặc ca qua đêm bắt đầu hôm qua
+     * còn đang làm) nằm ở {@link CleaningWorkDayRule#assertIsCurrentWorkDay}.
      */
     private void assertCanReceiveTask(UUID staffId, HousekeepingTask task, LocalDate date) {
-        // BR-SCH-17: "hôm nay" tính theo múi giờ của KHÁCH SẠN, không phải giờ máy chủ — phải
-        // cùng mốc với lịch làm việc, nếu không thì ca và task lệch nhau một ngày.
-        LocalDate today = ShiftTimeUtils.todayAt(locationTimezoneOf(task));
-        if (date.isBefore(today)) {
-            throw new BusinessException("Không gán task cho ngày đã qua.");
-        }
-        // Q5 (chốt 22/09/2026): gán việc dọn là phòng sang "Đang dọn" NGAY. Gán trước cho ngày mai
-        // sẽ khiến phòng hiện sai trạng thái suốt hôm nay, nên chặn.
-        if (date.isAfter(today)) {
-            throw new BusinessException("Việc dọn phòng chỉ gán được cho hôm nay, "
-                + "vì phòng chuyển sang «Đang dọn» ngay khi gán người.");
-        }
-
         User staff = userRepository.findByIdAndTenantId(staffId, task.getTenantId())
             .orElseThrow(() -> new ResourceNotFoundException("User", "id", staffId));
         if (!staff.isStaff() || !staff.isActive()) {
@@ -454,13 +446,11 @@ public class HousekeepingService {
                 + " chưa được cấp quyền Dọn dẹp nên không nhận task dọn phòng.");
         }
 
-        // BR-HK-03: có ca trong ngày là đủ, không cần khớp khung giờ. BR-HK-02: không giới
-        // hạn số task mỗi người.
-        if (!shiftRepository.existsByStaffIdAndShiftDate(staffId, date)) {
-            throw new BusinessException(String.format(
-                "%s không có ca làm việc ngày %s — chỉ gán task cho người có ca trong ngày.",
-                staff.getFullName(), date.format(DAY)));
-        }
+        // BR-HK-03: có ca trong ngày làm là đủ, không cần khớp khung giờ. BR-HK-02: không giới hạn số
+        // task mỗi người. BR-SCH-17: "bây giờ" theo múi giờ của KHÁCH SẠN, không phải giờ máy chủ —
+        // phải cùng mốc với lịch làm việc, nếu không ca và task lệch nhau một ngày.
+        LocalDateTime now = ShiftTimeUtils.nowAt(locationTimezoneOf(task));
+        cleaningWorkDayRule.assertIsCurrentWorkDay(staff, task.getLocationId(), date, now);
     }
 
     /**
@@ -536,11 +526,39 @@ public class HousekeepingService {
         };
     }
 
-    /** Múi giờ của khách sạn chứa phòng — BR-SCH-17. Không tra được coi như dữ liệu ngoài phạm vi. */
+    /** Múi giờ của khách sạn chứa phòng — BR-SCH-17. */
     private String locationTimezoneOf(HousekeepingTask task) {
-        return locationRepository.findByIdAndTenantId(task.getLocationId(), task.getTenantId())
+        return locationTimezone(task.getLocationId(), task.getTenantId());
+    }
+
+    /** Múi giờ của một khách sạn — BR-SCH-17. Không tra được coi như dữ liệu ngoài phạm vi. */
+    private String locationTimezone(UUID locationId, UUID tenantId) {
+        return locationRepository.findByIdAndTenantId(locationId, tenantId)
             .map(Location::getTimezone)
-            .orElseThrow(() -> new ResourceNotFoundException("Location", "id", task.getLocationId()));
+            .orElseThrow(() -> new ResourceNotFoundException("Location", "id", locationId));
+    }
+
+    /**
+     * Người gán được NGAY vào ngày {@code date} — cùng luật {@link CleaningWorkDayRule#assertIsCurrentWorkDay}:
+     * hôm nay → có ca hôm nay; hôm qua → đang làm dở ca qua đêm bắt đầu hôm qua; ngày khác → không ai.
+     */
+    private List<User> findAssignableNow(UUID tenantId, UUID locationId, LocalDate date) {
+        LocalDateTime now = ShiftTimeUtils.nowAt(locationTimezone(locationId, tenantId));
+        LocalDate today = now.toLocalDate();
+        if (date.equals(today)) {
+            return findAssignable(tenantId, locationId, date);
+        }
+        if (date.equals(today.minusDays(1))) {
+            return assignableStaffRepository.findOnOvernightShift(tenantId, locationId, date, now.toLocalTime(),
+                Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING);
+        }
+        return List.of();
+    }
+
+    /** Mọi nhân viên dọn phòng có ca ngày {@code date} tại khách sạn này (BR-HK-03, BR-PERM-05). */
+    private List<User> findAssignable(UUID tenantId, UUID locationId, LocalDate date) {
+        return assignableStaffRepository.findAssignable(tenantId, locationId, date,
+            Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING);
     }
 
     /** Task về Chưa phân công — không còn ai trong nhóm, không còn ngày làm. */
@@ -623,8 +641,11 @@ public class HousekeepingService {
     }
 
     /**
-     * Phòng, loại phòng và tên người dọn cho CẢ một trang task, mỗi loại một câu truy vấn. Mọi id
-     * lấy từ chính các task đã lọc theo Tenant nên không cần lọc lại.
+     * Phòng, loại phòng, tên người dọn và cờ «Tồn đọng» cho CẢ một trang task, mỗi loại một câu truy
+     * vấn. Mọi id lấy từ chính các task đã lọc theo Tenant nên không cần lọc lại.
+     *
+     * <p>BR-HK-04: việc nào tồn đọng do backend quyết định ({@link CleaningWorkDayRule#overdueTaskIds}) —
+     * FE không tự so ngày, vì việc của ca qua đêm bắt đầu hôm qua chưa tồn đọng khi ca chưa hết.
      */
     private ResponseLookups loadLookups(Collection<HousekeepingTask> tasks) {
         Map<UUID, Room> rooms = loadRooms(tasks);
@@ -641,16 +662,17 @@ public class HousekeepingService {
             : userRepository.findAllById(staffIds).stream()
                 .collect(Collectors.toMap(User::getId, User::getFullName));
 
-        return new ResponseLookups(rooms, typeNames, staffNames);
+        return new ResponseLookups(rooms, typeNames, staffNames, cleaningWorkDayRule.overdueTaskIds(tasks));
     }
 
     private record ResponseLookups(Map<UUID, Room> rooms, Map<UUID, String> typeNames,
-                                   Map<UUID, String> staffNames) {
+                                   Map<UUID, String> staffNames, Set<UUID> overdueTaskIds) {
 
         HousekeepingTaskResponse toResponse(HousekeepingTask task) {
             Room room = rooms.get(task.getRoomId());
             return HousekeepingTaskResponse.fromEntity(
-                task, room, room == null ? null : typeNames.get(room.getRoomTypeId()), staffNames);
+                task, room, room == null ? null : typeNames.get(room.getRoomTypeId()), staffNames,
+                overdueTaskIds.contains(task.getId()));
         }
     }
 }

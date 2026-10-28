@@ -304,10 +304,13 @@ class HousekeepingFlowTest {
     /** S-10 — chỉ người dọn có ca hôm nay mới hiện ra; hôm sau chưa xếp ca nên rỗng. */
     @Test
     void shouldListOnlyStaffWithShiftToday() {
-        assertThat(housekeepingService.getAssignableStaff(today))
+        assertThat(housekeepingService.getAssignableStaff(today, false))
             .extracting(staff -> staff.getFullName())
             .containsExactlyInAnyOrder("Phạm Dọn Dẹp", "Nguyễn Thị Hoa");
-        assertThat(housekeepingService.getAssignableStaff(today.plusDays(1))).isEmpty();
+        assertThat(housekeepingService.getAssignableStaff(today, true))
+            .extracting(staff -> staff.getFullName())
+            .containsExactlyInAnyOrder("Phạm Dọn Dẹp", "Nguyễn Thị Hoa");
+        assertThat(housekeepingService.getAssignableStaff(today.plusDays(1), false)).isEmpty();
     }
 
     // ── Giám sát vận hành — BR-PERM-07 ──────────────────────────────────────

@@ -41,6 +41,11 @@ public class HousekeepingTaskResponse {
      */
     private List<Assignee>         assignees;
     private LocalDate              assignedDate;
+    /**
+     * «Tồn đọng» — BR-HK-04: đang làm mà ngày làm đã qua. Backend tính để FE khỏi tự so ngày: việc của
+     * ca qua đêm bắt đầu hôm qua chưa tồn đọng khi ca đó chưa hết (BR-SCH-03).
+     */
+    private boolean                overdue;
     private UUID                   assignedBy;
     private LocalDateTime          assignedAt;
     private LocalDateTime          completedAt;
@@ -57,9 +62,10 @@ public class HousekeepingTaskResponse {
      * @param room         có thể {@code null} nếu phòng không còn tải được — khi đó bỏ trống số phòng
      * @param roomTypeName có thể {@code null}
      * @param staffNames   họ tên theo id; người không tra được (dữ liệu cũ) để tên trống
+     * @param overdue      việc đang tồn đọng — do {@code CleaningWorkDayRule} tính
      */
     public static HousekeepingTaskResponse fromEntity(HousekeepingTask task, Room room, String roomTypeName,
-                                                      Map<UUID, String> staffNames) {
+                                                      Map<UUID, String> staffNames, boolean overdue) {
         List<Assignee> assignees = task.getAssigneeIds().stream()
             .map(id -> new Assignee(id, staffNames.get(id)))
             .sorted(Comparator.comparing(a -> a.fullName() == null ? "" : a.fullName()))
@@ -77,6 +83,7 @@ public class HousekeepingTaskResponse {
             .assignedStaffIds(assignees.stream().map(Assignee::staffId).toList())
             .assignees(assignees)
             .assignedDate(task.getAssignedDate())
+            .overdue(overdue)
             .assignedBy(task.getAssignedBy())
             .assignedAt(task.getAssignedAt())
             .completedAt(task.getCompletedAt())

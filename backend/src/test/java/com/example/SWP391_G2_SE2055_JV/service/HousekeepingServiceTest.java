@@ -52,6 +52,7 @@ import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,6 +60,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
@@ -101,6 +103,7 @@ class HousekeepingServiceTest {
     @Mock InspectionRecordRepository inspectionRepository;
     @Mock RoomStatusService          roomStatusService;
     @Mock SupervisorDutyRule         supervisorDutyRule;
+    @Mock CleaningWorkDayRule        cleaningWorkDayRule;
 
     @InjectMocks HousekeepingService service;
 
@@ -159,10 +162,14 @@ class HousekeepingServiceTest {
             HousekeepingTask task = unassignedTask();
             stubTask(task);
             stubLocation();
-            stubStaff(housekeepingStaff());
-            stubStaff(secondStaff());
-            when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_ID, today)).thenReturn(true);
-            when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_2_ID, today)).thenReturn(false);
+            User cleaner = housekeepingStaff();
+            User hoa = secondStaff();
+            stubStaff(cleaner);
+            stubStaff(hoa);
+            doNothing().when(cleaningWorkDayRule)
+                .assertIsCurrentWorkDay(eq(cleaner), eq(LOCATION_ID), eq(today), any());
+            doThrow(new BusinessException("Nguyễn Thị Hoa không có ca làm việc ngày này."))
+                .when(cleaningWorkDayRule).assertIsCurrentWorkDay(eq(hoa), eq(LOCATION_ID), eq(today), any());
 
             assertThatThrownBy(() -> service.assignTask(task.getId(), request(today, STAFF_ID, STAFF_2_ID)))
                 .isInstanceOf(BusinessException.class)
@@ -173,19 +180,24 @@ class HousekeepingServiceTest {
             verifyNoInteractions(roomStatusService);
         }
 
-        /** BR-HK-03: có ca trong ngày là điều kiện bắt buộc, không cần khớp khung giờ. */
+        /**
+         * BR-HK-03: ngày làm phải hợp lệ với người đó — luật nằm ở {@link CleaningWorkDayRule} (test riêng
+         * ở CleaningWorkDayRuleTest). Luật từ chối thì không giao và phòng đứng yên.
+         */
         @Test
-        void shouldRejectAssignWhenStaffHasNoShiftThatDay() {
+        void shouldPropagateWorkDayRejection() {
             HousekeepingTask task = unassignedTask();
             stubTask(task);
             stubLocation();
-            stubStaff(housekeepingStaff());
-            when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_ID, today)).thenReturn(false);
+            User cleaner = housekeepingStaff();
+            stubStaff(cleaner);
+            doThrow(new BusinessException("Phạm Dọn Dẹp không có ca làm việc ngày này."))
+                .when(cleaningWorkDayRule).assertIsCurrentWorkDay(eq(cleaner), eq(LOCATION_ID), eq(today), any());
 
             assertThatThrownBy(() -> service.assignTask(task.getId(), request(today, STAFF_ID)))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("ca làm việc")
-                .hasMessageNotContaining("BR-");
+                .hasMessageContaining("ca làm việc");
+            assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
             verifyNoInteractions(roomStatusService);
         }
 
@@ -201,11 +213,11 @@ class HousekeepingServiceTest {
             verify(taskRepository, never()).search(any(), any(), any(), any(), any(), any(), any(), any(), any());
         }
 
+        /** Kiểm NGƯỜI trước, ngày làm sau: người không đủ điều kiện thì không cần hỏi tới ca. */
         @Test
         void shouldRejectAssignWhenStaffNotHousekeeping() {
             HousekeepingTask task = unassignedTask();
             stubTask(task);
-            stubLocation();
             User receptionist = housekeepingStaff();
             receptionist.setPermissions(EnumSet.of(StaffPermission.RECEPTION));
             stubStaff(receptionist);
@@ -213,6 +225,7 @@ class HousekeepingServiceTest {
             assertThatThrownBy(() -> service.assignTask(task.getId(), request(today, STAFF_ID)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Dọn dẹp");
+            verifyNoInteractions(cleaningWorkDayRule);
         }
 
         /** Nhân viên đa nhiệm: được tick cả Lễ tân và Dọn dẹp thì vẫn nhận việc dọn. */
@@ -232,7 +245,6 @@ class HousekeepingServiceTest {
         void shouldRejectAssignWhenStaffInAnotherLocation() {
             HousekeepingTask task = unassignedTask();
             stubTask(task);
-            stubLocation();
             User elsewhere = housekeepingStaff();
             elsewhere.setLocationId(OTHER_LOCATION_ID);
             stubStaff(elsewhere);
@@ -246,7 +258,6 @@ class HousekeepingServiceTest {
         void shouldRejectAssignWhenStaffTerminated() {
             HousekeepingTask task = unassignedTask();
             stubTask(task);
-            stubLocation();
             User terminated = housekeepingStaff();
             terminated.setStatus(UserStatus.TERMINATED);
             stubStaff(terminated);
@@ -256,36 +267,38 @@ class HousekeepingServiceTest {
                 .hasMessageContaining("đang làm việc");
         }
 
-        /** BR-SCH-17: "hôm nay" theo múi giờ KHÁCH SẠN, nên phải tra Location chứ không dùng giờ máy chủ. */
+        /**
+         * BR-SCH-17: "bây giờ" theo múi giờ KHÁCH SẠN, nên phải tra Location chứ không dùng giờ máy chủ —
+         * rồi mới hỏi luật ngày làm. Các mốc ngày (đã qua, ngày mai, ca đêm) test ở CleaningWorkDayRuleTest.
+         */
         @Test
-        void shouldRejectAssignForPastDateInLocationTimezone() {
+        void shouldCheckWorkDayWithClockOfLocation() {
             HousekeepingTask task = unassignedTask();
-            stubTask(task);
-            stubLocation();
+            User cleaner = housekeepingStaff();
+            stubAssignReady(task, cleaner);
 
-            assertThatThrownBy(() -> service.assignTask(task.getId(), request(today.minusDays(1), STAFF_ID)))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("ngày đã qua");
+            service.assignTask(task.getId(), request(today, STAFF_ID));
 
             verify(locationRepository).findByIdAndTenantId(LOCATION_ID, TENANT_ID);
-            verifyNoInteractions(userRepository, roomStatusService);
+            ArgumentCaptor<LocalDateTime> now = ArgumentCaptor.forClass(LocalDateTime.class);
+            verify(cleaningWorkDayRule).assertIsCurrentWorkDay(eq(cleaner), eq(LOCATION_ID), eq(today), now.capture());
+            assertThat(now.getValue().toLocalDate()).isEqualTo(today);
         }
 
         /**
-         * Q5: giao việc dọn là phòng sang «Đang dọn» NGAY, nên giao trước cho ngày mai sẽ khiến phòng
-         * hiện sai trạng thái suốt hôm nay.
+         * Ca qua đêm (chốt 28/10/2026): luật cho phép ngày hôm qua thì việc mang ngày làm hôm qua — ngày
+         * BẮT ĐẦU ca (BR-SCH-03) — và phòng vẫn sang «Đang dọn» ngay.
          */
         @Test
-        void shouldRejectFutureDate() {
+        void shouldAssignNightStaffWithYesterdayAsWorkDay() {
             HousekeepingTask task = unassignedTask();
-            stubTask(task);
-            stubLocation();
+            Room room = stubAssignReady(task, housekeepingStaff());
 
-            assertThatThrownBy(() -> service.assignTask(task.getId(), request(today.plusDays(1), STAFF_ID)))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("chỉ gán được cho hôm nay")
-                .hasMessageNotContaining("BR-");
-            verifyNoInteractions(roomStatusService);
+            service.assignTask(task.getId(), request(today.minusDays(1), STAFF_ID));
+
+            assertThat(task.getAssignedDate()).isEqualTo(today.minusDays(1));
+            assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.IN_PROGRESS);
+            verify(roomStatusService).startCleaning(room, task.getId());
         }
 
         /**
@@ -298,7 +311,6 @@ class HousekeepingServiceTest {
             stubTask(task);
             stubLocation();
             stubStaff(secondStaff());
-            when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_2_ID, today)).thenReturn(true);
             stubSave();
 
             service.assignTask(task.getId(), request(today, STAFF_ID, STAFF_2_ID));
@@ -826,13 +838,79 @@ class HousekeepingServiceTest {
                 Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING))
                 .thenReturn(List.of(housekeepingStaff()));
 
-            List<AssignableStaffResponse> staff = service.getAssignableStaff(today);
+            List<AssignableStaffResponse> staff = service.getAssignableStaff(today, false);
 
             assertThat(staff).singleElement()
                 .satisfies(s -> assertThat(s.getFullName()).isEqualTo("Phạm Dọn Dẹp"));
             // Location lấy từ người đang đăng nhập, không nhận từ tham số — không xem chéo được.
             verify(assignableStaffRepository).findAssignable(eq(TENANT_ID), eq(LOCATION_ID), eq(today),
                 eq(Role.STAFF), eq(UserStatus.ACTIVE), eq(StaffPermission.HOUSEKEEPING));
+        }
+
+        /** BR-HK-04: cờ «Tồn đọng» lấy nguyên từ luật ngày làm — FE không tự so ngày. */
+        @Test
+        void shouldExposeOverdueFlagFromWorkDayRule() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            HousekeepingTask task = inProgressTask(STAFF_ID);
+            task.setAssignedDate(today.minusDays(1));
+            stubTask(task);
+            when(cleaningWorkDayRule.overdueTaskIds(List.of(task))).thenReturn(Set.of(task.getId()));
+
+            assertThat(service.getTask(task.getId()).isOverdue()).isTrue();
+        }
+
+        @Test
+        void shouldNotMarkTaskOverdueWhenRuleSaysNo() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            HousekeepingTask task = inProgressTask(STAFF_ID);
+            stubTask(task);
+
+            assertThat(service.getTask(task.getId()).isOverdue()).isFalse();
+        }
+    }
+
+    // ── Hộp phân công: người gán được NGAY — BR-HK-03, BR-SCH-03 ───────────
+
+    @Nested
+    class AssignableNow {
+
+        @BeforeEach
+        void loginAsManager() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            stubLocation();
+        }
+
+        @Test
+        void shouldListTodayShiftsForToday() {
+            when(assignableStaffRepository.findAssignable(TENANT_ID, LOCATION_ID, today,
+                Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING))
+                .thenReturn(List.of(housekeepingStaff()));
+
+            assertThat(service.getAssignableStaff(today, true)).singleElement()
+                .satisfies(s -> assertThat(s.getFullName()).isEqualTo("Phạm Dọn Dẹp"));
+            verify(assignableStaffRepository, never())
+                .findOnOvernightShift(any(), any(), any(), any(), any(), any(), any());
+        }
+
+        /** Ca qua đêm bắt đầu hôm qua: chỉ người ca đó CHƯA hết giờ — lọc bằng giờ hiện tại của khách sạn. */
+        @Test
+        void shouldListOnlyStaffStillOnNightShiftForYesterday() {
+            LocalDate yesterday = today.minusDays(1);
+            when(assignableStaffRepository.findOnOvernightShift(eq(TENANT_ID), eq(LOCATION_ID), eq(yesterday),
+                any(), eq(Role.STAFF), eq(UserStatus.ACTIVE), eq(StaffPermission.HOUSEKEEPING)))
+                .thenReturn(List.of(secondStaff()));
+
+            assertThat(service.getAssignableStaff(yesterday, true)).singleElement()
+                .satisfies(s -> assertThat(s.getFullName()).isEqualTo("Nguyễn Thị Hoa"));
+            verify(assignableStaffRepository, never()).findAssignable(any(), any(), any(), any(), any(), any());
+        }
+
+        /** Ngày mai hay hôm kia đều không giao được — hộp phân công không có ai để chọn. */
+        @Test
+        void shouldReturnNobodyForOtherDays() {
+            assertThat(service.getAssignableStaff(today.plusDays(1), true)).isEmpty();
+            assertThat(service.getAssignableStaff(today.minusDays(2), true)).isEmpty();
+            verifyNoInteractions(assignableStaffRepository);
         }
     }
 
@@ -983,7 +1061,7 @@ class HousekeepingServiceTest {
                 Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING))
                 .thenReturn(List.of(housekeepingStaff()));
 
-            assertThat(service.getAssignableStaff(today)).singleElement()
+            assertThat(service.getAssignableStaff(today, false)).singleElement()
                 .satisfies(s -> assertThat(s.getFullName()).isEqualTo("Phạm Dọn Dẹp"));
         }
     }
@@ -1024,9 +1102,9 @@ class HousekeepingServiceTest {
     private Room stubAssignReady(HousekeepingTask task, User... team) {
         stubTask(task);
         stubLocation();
+        // Luật ngày làm (mock) mặc định cho qua — các mốc ngày test riêng ở CleaningWorkDayRuleTest.
         for (User staff : team) {
             stubStaff(staff);
-            when(shiftRepository.existsByStaffIdAndShiftDate(staff.getId(), today)).thenReturn(true);
         }
         Room room = room();
         when(roomRepository.findByIdAndTenantIdAndActiveTrue(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
