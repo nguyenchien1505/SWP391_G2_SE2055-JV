@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { canViewAssetDetail, isSupervisor } from '../../permissions';
 import { assetService } from '../../services/assetApi';
 
 /** Khớp @Size(max = 500) của ResolveDamageReportRequest. */
@@ -67,7 +68,8 @@ function Shell({ title, badge, onClose, busy, children }) {
  * Dashboard, hồ sơ tài sản và bảng chi tiết khu vực.
  *
  * Manager đóng phiếu, tùy chọn kèm trạng thái mới cho tài sản và ghi chú; backend làm cả hai
- * trong CÙNG một transaction. Giám đốc chỉ xem. Báo hỏng không bao giờ tự đổi trạng thái phòng.
+ * trong CÙNG một transaction. Giám sát vận hành đóng phiếu như Manager nhưng không chọn được Thanh lý
+ * (BR-PERM-07, BR-ASSET-02 bản sửa M2). Giám đốc chỉ xem. Báo hỏng không bao giờ tự đổi trạng thái phòng.
  * Bấm một "báo hỏng khác của tài sản này" thì chuyển sang phiếu đó ngay trong hộp thoại.
  *
  * @param onResolved gọi với phiếu vừa đóng để màn bên dưới nạp lại dữ liệu
@@ -75,6 +77,8 @@ function Shell({ title, badge, onClose, busy, children }) {
 export const DamageReportModal = ({ incidentId: initialId, onClose, onResolved }) => {
   const { user } = useAuth();
   const isManager = user?.role === 'MANAGER';
+  const supervising = isSupervisor(user);
+  const canResolve = isManager || supervising;
   const [incidentId, setIncidentId] = useState(initialId);
 
   const [incident, setIncident] = useState(null);
@@ -197,7 +201,9 @@ export const DamageReportModal = ({ incidentId: initialId, onClose, onResolved }
 
   const isProcessed = incident.ticketStatus === 'Processed';
   const assetStatus = assetStatusOf(incident.assetStatus);
-  const choices = STATUS_CHOICES.filter((c) => c.value === '' || c.value !== incident.assetStatus);
+  // Thanh lý là trạng thái cuối — chỉ Manager quyết, Giám sát không thấy lựa chọn này.
+  const choices = STATUS_CHOICES.filter((c) => (c.value === '' || c.value !== incident.assetStatus)
+    && !(supervising && c.value === 'Disposed'));
 
   return (
     <Shell
@@ -277,7 +283,7 @@ export const DamageReportModal = ({ incidentId: initialId, onClose, onResolved }
                   <div className="text-[#5B6472] italic">Không có ghi chú xử lý.</div>
                 )}
               </div>
-            ) : !isManager ? (
+            ) : !canResolve ? (
               <div className="p-3.5 bg-[#F7F8FA] border border-[#DFE3E8] rounded-xl text-xs text-[#5B6472]">
                 Báo hỏng đang chờ quản lý khách sạn xử lý. Giám đốc chỉ xem.
               </div>
@@ -287,8 +293,10 @@ export const DamageReportModal = ({ incidentId: initialId, onClose, onResolved }
                   <span className="material-symbols-outlined text-[20px] shrink-0 text-[#EF6C00]">info</span>
                   <span>
                     Báo hỏng <span className="font-semibold">không tự đổi</span> trạng thái tài sản hay phòng. Bạn có
-                    thể đổi trạng thái tài sản ngay khi đóng phiếu, hoặc giữ nguyên. Cần khóa phòng thì chuyển phòng sang
-                    “Không khả dụng” ở màn phòng.
+                    thể đổi trạng thái tài sản ngay khi đóng phiếu, hoặc giữ nguyên.{' '}
+                    {supervising
+                      ? 'Cần thanh lý tài sản hoặc khóa phòng thì báo Quản lý.'
+                      : 'Cần khóa phòng thì chuyển phòng sang “Không khả dụng” ở màn phòng.'}
                   </span>
                 </div>
 
@@ -402,12 +410,14 @@ export const DamageReportModal = ({ incidentId: initialId, onClose, onResolved }
                 <span className="material-symbols-outlined text-[16px] text-[#0e61a1]">info</span>
                 Tài sản
               </h3>
-              <Link
-                to={`/tai-san/${incident.assetId}`}
-                className="text-xs text-[#0e61a1] hover:underline font-semibold"
-              >
-                Hồ sơ tài sản
-              </Link>
+              {canViewAssetDetail(user) && (
+                <Link
+                  to={`/tai-san/${incident.assetId}`}
+                  className="text-xs text-[#0e61a1] hover:underline font-semibold"
+                >
+                  Hồ sơ tài sản
+                </Link>
+              )}
             </div>
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between gap-3 py-1 border-b border-[#eff4ff]">

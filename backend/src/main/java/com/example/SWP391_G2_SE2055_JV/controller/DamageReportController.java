@@ -26,9 +26,10 @@ import java.util.UUID;
  * <p>{@code SecurityConfig} đã có sẵn rule cho {@code POST /assets/damage-reports}
  * (CHỈ nhân viên có quyền Lễ tân/Dọn dẹp qua {@code POSITION_RECEPTION}/
  * {@code POSITION_HOUSEKEEPING}) và cho {@code GET /assets/**} (mở tới STAFF — phạm vi lọc
- * theo người báo cáo nằm ở service). Riêng {@code PATCH .../resolve} rơi vào catch-all
- * {@code /assets/**} (ADMIN, DIRECTOR, MANAGER) nên phải chặn thêm bằng
- * {@code @PreAuthorize} để loại Giám đốc — chỉ Manager xử lý được (BR-ASSET-06).
+ * theo người báo cáo nằm ở service). Riêng {@code PATCH .../resolve} có rule URL riêng (ADMIN,
+ * DIRECTOR, MANAGER và Giám sát vận hành {@code POSITION_SUPERVISION}) nên phải chặn thêm bằng
+ * {@code @PreAuthorize} để loại Giám đốc — chỉ Manager và Giám sát xử lý được (BR-ASSET-06,
+ * BR-PERM-07).
  */
 @RestController
 @RequestMapping("/assets/damage-reports")
@@ -86,11 +87,12 @@ public class DamageReportController {
     }
 
     /**
-     * Chỉ Manager — BR-ASSET-06. Body không bắt buộc: bỏ trống là đóng phiếu, giữ nguyên
-     * trạng thái tài sản. Trạng thái phòng không bao giờ bị đụng tới.
+     * Manager — BR-ASSET-06 — và Giám sát vận hành (BR-PERM-07; ngày có ca và cấm Thanh lý kiểm ở
+     * service). Body không bắt buộc: bỏ trống là đóng phiếu, giữ nguyên trạng thái tài sản. Trạng
+     * thái phòng không bao giờ bị đụng tới.
      */
     @PatchMapping("/{id}/resolve")
-    @PreAuthorize("hasRole('MANAGER')")
+    @PreAuthorize("hasRole('MANAGER') or hasAuthority('POSITION_SUPERVISION')")
     public ResponseEntity<DamageReportResponse> resolveDamageReport(
             @PathVariable UUID id,
             @Valid @RequestBody(required = false) ResolveDamageReportRequest request) {

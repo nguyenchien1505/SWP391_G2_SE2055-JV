@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import { fetchShiftTemplates, fetchShifts } from '../../api/scheduling';
 import TimeRangeText from '../../components/scheduling/TimeRangeText';
@@ -30,8 +31,8 @@ import './scheduling.css';
  * ({@link WeekTimetable}, kiểu "Weekly timetable" — chốt 13/10/2026): mỗi mục một ca, thẻ bên phải ghi
  * khách sạn, số giờ và chấm công nếu đã có — bảng 7 cột trên màn hẹp phải kéo ngang mới thấy hết tuần.
  *
- * Chỉ xem: chấm công (check-in / check-out) để sau (chốt 11/10/2026); xin nghỉ, đổi ca là phần «làm
- * sau» của BR-SCH.
+ * Chỉ xem: chấm công (check-in / check-out) để sau (chốt 11/10/2026); xin nghỉ gửi ở màn «Đơn xin nghỉ»,
+ * đổi ca là phần «làm sau» của BR-SCH.
  */
 export default function MySchedulePage() {
   const { user } = useAuth();
@@ -233,7 +234,8 @@ export default function MySchedulePage() {
       )}
 
       <p className="alert alert--info">
-        Ca qua đêm thuộc về ngày bắt đầu ca. Muốn đổi ca hoặc xin nghỉ, hãy báo quản lý chi nhánh.
+        Ca qua đêm thuộc về ngày bắt đầu ca. Muốn xin nghỉ, gửi đơn ở mục <Link to="/don-nghi">Đơn xin nghỉ</Link>;
+        muốn đổi ca, hãy báo quản lý chi nhánh.
       </p>
     </div>
   );

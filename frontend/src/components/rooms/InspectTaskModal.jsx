@@ -10,8 +10,9 @@ const REASON_MAX = 500;
 /**
  * S-13 Kiểm tra phòng sau dọn — RM-19, BR-HK-06, BR-HK-08, BR-HK-12.
  *
- * Chỉ Quản lý chi nhánh mở được (nút "Kiểm tra" chỉ hiện ở cột «Chờ kiểm tra»); backend vẫn
- * kiểm tra lại quyền và trạng thái việc dọn.
+ * Quản lý chi nhánh và Giám sát vận hành mở được (nút "Kiểm tra" chỉ hiện ở cột «Chờ kiểm tra», và
+ * không hiện với phòng mà Giám sát nằm trong nhóm dọn — BR-HK-13); backend vẫn kiểm tra lại quyền,
+ * ngày có ca và trạng thái việc dọn.
  *
  * Hai lựa chọn là hai NÚT LỚN chứ không phải danh sách thả xuống: người dùng đang đứng trong
  * phòng vừa dọn, thao tác phải nhanh và khó bấm nhầm. Chọn "Không đạt" mới hiện ô lý do — bắt

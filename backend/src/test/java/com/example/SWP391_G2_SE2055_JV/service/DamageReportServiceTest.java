@@ -45,10 +45,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyIterable;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -74,6 +76,7 @@ class DamageReportServiceTest {
     @Mock private UserRepository          userRepository;
     @Mock private RoomRepository          roomRepository;
     @Mock private AreaRepository          areaRepository;
+    @Mock private SupervisorDutyRule      supervisorDutyRule;
 
     private DamageReportService service;
 
@@ -83,7 +86,7 @@ class DamageReportServiceTest {
             fixedAssetRepository, categoryRepository, roomRepository, areaRepository, damageReportRepository);
         service = new DamageReportService(
             damageReportRepository, fixedAssetRepository, fixedAssetService,
-            userRepository, roomRepository, areaRepository);
+            userRepository, roomRepository, areaRepository, supervisorDutyRule);
     }
 
     @AfterEach
@@ -407,6 +410,96 @@ class DamageReportServiceTest {
 
             assertThatThrownBy(() -> service.resolveDamageReport(foreignId, null))
                 .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    // ── Giám sát vận hành — BR-PERM-07, BR-ASSET-02 bản sửa M2 ───────────────
+
+    @Nested
+    class GiamSat {
+
+        private UUID supervisorId;
+        private FixedAsset tv;
+        private DamageReport pending;
+
+        @BeforeEach
+        void loginSupervisor() {
+            supervisorId = UUID.randomUUID();
+            TestAuth.loginAs(supervisorId, Role.STAFF, TENANT, LOCATION, PositionType.SUPERVISION);
+            tv = asset(FixedAssetStatus.GOOD);
+            pending = report(tv, DamageReportStatus.NEW);
+            stubLookups(tv);
+        }
+
+        private void stubOwnedReport() {
+            when(damageReportRepository.findByIdAndTenantIdAndLocationId(pending.getId(), TENANT, LOCATION))
+                .thenReturn(Optional.of(pending));
+        }
+
+        /** Giám sát nhận báo hỏng thay Manager nên thấy mọi phiếu của khách sạn, không chỉ phiếu mình gửi. */
+        @Test
+        void giam_sat_thay_moi_phieu_trong_khach_san_minh() {
+            when(damageReportRepository.search(TENANT, LOCATION, null, null, DamageReportStatus.NEW, PAGE))
+                .thenReturn(new PageImpl<>(List.of(), PAGE, 0));
+
+            service.getDamageReports(DamageReportStatus.NEW, null, PAGE);
+
+            verify(damageReportRepository).search(TENANT, LOCATION, null, null, DamageReportStatus.NEW, PAGE);
+        }
+
+        @Test
+        void giam_sat_dong_phieu_va_doi_tai_san_sang_dang_sua() {
+            stubOwnedReport();
+            when(fixedAssetRepository.findByIdAndTenantIdAndLocationId(tv.getId(), TENANT, LOCATION))
+                .thenReturn(Optional.of(tv));
+            stubSaveEcho();
+
+            service.resolveDamageReport(pending.getId(), resolveRequest(FixedAssetStatus.UNDER_REPAIR, "Đã gọi thợ"));
+
+            verify(supervisorDutyRule).assertOnDuty();
+            assertThat(pending.getStatus()).isEqualTo(DamageReportStatus.RESOLVED);
+            assertThat(pending.getResolvedBy()).isEqualTo(supervisorId);
+            assertThat(tv.getStatus()).isEqualTo(FixedAssetStatus.UNDER_REPAIR);
+        }
+
+        /** Thanh lý là trạng thái cuối — chỉ Manager quyết; bị chặn thì phiếu và tài sản giữ nguyên. */
+        @Test
+        void giam_sat_chon_thanh_ly_thi_bi_chan_va_khong_doi_gi() {
+            stubOwnedReport();
+
+            assertThatThrownBy(() -> service.resolveDamageReport(
+                pending.getId(), resolveRequest(FixedAssetStatus.DISPOSED, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("không thanh lý")
+                .hasMessageNotContaining("BR-");
+            assertThat(pending.getStatus()).isEqualTo(DamageReportStatus.NEW);
+            assertThat(tv.getStatus()).isEqualTo(FixedAssetStatus.GOOD);
+            verify(damageReportRepository, never()).save(any());
+            verify(fixedAssetRepository, never()).save(any());
+        }
+
+        /** BR-PERM-07 (tiếp): ngoài ngày có ca thì không đóng được phiếu. */
+        @Test
+        void giam_sat_khong_co_ca_thi_khong_dong_duoc() {
+            stubOwnedReport();
+            doThrow(new BusinessException("Giám sát chỉ thao tác được trong ngày có ca"))
+                .when(supervisorDutyRule).assertOnDuty();
+
+            assertThatThrownBy(() -> service.resolveDamageReport(pending.getId(), null))
+                .isInstanceOf(BusinessException.class);
+            assertThat(pending.getStatus()).isEqualTo(DamageReportStatus.NEW);
+            verify(damageReportRepository, never()).save(any());
+        }
+
+        @Test
+        void phieu_cua_khach_san_khac_thi_404_truoc_khi_xet_ca() {
+            UUID foreignId = UUID.randomUUID();
+            when(damageReportRepository.findByIdAndTenantIdAndLocationId(foreignId, TENANT, LOCATION))
+                .thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.resolveDamageReport(foreignId, null))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(supervisorDutyRule);
         }
     }
 }

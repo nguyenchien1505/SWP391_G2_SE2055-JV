@@ -12,6 +12,7 @@ const GENDERS = [
 export const POSITION_TYPE_LABEL = {
   RECEPTION: 'Lễ tân',
   HOUSEKEEPING: 'Dọn dẹp',
+  SUPERVISION: 'Giám sát vận hành',
   OTHER: 'Khác',
 };
 

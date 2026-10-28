@@ -193,6 +193,7 @@ export default function StaffPage() {
       terminated: count('TERMINATED'),
       reception: byType('RECEPTION'),
       housekeeping: byType('HOUSEKEEPING'),
+      supervision: byType('SUPERVISION'),
     };
   }, [staff]);
 
@@ -362,7 +363,7 @@ export default function StaffPage() {
         <StatCard
           label="Tổng nhân sự"
           value={String(stats.working).padStart(2, '0')}
-          note={`Lễ tân ${stats.reception} · Dọn dẹp ${stats.housekeeping}`}
+          note={`Lễ tân ${stats.reception} · Dọn dẹp ${stats.housekeeping} · Giám sát ${stats.supervision}`}
           icon="👥"
           tone="blue"
         />

@@ -34,6 +34,7 @@ import java.util.UUID;
  *
  * <p>Rule URL trong {@code SecurityConfig}: {@code GET /housekeeping/**} cho cả 4 role,
  * {@code PATCH /housekeeping/tasks/*}{@code /complete} thêm {@code POSITION_HOUSEKEEPING},
+ * giao việc và kiểm tra phòng thêm {@code POSITION_SUPERVISION} (Giám sát vận hành — BR-PERM-07),
  * các path còn lại chỉ Admin và Manager.
  */
 @RestController
@@ -43,7 +44,12 @@ public class HousekeepingTaskController {
 
     private final HousekeepingService housekeepingService;
 
-    /** Nhân viên chỉ nhận về task của chính mình — lọc ở service. */
+    /**
+     * Nhân viên chỉ nhận về task của chính mình — lọc ở service.
+     *
+     * @param locationWide bảng điều phối của Giám sát vận hành: cả lịch dọn của khách sạn mình thay vì
+     *                     chỉ việc của mình. Vai trò khác bỏ qua tham số này.
+     */
     @GetMapping
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER','STAFF')")
     public ResponseEntity<Page<HousekeepingTaskResponse>> getTasks(
@@ -52,8 +58,10 @@ public class HousekeepingTaskController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate assignedDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "false") boolean locationWide,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(housekeepingService.getTasks(status, taskType, assignedDate, from, to, pageable));
+        return ResponseEntity.ok(
+            housekeepingService.getTasks(status, taskType, assignedDate, from, to, locationWide, pageable));
     }
 
     /**
@@ -64,7 +72,7 @@ public class HousekeepingTaskController {
      * Khai báo trước {@code /{id}} cho dễ đọc — Spring vẫn ưu tiên path cố định hơn path có biến.
      */
     @GetMapping("/assignable-staff")
-    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER') or hasAuthority('POSITION_SUPERVISION')")
     public ResponseEntity<List<AssignableStaffResponse>> getAssignableStaff(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ResponseEntity.ok(housekeepingService.getAssignableStaff(date));
@@ -78,10 +86,11 @@ public class HousekeepingTaskController {
 
     /**
      * Giao việc cho một hoặc nhiều người. Việc chưa phân công: nhóm bắt đầu dọn; việc đang làm:
-     * thêm người vào nhóm (cùng ngày).
+     * thêm người vào nhóm (cùng ngày). Giám sát vận hành giao được — Location và ngày có ca kiểm ở
+     * service (BR-PERM-07).
      */
     @PatchMapping("/{id}/assign")
-    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER') or hasAuthority('POSITION_SUPERVISION')")
     public ResponseEntity<HousekeepingTaskResponse> assignTask(
             @PathVariable UUID id,
             @Valid @RequestBody AssignTaskRequest request) {
@@ -89,7 +98,7 @@ public class HousekeepingTaskController {
     }
 
     /**
-     * Gỡ người khỏi việc đang làm.
+     * Gỡ người khỏi việc đang làm — chỉ Manager; BR-PERM-07 không giao việc này cho Giám sát.
      *
      * @param staffId người cần gỡ; bỏ trống = gỡ cả nhóm. Không còn ai thì việc về hàng chờ và phòng
      *                về «Chờ dọn».
@@ -116,11 +125,11 @@ public class HousekeepingTaskController {
     }
 
     /**
-     * S-13 — Manager nghiệm thu phòng sau khi nhân viên báo dọn xong (BR-HK-06, BR-HK-08).
-     * Trả <b>201</b> vì mỗi lần kiểm tra sinh ra một biên bản mới.
+     * S-13 — Manager hoặc Giám sát vận hành nghiệm thu phòng sau khi nhân viên báo dọn xong (BR-HK-06,
+     * BR-HK-08, BR-PERM-07). Trả <b>201</b> vì mỗi lần kiểm tra sinh ra một biên bản mới.
      */
     @PostMapping("/{id}/inspection")
-    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER') or hasAuthority('POSITION_SUPERVISION')")
     public ResponseEntity<InspectionRecordResponse> inspectTask(
             @PathVariable UUID id,
             @Valid @RequestBody InspectTaskRequest request) {

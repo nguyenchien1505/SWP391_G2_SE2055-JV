@@ -70,6 +70,10 @@ import java.util.stream.Collectors;
  * phòng sai trạng thái nguồn (ví dụ Manager vừa khóa phòng) thì task cũng rollback, không bao
  * giờ để task và phòng lệch nhau.
  *
+ * <p>Giám sát vận hành (BR-PERM-07, chốt 19/10/2026) làm thay Manager phần giao việc và kiểm tra
+ * phòng trong Location của mình, chỉ trong ngày có ca ({@link SupervisorDutyRule}); gỡ người khỏi
+ * việc dọn vẫn chỉ Manager.
+ *
  * <p>Phản ứng khi PHÒNG đổi trạng thái (sinh/hủy task) nằm ở {@link HousekeepingRoomHooks}.
  * Ngoại lệ DUY NHẤT đi ngược chiều đó là bước nghiệm thu không đạt (F6): lớp này tự sinh việc
  * dọn lại để giữ đúng nguồn {@code INSPECTION_FAILED} — xem {@code createFollowUpTask}.
@@ -97,6 +101,7 @@ public class HousekeepingService {
     private final AssignableStaffRepository  assignableStaffRepository;
     private final InspectionRecordRepository inspectionRepository;
     private final RoomStatusService          roomStatusService;
+    private final SupervisorDutyRule         supervisorDutyRule;
 
     /**
      * Lịch dọn. Nhân viên chỉ thấy việc có mình trong nhóm dọn (BR-PERM-05); Manager chỉ thấy
@@ -105,6 +110,9 @@ public class HousekeepingService {
      * @param from ngày làm nhỏ nhất (tính cả ngày này), đi cùng {@code to} — lịch dọn theo tuần.
      *             Bỏ trống cả hai thì không lọc theo khoảng ngày.
      * @param to   ngày làm lớn nhất (tính cả ngày này)
+     * @param locationWide Giám sát vận hành xem cả lịch dọn của khách sạn mình — bảng điều phối
+     *             (BR-PERM-07); người khác bỏ qua cờ này. Không bật thì Giám sát kiêm Dọn dẹp vẫn chỉ
+     *             thấy việc của mình, như mọi nhân viên (màn «Việc của tôi»).
      */
     @Transactional(readOnly = true)
     public Page<HousekeepingTaskResponse> getTasks(HousekeepingTaskStatus status,
@@ -112,6 +120,7 @@ public class HousekeepingService {
                                                    LocalDate assignedDate,
                                                    LocalDate from,
                                                    LocalDate to,
+                                                   boolean locationWide,
                                                    Pageable pageable) {
         if ((from == null) != (to == null)) {
             throw new BusinessException("Lọc theo khoảng ngày cần đủ cả from và to.");
@@ -122,10 +131,10 @@ public class HousekeepingService {
         UUID tenantId = SecurityUtils.getCurrentTenantId();
         UUID locationId = null;
         UUID staffId = null;
-        if (SecurityUtils.hasRole(Role.STAFF)) {
-            staffId = SecurityUtils.getCurrentUserId();
-        } else if (SecurityUtils.hasRole(Role.MANAGER)) {
+        if (SecurityUtils.hasRole(Role.MANAGER) || (locationWide && SecurityUtils.isSupervisor())) {
             locationId = SecurityUtils.getCurrentLocationId();
+        } else if (SecurityUtils.hasRole(Role.STAFF)) {
+            staffId = SecurityUtils.getCurrentUserId();
         }
 
         Page<HousekeepingTask> page = taskRepository.search(
@@ -143,7 +152,8 @@ public class HousekeepingService {
     }
 
     /**
-     * BR-HK-02: Manager giao tay, không có gợi ý tự động phân bổ. Một lần giao được nhiều người.
+     * BR-HK-02: Manager — hoặc Giám sát vận hành (BR-PERM-07) — giao tay, không có gợi ý tự động phân
+     * bổ. Một lần giao được nhiều người.
      *
      * <ul>
      *   <li>Việc đang <b>chưa phân công</b>: nhóm này bắt đầu dọn — việc sang «Đang thực hiện» và
@@ -156,7 +166,7 @@ public class HousekeepingService {
     @Transactional
     public HousekeepingTaskResponse assignTask(UUID id, AssignTaskRequest request) {
         HousekeepingTask task = getOwnedTask(id);
-        assertManagesLocation(task.getLocationId());
+        assertCanCoordinate(task.getLocationId());
 
         Set<UUID> requested = new LinkedHashSet<>(request.getStaffIds());
         LocalDate date = request.getAssignedDate();
@@ -337,8 +347,8 @@ public class HousekeepingService {
     /**
      * S-10 — ai gán được việc dọn trong ngày {@code date} (BR-HK-02, BR-HK-03, BR-PERM-05).
      *
-     * <p>Chỉ Manager gọi: phạm vi là Location của chính họ, không nhận tham số locationId để
-     * không có đường xem nhân sự khách sạn khác. Điều kiện lọc trùng khớp
+     * <p>Chỉ Manager và Giám sát vận hành gọi: phạm vi là Location của chính họ, không nhận tham số
+     * locationId để không có đường xem nhân sự khách sạn khác. Điều kiện lọc trùng khớp
      * {@link #assertCanReceiveTask} nên mọi người trả về đều gán được.
      */
     @Transactional(readOnly = true)
@@ -355,8 +365,8 @@ public class HousekeepingService {
     }
 
     /**
-     * S-13 — Manager nghiệm thu phòng sau khi nhân viên báo dọn xong (BR-HK-06, BR-HK-08,
-     * BR-HK-12). Chỉ task đang «Chờ kiểm tra» mới đi qua bước này.
+     * S-13 — Manager hoặc Giám sát vận hành nghiệm thu phòng sau khi nhân viên báo dọn xong
+     * (BR-HK-06, BR-HK-08, BR-HK-12, BR-PERM-07). Chỉ task đang «Chờ kiểm tra» mới đi qua bước này.
      *
      * <p>ĐẠT hay KHÔNG ĐẠT thì task gốc đều sang {@code COMPLETED} — không có trạng thái FAILED
      * (BR-HK-06). Kết quả nằm ở {@link InspectionRecord}; không đạt thì sinh thêm việc dọn lại
@@ -365,10 +375,15 @@ public class HousekeepingService {
     @Transactional
     public InspectionRecordResponse inspectTask(UUID id, InspectTaskRequest request) {
         HousekeepingTask task = getOwnedTask(id);
-        assertManagesLocation(task.getLocationId());
+        assertCanCoordinate(task.getLocationId());
         if (task.getStatus() != HousekeepingTaskStatus.PENDING_INSPECTION) {
             // BR-HK-06: nghiệm thu đúng MỘT lần — kiểm xong task sang COMPLETED nên không quay lại.
             throw new BusinessException("Chỉ kiểm tra được việc dọn đang chờ kiểm tra.");
+        }
+        // BR-HK-13: Giám sát kiêm Dọn dẹp không tự nghiệm thu phòng mình vừa dọn.
+        if (SecurityUtils.isSupervisor() && task.isAssignedTo(SecurityUtils.getCurrentUserId())) {
+            throw new BusinessException("Bạn nằm trong nhóm dọn phòng này nên không tự kiểm tra được — "
+                + "nhờ Quản lý hoặc một Giám sát khác kiểm tra.");
         }
 
         boolean failed = request.getResult() == InspectionResult.FAIL;
@@ -449,15 +464,17 @@ public class HousekeepingService {
     }
 
     /**
-     * Ai được XEM một task — BR-PERM-05. Nhân viên chỉ thấy việc có mình trong nhóm dọn, Manager
-     * chỉ thấy task trong Location của mình, Giám đốc thấy cả Tenant. Ngoài phạm vi trả 404 để
-     * không lộ task có tồn tại. Dùng chung cho {@link #getTask} và {@link #getInspection}.
+     * Ai được XEM một task — BR-PERM-05. Nhân viên chỉ thấy việc có mình trong nhóm dọn, Manager và
+     * Giám sát vận hành (BR-PERM-07) thấy task trong Location của mình, Giám đốc thấy cả Tenant. Ngoài
+     * phạm vi trả 404 để không lộ task có tồn tại. Dùng chung cho {@link #getTask} và
+     * {@link #getInspection}.
      */
     private void assertCanView(HousekeepingTask task) {
+        boolean locationScoped = SecurityUtils.hasRole(Role.MANAGER) || SecurityUtils.isSupervisor();
         boolean outOfScope =
-            (SecurityUtils.hasRole(Role.STAFF)
+            (SecurityUtils.hasRole(Role.STAFF) && !locationScoped
                 && !task.isAssignedTo(SecurityUtils.getCurrentUserId()))
-            || (SecurityUtils.hasRole(Role.MANAGER)
+            || (locationScoped
                 && !SecurityUtils.getCurrentLocationId().equals(task.getLocationId()));
         if (outOfScope) {
             throw new ResourceNotFoundException("HousekeepingTask", "id", task.getId());
@@ -554,6 +571,22 @@ public class HousekeepingService {
                 && !locationId.equals(SecurityUtils.getCurrentLocationId())) {
             throw new ResourceNotFoundException("Location", "id", locationId);
         }
+    }
+
+    /**
+     * Giao việc và kiểm tra phòng: Manager như {@link #assertManagesLocation}; Giám sát vận hành cũng
+     * chỉ trong Location của mình (ngoài phạm vi trả 404, cùng lý do Q8) và chỉ trong ngày có ca
+     * (BR-PERM-07). Gỡ người không đi qua đây — việc đó chỉ Manager làm.
+     */
+    private void assertCanCoordinate(UUID locationId) {
+        if (!SecurityUtils.isSupervisor()) {
+            assertManagesLocation(locationId);
+            return;
+        }
+        if (!locationId.equals(SecurityUtils.getCurrentLocationId())) {
+            throw new ResourceNotFoundException("Location", "id", locationId);
+        }
+        supervisorDutyRule.assertOnDuty();
     }
 
     // ── Đọc phòng ───────────────────────────────────────────────────────────

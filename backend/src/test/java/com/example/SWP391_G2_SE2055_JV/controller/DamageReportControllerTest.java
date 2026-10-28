@@ -38,8 +38,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Phân quyền báo hỏng — BR-ASSET-05 (chỉ Lễ tân/Dọn dẹp tạo), BR-ASSET-06 (chỉ Manager đóng
- * phiếu). Nạp SecurityConfig thật ({@link SecuredWebMvcTest}); {@link DamageReportService} được
+ * Phân quyền báo hỏng — BR-ASSET-05 (chỉ Lễ tân/Dọn dẹp tạo), BR-ASSET-06 và BR-PERM-07 (Manager
+ * và Giám sát vận hành đóng phiếu). Nạp SecurityConfig thật ({@link SecuredWebMvcTest}); {@link DamageReportService} được
  * mock — phạm vi dữ liệu đã test ở {@code DamageReportServiceTest}.
  */
 @SecuredWebMvcTest(DamageReportController.class)
@@ -69,14 +69,29 @@ class DamageReportControllerTest {
                 .andExpect(status().isCreated());
         }
 
-        /** Manager là người nhận báo hỏng; nhân viên không tick quyền nào chỉ có quyền chung. */
+        /**
+         * Manager là người nhận báo hỏng; nhân viên không tick quyền nào chỉ có quyền chung. Giám sát
+         * vận hành cũng là người nhận nên không tự báo, trừ khi được tick thêm Lễ tân / Dọn dẹp
+         * (BR-ASSET-05 giữ nguyên ở M2).
+         */
         @ParameterizedTest
-        @ValueSource(strings = {"ROLE_MANAGER", "ROLE_DIRECTOR", "ROLE_STAFF", "ROLE_PLATFORM_ADMIN"})
+        @ValueSource(strings = {"ROLE_MANAGER", "ROLE_DIRECTOR", "ROLE_STAFF", "ROLE_PLATFORM_ADMIN",
+                                "ROLE_STAFF,POSITION_SUPERVISION"})
         void vaiTroKhacBiChan(String authorities) throws Exception {
             mockMvc.perform(post("/assets/damage-reports").with(authorities(authorities))
                     .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isForbidden());
             verifyNoInteractions(damageReportService);
+        }
+
+        @Test
+        void giamSatKiemDonDepVanBaoDuoc() throws Exception {
+            when(damageReportService.createDamageReport(any())).thenReturn(sample());
+
+            mockMvc.perform(post("/assets/damage-reports")
+                    .with(authorities("ROLE_STAFF,POSITION_SUPERVISION,POSITION_HOUSEKEEPING"))
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated());
         }
 
         @Test
@@ -93,7 +108,7 @@ class DamageReportControllerTest {
     class ListReports {
 
         @ParameterizedTest
-        @ValueSource(strings = {"ROLE_DIRECTOR", "ROLE_MANAGER", "ROLE_STAFF"})
+        @ValueSource(strings = {"ROLE_DIRECTOR", "ROLE_MANAGER", "ROLE_STAFF", "ROLE_STAFF,POSITION_SUPERVISION"})
         void caBaVaiTroDeuXemDuoc(String authorities) throws Exception {
             when(damageReportService.getDamageReports(any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(sample()), PageRequest.of(0, 20), 1));
@@ -157,6 +172,20 @@ class DamageReportControllerTest {
                     .content("{\"resolutionNote\": \"%s\"}".formatted("x".repeat(501))))
                 .andExpect(status().isUnprocessableEntity());
             verifyNoInteractions(damageReportService);
+        }
+
+        /** BR-PERM-07: Giám sát vận hành đóng phiếu thay Manager — qua cả rule URL lẫn @PreAuthorize. */
+        @Test
+        void giamSatDongPhieuDuoc() throws Exception {
+            when(damageReportService.resolveDamageReport(eq(REPORT_ID), any())).thenReturn(sample());
+
+            mockMvc.perform(patch("/assets/damage-reports/{id}/resolve", REPORT_ID)
+                    .with(authorities("ROLE_STAFF,POSITION_SUPERVISION"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"newAssetStatus\": \"BROKEN\"}"))
+                .andExpect(status().isOk());
+
+            verify(damageReportService).resolveDamageReport(eq(REPORT_ID), any());
         }
 
         /** Giám đốc chỉ xem; nhân viên chỉ báo (BR-ASSET-06). */

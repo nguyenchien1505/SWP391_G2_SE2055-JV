@@ -236,17 +236,18 @@ class HousekeepingFlowTest {
         housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today, secondCleaner.getId()));
         flushAndClear();
 
-        assertThat(housekeepingService.getTasks(null, null, null, null, null, PageRequest.of(0, 20)).getContent())
+        assertThat(housekeepingService.getTasks(null, null, null, null, null, false, PageRequest.of(0, 20)).getContent())
             .singleElement()
             .satisfies(task -> assertThat(task.getAssignees())
                 .extracting(HousekeepingTaskResponse.Assignee::fullName)
                 .containsExactly("Nguyễn Thị Hoa"));
 
         loginAs(cleaner);
-        assertThat(housekeepingService.getTasks(null, null, null, null, null, PageRequest.of(0, 20)).getContent()).isEmpty();
+        assertThat(housekeepingService.getTasks(null, null, null, null, null, false, PageRequest.of(0, 20)).getContent())
+            .isEmpty();
 
         loginAs(secondCleaner);
-        assertThat(housekeepingService.getTasks(null, null, null, null, null, PageRequest.of(0, 20)).getContent())
+        assertThat(housekeepingService.getTasks(null, null, null, null, null, false, PageRequest.of(0, 20)).getContent())
             .singleElement()
             .satisfies(task -> assertThat(task.getRoomTypeName()).isEqualTo("Đôi"));
     }
@@ -307,6 +308,71 @@ class HousekeepingFlowTest {
             .extracting(staff -> staff.getFullName())
             .containsExactlyInAnyOrder("Phạm Dọn Dẹp", "Nguyễn Thị Hoa");
         assertThat(housekeepingService.getAssignableStaff(today.plusDays(1))).isEmpty();
+    }
+
+    // ── Giám sát vận hành — BR-PERM-07 ──────────────────────────────────────
+
+    /**
+     * Giám sát có ca hôm nay giao việc và nghiệm thu thay Manager. Lịch sử phòng ghi nguồn SUPERVISION
+     * — kiểm luôn các CHECK V8 đã nới (vị trí loại Giám sát, quyền Giám sát, nguồn đổi trạng thái).
+     */
+    @Test
+    void shouldLetOnDutySupervisorAssignAndInspect() {
+        User supervisor = persistSupervisor();
+        persistShiftToday(supervisor);
+        flushAndClear();
+        loginAsSupervisor(supervisor);
+
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
+        loginAsCleaner();
+        housekeepingService.completeTask(checkoutTaskOf201.getId());
+        loginAsSupervisor(supervisor);
+        InspectTaskRequest request = new InspectTaskRequest();
+        request.setResult(InspectionResult.FAIL);
+        request.setReason("Còn bụi dưới gầm giường");
+        InspectionRecordResponse record = housekeepingService.inspectTask(checkoutTaskOf201.getId(), request);
+        flushAndClear();
+        loginAsManager();
+
+        assertThat(record.getInspectorId()).isEqualTo(supervisor.getId());
+        assertThat(em.find(HousekeepingTask.class, checkoutTaskOf201.getId()).getAssignedBy())
+            .isEqualTo(supervisor.getId());
+        assertThat(historyOf(dirty201))
+            .filteredOn(row -> row.getFromStatus() == RoomStatus.INSPECTION)
+            .singleElement()
+            .satisfies(row -> assertThat(row.getChangeSource()).isEqualTo(ChangeSource.SUPERVISION));
+    }
+
+    /** Không có ca hôm nay thì Giám sát không giao được việc, phòng giữ nguyên. */
+    @Test
+    void shouldBlockSupervisorWithoutShiftToday() {
+        User supervisor = persistSupervisor();
+        flushAndClear();
+        loginAsSupervisor(supervisor);
+
+        assertThatThrownBy(() -> housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today)))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("trong ngày có ca");
+        flushAndClear();
+
+        assertThat(em.find(Room.class, dirty201.getId()).getStatus()).isEqualTo(RoomStatus.DIRTY);
+    }
+
+    /** Bảng điều phối thấy cả khách sạn; không bật cờ thì như mọi nhân viên — chỉ việc của mình. */
+    @Test
+    void shouldShowWholeLocationOnlyOnSupervisorBoard() {
+        User supervisor = persistSupervisor();
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));   // Manager giao
+        flushAndClear();
+        loginAsSupervisor(supervisor);
+
+        assertThat(housekeepingService.getTasks(null, null, null, null, null, true, PageRequest.of(0, 20))
+            .getContent())
+            .singleElement()
+            .satisfies(task -> assertThat(task.getId()).isEqualTo(checkoutTaskOf201.getId()));
+        assertThat(housekeepingService.getTasks(null, null, null, null, null, false, PageRequest.of(0, 20))
+            .getContent())
+            .isEmpty();
     }
 
     // ── Checklist F6 §2.3 ─────────────────────────────────
@@ -464,6 +530,21 @@ class HousekeepingFlowTest {
 
     private void loginAs(User staff) {
         TestAuth.loginAs(staff.getId(), Role.STAFF, tenantId, hanoi, PositionType.HOUSEKEEPING);
+    }
+
+    private void loginAsSupervisor(User supervisor) {
+        TestAuth.loginAs(supervisor.getId(), Role.STAFF, tenantId, hanoi, PositionType.SUPERVISION);
+    }
+
+    /** Nhân viên ở vị trí loại Giám sát vận hành, chỉ được tick quyền Giám sát. */
+    private User persistSupervisor() {
+        UUID department = persist(Department.builder().tenantId(tenantId).name("Vận hành").build()).getId();
+        UUID position = persist(Position.builder().tenantId(tenantId).departmentId(department)
+            .name("Giám sát vận hành").positionType(PositionType.SUPERVISION).build()).getId();
+        return persist(User.builder().tenantId(tenantId).locationId(hanoi).role(Role.STAFF)
+            .positionId(position).permissions(EnumSet.of(StaffPermission.SUPERVISION))
+            .email(uniqueEmail()).passwordHash("x").status(UserStatus.ACTIVE)
+            .fullName("Lê Giám Sát").phone("0900000003").build());
     }
 
     /** Giao cho {@code staffIds}; bỏ trống = giao cho người dọn chính của các test. */

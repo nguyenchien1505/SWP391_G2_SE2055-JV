@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -210,6 +211,59 @@ class ReceptionCoverageRuleTest {
             rule.assertStillCoveredAfterRemoving(free);
             rule.assertStillCoveredAfterRemoving(open);
 
+            verifyNoInteractions(shiftRepository, userRepository);
+        }
+    }
+
+    // ── Duyệt đơn nghỉ: chỉ cảnh báo, không chặn — BR-SCH-29 ────────────────
+
+    @Nested
+    class LosesOnlyReceptionist {
+
+        @Test
+        void shouldFlagRemovingOnlyReceptionistWhileOthersRemain() {
+            List<Shift> crew = givenCrew(receptionist, cleaner);
+
+            assertThat(rule.losesOnlyReceptionist(crew.get(0))).isTrue();
+        }
+
+        /** Khác luật chặn: lễ tân là người cuối cùng mà nghỉ thì ca vẫn mất lễ tân — vẫn phải báo. */
+        @Test
+        void shouldFlagLastReceptionistEvenWhenShiftBecomesEmpty() {
+            List<Shift> crew = givenCrew(receptionist);
+
+            assertThat(rule.losesOnlyReceptionist(crew.get(0))).isTrue();
+        }
+
+        @Test
+        void shouldNotFlagWhenAnotherReceptionistStays() {
+            List<Shift> crew = givenCrew(receptionist, multiRole, cleaner);
+
+            assertThat(rule.losesOnlyReceptionist(crew.get(0))).isFalse();
+        }
+
+        @Test
+        void shouldNotFlagRemovingCleaner() {
+            List<Shift> crew = givenCrew(receptionist, cleaner);
+
+            assertThat(rule.losesOnlyReceptionist(crew.get(1))).isFalse();
+        }
+
+        /** Ca vốn đã thiếu lễ tân thì nghỉ thêm người cũng không "mất" lễ tân nào. */
+        @Test
+        void shouldNotFlagShiftAlreadyWithoutReceptionist() {
+            List<Shift> crew = givenCrew(cleaner, otherCleaner);
+
+            assertThat(rule.losesOnlyReceptionist(crew.get(0))).isFalse();
+        }
+
+        @Test
+        void shouldSkipShiftWithoutTemplateOrPerson() {
+            Shift free = slot(receptionist);
+            free.setSourceTemplateId(null);
+
+            assertThat(rule.losesOnlyReceptionist(free)).isFalse();
+            assertThat(rule.losesOnlyReceptionist(slot(null))).isFalse();
             verifyNoInteractions(shiftRepository, userRepository);
         }
     }

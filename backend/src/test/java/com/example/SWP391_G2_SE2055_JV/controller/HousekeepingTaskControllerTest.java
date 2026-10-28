@@ -36,6 +36,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
@@ -75,9 +76,9 @@ class HousekeepingTaskControllerTest {
 
         @ParameterizedTest
         @ValueSource(strings = {"ROLE_DIRECTOR", "ROLE_MANAGER", "ROLE_STAFF,POSITION_HOUSEKEEPING",
-                                "ROLE_STAFF,POSITION_RECEPTION"})
+                                "ROLE_STAFF,POSITION_RECEPTION", "ROLE_STAFF,POSITION_SUPERVISION"})
         void shouldListTasksForEveryTenantRole(String authorities) throws Exception {
-            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), any()))
+            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new PageImpl<>(List.of(sampleTask()), PageRequest.of(0, 20), 1));
 
             mockMvc.perform(get("/housekeeping/tasks").with(authorities(authorities)))
@@ -95,7 +96,8 @@ class HousekeepingTaskControllerTest {
         @Test
         @WithMockUser(roles = "MANAGER")
         void shouldPassParsedFiltersToService() throws Exception {
-            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of()));
+            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), anyBoolean(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
 
             mockMvc.perform(get("/housekeeping/tasks")
                     .param("status", "UNASSIGNED")
@@ -104,21 +106,36 @@ class HousekeepingTaskControllerTest {
                 .andExpect(status().isOk());
 
             verify(housekeepingService).getTasks(eq(HousekeepingTaskStatus.UNASSIGNED),
-                eq(HousekeepingTaskType.CHECKOUT), eq(LocalDate.of(2026, 9, 23)), isNull(), isNull(), any());
+                eq(HousekeepingTaskType.CHECKOUT), eq(LocalDate.of(2026, 9, 23)), isNull(), isNull(),
+                eq(false), any());
         }
 
         /** Lịch dọn theo tuần: lọc ngày làm theo khoảng from–to. */
         @Test
         @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
         void shouldPassWeekRangeToService() throws Exception {
-            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), any()))
+            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
             mockMvc.perform(get("/housekeeping/tasks").param("from", "2026-10-05").param("to", "2026-10-11"))
                 .andExpect(status().isOk());
 
             verify(housekeepingService).getTasks(isNull(), isNull(), isNull(),
-                eq(LocalDate.of(2026, 10, 5)), eq(LocalDate.of(2026, 10, 11)), any());
+                eq(LocalDate.of(2026, 10, 5)), eq(LocalDate.of(2026, 10, 11)), eq(false), any());
+        }
+
+        /** Bảng điều phối của Giám sát vận hành xin cả lịch dọn của khách sạn — BR-PERM-07. */
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_SUPERVISION"})
+        void shouldPassLocationWideFlagToService() throws Exception {
+            when(housekeepingService.getTasks(any(), any(), any(), any(), any(), anyBoolean(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+            mockMvc.perform(get("/housekeeping/tasks").param("status", "UNASSIGNED").param("locationWide", "true"))
+                .andExpect(status().isOk());
+
+            verify(housekeepingService).getTasks(eq(HousekeepingTaskStatus.UNASSIGNED), isNull(), isNull(),
+                isNull(), isNull(), eq(true), any());
         }
 
         @Test
@@ -162,9 +179,19 @@ class HousekeepingTaskControllerTest {
             verify(housekeepingService, never()).getTask(any());
         }
 
+        /** Giám sát vận hành giao việc nên cần danh sách người nhận được — BR-PERM-07. */
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_SUPERVISION"})
+        void shouldListAssignableStaffForSupervisor() throws Exception {
+            when(housekeepingService.getAssignableStaff(LocalDate.of(2026, 9, 23))).thenReturn(List.of());
+
+            mockMvc.perform(get("/housekeeping/tasks/assignable-staff").param("date", "2026-09-23"))
+                .andExpect(status().isOk());
+        }
+
         /** Danh sách nhân sự không dành cho nhân viên — chặn ở {@code @PreAuthorize}. */
         @ParameterizedTest
-        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_DIRECTOR"})
+        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_STAFF,POSITION_RECEPTION", "ROLE_DIRECTOR"})
         void shouldForbidNonManager(String authorities) throws Exception {
             mockMvc.perform(get("/housekeeping/tasks/assignable-staff").param("date", "2026-09-23")
                     .with(authorities(authorities)))
@@ -186,7 +213,7 @@ class HousekeepingTaskControllerTest {
         }
     }
 
-    // ── Phân công / gỡ người: chỉ Manager ───────────────────────────────────
+    // ── Phân công: Manager và Giám sát vận hành; gỡ người: chỉ Manager ──────
 
     @Nested
     class AssignAndUnassign {
@@ -229,11 +256,33 @@ class HousekeepingTaskControllerTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_DIRECTOR"})
+        @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_STAFF,POSITION_RECEPTION", "ROLE_DIRECTOR"})
         void shouldForbidNonManagerFromAssigning(String authorities) throws Exception {
             mockMvc.perform(patch("/housekeeping/tasks/{id}/assign", TASK_ID)
                     .contentType(MediaType.APPLICATION_JSON).content(ASSIGN_BODY.formatted(STAFF_ID))
                     .with(authorities(authorities)))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** BR-PERM-07: Giám sát vận hành giao việc qua cả hai tầng phân quyền. */
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_SUPERVISION"})
+        void shouldAssignTaskForSupervisor() throws Exception {
+            when(housekeepingService.assignTask(eq(TASK_ID), any())).thenReturn(sampleTask());
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/assign", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(ASSIGN_BODY.formatted(STAFF_ID)))
+                .andExpect(status().isOk());
+
+            verify(housekeepingService).assignTask(eq(TASK_ID), any());
+        }
+
+        /** BR-PERM-07 không giao việc gỡ người cho Giám sát — chặn ngay ở tầng URL. */
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_SUPERVISION"})
+        void shouldForbidSupervisorFromUnassigning() throws Exception {
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/unassign", TASK_ID))
                 .andExpect(status().isForbidden());
             verifyNoInteractions(housekeepingService);
         }
@@ -357,7 +406,7 @@ class HousekeepingTaskControllerTest {
         }
     }
 
-    // ── F6: nghiệm thu phòng — chỉ Manager ─────────────────────
+    // ── F6: nghiệm thu phòng — Manager và Giám sát vận hành ─────
 
     @Nested
     class Inspection {
@@ -397,8 +446,9 @@ class HousekeepingTaskControllerTest {
         }
 
         /**
-         * Nghiệm thu là việc của Quản lý (BR-ROOM-02): người dọn không tự duyệt phòng mình
-         * vừa dọn. Chặn ngay ở tầng URL — POST /housekeeping/** chỉ dành cho Admin và Manager.
+         * Nghiệm thu là việc của Quản lý hoặc Giám sát (BR-ROOM-02): người dọn không tự duyệt phòng
+         * mình vừa dọn. Chặn ngay ở tầng URL — kiểm tra phòng chỉ dành cho Admin, Manager và
+         * {@code POSITION_SUPERVISION}.
          */
         @ParameterizedTest
         @ValueSource(strings = {"ROLE_STAFF,POSITION_HOUSEKEEPING", "ROLE_STAFF,POSITION_RECEPTION",
@@ -409,6 +459,17 @@ class HousekeepingTaskControllerTest {
                     .with(authorities(authorities)))
                 .andExpect(status().isForbidden());
             verifyNoInteractions(housekeepingService);
+        }
+
+        /** BR-ROOM-02 bản sửa M2: "Manager hoặc Giám sát" nghiệm thu phòng. */
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_SUPERVISION"})
+        void shouldReturnCreatedWhenSupervisorInspects() throws Exception {
+            when(housekeepingService.inspectTask(eq(TASK_ID), any())).thenReturn(sampleInspection());
+
+            mockMvc.perform(post("/housekeeping/tasks/{id}/inspection", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(PASS_BODY))
+                .andExpect(status().isCreated());
         }
 
         @Test

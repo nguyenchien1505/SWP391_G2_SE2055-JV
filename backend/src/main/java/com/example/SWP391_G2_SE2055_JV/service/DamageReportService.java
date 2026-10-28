@@ -9,6 +9,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.FixedAsset;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.DamageReportStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.FixedAssetStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
@@ -46,6 +47,10 @@ import java.util.stream.Stream;
  * {@code FixedAsset} hay {@code Room} (BR-ASSET-06). Cho phép nhiều báo cáo {@code NEW}
  * cùng lúc trên một tài sản (ví dụ 2 ca cùng báo 1 cái TV) — chỉ chặn tạo mới khi tài sản
  * đã {@code DISPOSED} (BR-ASSET-11).
+ *
+ * <p>Giám sát vận hành (BR-PERM-07) xem và đóng báo hỏng thay Manager trong khách sạn của mình, chỉ
+ * trong ngày có ca; khi đóng chỉ chọn được Tốt / Hỏng / Đang sửa — Thanh lý vẫn chỉ Manager làm
+ * (BR-ASSET-02 bản sửa M2).
  */
 @Slf4j
 @Service
@@ -60,6 +65,7 @@ public class DamageReportService {
     private final UserRepository         userRepository;
     private final RoomRepository         roomRepository;
     private final AreaRepository         areaRepository;
+    private final SupervisorDutyRule     supervisorDutyRule;
 
     /**
      * Quyền tạo (chỉ nhân viên có quyền Lễ tân/Dọn dẹp — BR-ASSET-05) đã chặn ở
@@ -95,8 +101,8 @@ public class DamageReportService {
     }
 
     /**
-     * Phạm vi theo vai trò: Giám đốc toàn Tenant, Manager toàn Location, Staff chỉ báo cáo
-     * do CHÍNH MÌNH tạo.
+     * Phạm vi theo vai trò: Giám đốc toàn Tenant, Manager và Giám sát vận hành toàn Location, Staff
+     * khác chỉ báo cáo do CHÍNH MÌNH tạo.
      *
      * @param status       DM-16: thường là {@code NEW}; {@code null} để xem cả lịch sử
      * @param fixedAssetId lịch sử báo hỏng của một tài sản, {@code null} = không lọc
@@ -130,11 +136,21 @@ public class DamageReportService {
      *
      * <p>Phiếu đã đóng thì báo lỗi thay vì lặng lẽ trả về: Manager vừa chọn trạng thái và ghi
      * chú, bỏ qua mà không báo thì họ tưởng đã lưu.
+     *
+     * <p>Giám sát vận hành đóng phiếu như Manager, trừ hai điều: chỉ trong ngày có ca, và không
+     * chọn Thanh lý — trạng thái cuối, chỉ Manager quyết (BR-PERM-07, BR-ASSET-02 bản sửa M2).
      */
     @Transactional
     public DamageReportResponse resolveDamageReport(UUID id, ResolveDamageReportRequest request) {
         DamageReport report = getOwnedReport(id);
 
+        if (SecurityUtils.isSupervisor()) {
+            supervisorDutyRule.assertOnDuty();
+            if (request != null && request.getNewAssetStatus() == FixedAssetStatus.DISPOSED) {
+                throw new BusinessException("Giám sát không thanh lý tài sản được — chọn Tốt, Hỏng hoặc "
+                    + "Đang sửa; cần thanh lý thì báo Quản lý.");
+            }
+        }
         if (report.getStatus() != DamageReportStatus.NEW) {
             throw new BusinessException("Báo hỏng này đã được xử lý trước đó.");
         }
@@ -155,9 +171,10 @@ public class DamageReportService {
 
     // ── Helper ───────────────────────────────────────────────────────────────
 
-    /** Nhân viên chỉ thấy báo cáo do chính mình tạo; Manager/Giám đốc thấy cả phạm vi. */
+    /** Nhân viên chỉ thấy báo cáo do chính mình tạo; Manager/Giám đốc/Giám sát thấy cả phạm vi. */
     private boolean isReporterScoped() {
-        return !SecurityUtils.hasRole(Role.DIRECTOR) && !SecurityUtils.hasRole(Role.MANAGER);
+        return !SecurityUtils.hasRole(Role.DIRECTOR) && !SecurityUtils.hasRole(Role.MANAGER)
+            && !SecurityUtils.isSupervisor();
     }
 
     private DamageReportResponse toResponse(DamageReport report) {
@@ -213,7 +230,7 @@ public class DamageReportService {
         }
 
         UUID locationId = SecurityUtils.getCurrentLocationId();
-        if (SecurityUtils.hasRole(Role.MANAGER)) {
+        if (SecurityUtils.hasRole(Role.MANAGER) || SecurityUtils.isSupervisor()) {
             return damageReportRepository.findByIdAndTenantIdAndLocationId(id, tenantId, locationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy báo cáo hỏng"));
         }
