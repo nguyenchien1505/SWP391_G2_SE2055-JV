@@ -41,11 +41,16 @@ import java.util.List;
  *   STAFF          : quyền chung của người lao động
  * </pre>
  *
- * <p>Trục 2 — {@code POSITION_*}: Lễ tân và Dọn dẹp KHÔNG phải role mà là quyền nghiệp vụ Manager
- * tick cho từng nhân viên ({@code StaffPermission}, BR-ORG-08 bản sửa). Mỗi quyền đã tick là một
- * authority {@code POSITION_RECEPTION} / {@code POSITION_HOUSEKEEPING} (giữ tiền tố cũ để các rule
- * không phải đổi); một người có thể có cả hai. Nhân viên không được tick quyền nào chỉ có quyền
- * chung, không nhận authority đặc thù nào (BR-ORG-09, BR-PERM-06).
+ * <p>Trục 2 — {@code POSITION_*}: Lễ tân, Dọn dẹp và Giám sát vận hành KHÔNG phải role mà là quyền
+ * nghiệp vụ Manager tick cho từng nhân viên ({@code StaffPermission}, BR-ORG-08 bản sửa). Mỗi quyền
+ * đã tick là một authority {@code POSITION_RECEPTION} / {@code POSITION_HOUSEKEEPING} /
+ * {@code POSITION_SUPERVISION} (giữ tiền tố cũ để các rule không phải đổi); một người có thể có nhiều
+ * quyền. Nhân viên không được tick quyền nào chỉ có quyền chung, không nhận authority đặc thù nào
+ * (BR-ORG-09, BR-PERM-06).
+ *
+ * <p>Giám sát vận hành vẫn là {@code ROLE_STAFF}: chỉ được mở đúng các việc BR-PERM-07 cho phép
+ * (giao việc dọn, kiểm tra phòng, đóng báo hỏng). Mọi việc duyệt (đơn nghỉ, đổi ca, tăng ca), sửa
+ * công và xem lương phải chặn theo ROLE Manager / Giám đốc — đừng mở bằng {@code POSITION_*}.
  *
  * <p>Rule ở đây là lớp chặn thô theo URL; kiểm tra quyền sở hữu (Staff chỉ xem ca của
  * mình, Manager chỉ thao tác trong Location của mình) nằm ở tầng service.
@@ -184,6 +189,14 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PATCH, "/housekeeping/tasks/*/complete")
                     .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
                         hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + MANAGER, "POSITION_HOUSEKEEPING")))
+                // Giám sát vận hành giao việc dọn và kiểm tra phòng thay Manager (BR-PERM-07); gỡ người
+                // vẫn chỉ Manager. Location và "trong ngày có ca" kiểm ở service.
+                .requestMatchers(HttpMethod.PATCH, "/housekeeping/tasks/*/assign")
+                    .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
+                        hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + MANAGER, "POSITION_SUPERVISION")))
+                .requestMatchers(HttpMethod.POST, "/housekeeping/tasks/*/inspection")
+                    .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
+                        hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + MANAGER, "POSITION_SUPERVISION")))
                 .requestMatchers(HttpMethod.GET, "/housekeeping/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers("/housekeeping/**")
@@ -202,6 +215,15 @@ public class SecurityConfig {
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
                 .requestMatchers("/scheduling/policy/**", "/scheduling/shift-templates/**")
                     .hasAnyRole(ADMIN, DIRECTOR)
+                // Duyệt đơn nghỉ theo cấp (BR-SCH-08): Manager duyệt Staff, Giám đốc duyệt Manager — chặn theo
+                // ROLE nên Giám sát vận hành (Staff) không duyệt được (BR-PERM-07). Phải đứng TRƯỚC rule chung
+                // của đơn nghỉ bên dưới (rule khớp đầu tiên thắng).
+                .requestMatchers(HttpMethod.GET, "/scheduling/leave-requests/review",
+                        "/scheduling/leave-requests/*/approval-preview")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
+                .requestMatchers(HttpMethod.PATCH, "/scheduling/leave-requests/*/approve",
+                        "/scheduling/leave-requests/*/reject")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
                 // Mọi người lao động đều xin nghỉ / đổi ca / check-in-out được (BR-PERM-06).
                 .requestMatchers("/scheduling/leave-requests/**", "/scheduling/shift-swap-requests/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
@@ -224,6 +246,13 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/assets/damage-reports")
                     .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
                         hasAnyAuthority(authn, "POSITION_RECEPTION", "POSITION_HOUSEKEEPING")))
+                // Giám sát vận hành đóng báo hỏng thay Manager (BR-PERM-07) — nhưng không đổi trạng thái
+                // tài sản ở màn tài sản (BR-ASSET-02): chỉ mở đúng path đóng phiếu. Giữ Admin / Giám đốc
+                // như rule chung bên dưới; @PreAuthorize của controller mới loại Giám đốc.
+                .requestMatchers(HttpMethod.PATCH, "/assets/damage-reports/*/resolve")
+                    .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
+                        hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + DIRECTOR, "ROLE_" + MANAGER,
+                            "POSITION_SUPERVISION")))
                 .requestMatchers(HttpMethod.GET, "/assets/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers("/assets/**")

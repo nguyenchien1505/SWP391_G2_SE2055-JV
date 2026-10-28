@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
 import { fetchTasks } from '../../api/housekeeping';
+import { isSupervisor } from '../../permissions';
 import AssignTaskModal from '../../components/rooms/AssignTaskModal';
 import AssignToStaffModal from '../../components/rooms/AssignToStaffModal';
 import CleaningDayBoard from '../../components/rooms/CleaningDayBoard';
@@ -40,9 +41,11 @@ function readSavedView() {
 /**
  * S-09 Hàng chờ phân công + S-11 Danh sách việc dọn — RM-13, RM-14, RM-15.
  *
- * Chỉ Quản lý chi nhánh vào được màn này (route bọc {@code RequireBranchManager}). Giám đốc
- * đã bị gỡ khỏi đây: mọi thao tác trên lịch dọn đều ✖ với họ, và danh sách của họ trộn phòng
- * của mọi khách sạn trong chuỗi nên đọc dễ nhầm.
+ * Quản lý chi nhánh và Giám sát vận hành vào được màn này (route bọc {@code RequireHousekeepingBoard}).
+ * Giám sát giao việc, thêm người và kiểm tra phòng thay Quản lý, nhưng không gỡ người, và không kiểm
+ * tra phòng mà chính mình nằm trong nhóm dọn (BR-PERM-07, BR-HK-13); "chỉ trong ngày có ca" do backend
+ * chặn. Giám đốc đã bị gỡ khỏi đây: mọi thao tác trên lịch dọn đều ✖ với họ, và danh sách của họ trộn
+ * phòng của mọi khách sạn trong chuỗi nên đọc dễ nhầm.
  *
  * Chỉ còn việc dọn sau khi khách trả phòng, hệ thống tự sinh — đã bỏ dọn hằng ngày (chốt 05/10/2026),
  * nên màn này không có nút tạo việc. Một phòng giao được cho NHIỀU người cùng dọn.
@@ -59,6 +62,9 @@ function readSavedView() {
 export default function HousekeepingPage() {
   const { user } = useAuth();
   const canManage = user?.role === 'MANAGER' || user?.role === 'PLATFORM_ADMIN';
+  const supervising = isSupervisor(user);
+  // Giao việc và kiểm tra phòng; gỡ người thì chỉ Quản lý (canManage).
+  const canCoordinate = canManage || supervising;
   const today = todayIso();
 
   const [view, setView] = useState(readSavedView);
@@ -80,12 +86,13 @@ export default function HousekeepingPage() {
     setLoading(true);
     setLoadError('');
     try {
-      // Bốn truy vấn song song: ba cột đang mở + tab đã đóng trong ngày.
+      // Bốn truy vấn song song: ba cột đang mở + tab đã đóng trong ngày. `locationWide`: Giám sát xem cả
+      // khách sạn như Quản lý, không chỉ việc có mình trong nhóm.
       const [unassigned, inProgress, pending, closed] = await Promise.all([
-        fetchTasks({ status: 'UNASSIGNED' }),
-        fetchTasks({ status: 'IN_PROGRESS' }),
-        fetchTasks({ status: 'PENDING_INSPECTION' }),
-        fetchTasks({ assignedDate: today }),
+        fetchTasks({ status: 'UNASSIGNED', locationWide: true }),
+        fetchTasks({ status: 'IN_PROGRESS', locationWide: true }),
+        fetchTasks({ status: 'PENDING_INSPECTION', locationWide: true }),
+        fetchTasks({ assignedDate: today, locationWide: true }),
       ]);
       setColumns({
         UNASSIGNED: unassigned.content ?? [],
@@ -184,9 +191,12 @@ export default function HousekeepingPage() {
     [columns],
   );
 
-  /** Nút trên mỗi thẻ — chỉ Quản lý chi nhánh có; Giám đốc mở trang này chỉ để xem. */
+  /**
+   * Nút trên mỗi thẻ — Quản lý chi nhánh có đủ; Giám sát vận hành không có "Gỡ người" (BR-PERM-07);
+   * Giám đốc mở trang này chỉ để xem.
+   */
   function actionsFor(task) {
-    if (!canManage) return [];
+    if (!canCoordinate) return [];
     const actions = [];
 
     if (task.status === 'UNASSIGNED') {
@@ -198,9 +208,13 @@ export default function HousekeepingPage() {
       if (task.assignedDate === today) {
         actions.push({ key: 'add', label: 'Thêm người', ghost: true, onClick: () => setAssigning(task) });
       }
-      actions.push({ key: 'unassign', label: 'Gỡ người', danger: true, onClick: () => setReleasing(task) });
+      if (canManage) {
+        actions.push({ key: 'unassign', label: 'Gỡ người', danger: true, onClick: () => setReleasing(task) });
+      }
     }
-    if (task.status === 'PENDING_INSPECTION') {
+    // BR-HK-13: Giám sát không kiểm tra phòng mà chính mình nằm trong nhóm dọn.
+    const ownCleaning = supervising && (task.assignedStaffIds ?? []).includes(user?.id);
+    if (task.status === 'PENDING_INSPECTION' && !ownCleaning) {
       actions.push({ key: 'inspect', label: 'Kiểm tra', onClick: () => setInspecting(task) });
     }
     return actions;
@@ -218,6 +232,14 @@ export default function HousekeepingPage() {
           <h1>Công việc dọn phòng</h1>
         </div>
       </div>
+
+      {supervising && (
+        <div className="alert alert--info" role="note">
+          Bạn điều phối với quyền <b>Giám sát vận hành</b>: giao việc, thêm người và kiểm tra phòng — chỉ trong
+          ngày bạn có ca. Gỡ người khỏi việc dọn do Quản lý làm; phòng bạn nằm trong nhóm dọn thì Quản lý hoặc
+          Giám sát khác kiểm tra.
+        </div>
+      )}
 
       {banner && (
         <div className={`alert alert--${banner.type}`} role="status">
@@ -245,6 +267,7 @@ export default function HousekeepingPage() {
       {view === 'staff' && (
         <CleaningDayBoard
           today={today}
+          canCoordinate={canCoordinate}
           canManage={canManage}
           version={version}
           actionsFor={actionsFor}

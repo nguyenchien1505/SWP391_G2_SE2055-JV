@@ -19,6 +19,8 @@ import CleaningSchedulePage from './pages/rooms/CleaningSchedulePage';
 import SchedulePage from './pages/scheduling/SchedulePage';
 import ScheduleRulesPage from './pages/scheduling/ScheduleRulesPage';
 import MySchedulePage from './pages/scheduling/MySchedulePage';
+import MyLeavePage from './pages/scheduling/MyLeavePage';
+import LeaveReviewPage from './pages/scheduling/LeaveReviewPage';
 import ChainRoomSummary from './components/rooms/ChainRoomSummary';
 import HotelOpsSummary from './components/rooms/HotelOpsSummary';
 import ReserveManagerPage from './pages/ReserveManagerPage';
@@ -26,7 +28,7 @@ import AssetCategoriesPage from './pages/AssetCategoriesPage';
 import OrganizationCatalogPage from './pages/OrganizationCatalogPage';
 import MyDamageReportsPage from './pages/MyDamageReportsPage';
 import { homePathFor } from './homePath';
-import { canReportDamage, hasPermission } from './permissions';
+import { canReportDamage, hasPermission, isSupervisor } from './permissions';
 import RegisterPage from './pages/RegisterPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
 import BillingPage from './pages/BillingPage';
@@ -108,6 +110,27 @@ function RequireBranchManager({ children }) {
 }
 
 /**
+ * Bảng Công việc dọn phòng — Quản lý chi nhánh và Giám sát vận hành (giao việc, kiểm tra phòng —
+ * BR-PERM-07). Giám đốc về trang chủ như {@link RequireBranchManager}. Chỉ là lớp giao diện; quyền
+ * thật do backend quyết định.
+ */
+function RequireHousekeepingBoard({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role === 'MANAGER' || user?.role === 'PLATFORM_ADMIN' || isSupervisor(user);
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
+ * Danh sách báo hỏng — Manager xử lý, Giám đốc xem, Giám sát vận hành xử lý thay Manager (BR-PERM-07).
+ * Nhân viên khác về trang chủ: họ gửi báo hỏng ở "Báo hỏng của tôi". Chỉ là lớp giao diện.
+ */
+function RequireDamageInbox({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role !== 'STAFF' || isSupervisor(user);
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
  * Quy định xếp ca & Mẫu ca — chỉ Giám đốc sửa (BR-SCH-01, BR-PERM-02). Manager đọc quy định ngay trên
  * bảng xếp lịch nên không cần vào đây. Chỉ là lớp giao diện; quyền thật do backend quyết định.
  */
@@ -135,6 +158,26 @@ function RequireCleaningSchedule({ children }) {
 function RequireStaff({ children }) {
   const { user } = useAuth();
   return user?.role === 'STAFF' ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
+ * Đơn xin nghỉ của chính mình — nhân viên và quản lý khách sạn (BR-PERM-06, BR-SCH-08). Giám đốc không có cấp
+ * trên duyệt đơn nên về trang chủ. Chỉ là lớp giao diện; quyền thật do backend quyết định.
+ */
+function RequireLeaveRequester({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role === 'STAFF' || user?.role === 'MANAGER';
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
+}
+
+/**
+ * Duyệt đơn nghỉ theo cấp — quản lý khách sạn duyệt đơn nhân viên, giám đốc duyệt đơn quản lý (BR-SCH-08).
+ * Giám sát vận hành là nhân viên nên không vào được (BR-PERM-07). Chỉ là lớp giao diện.
+ */
+function RequireLeaveApprover({ children }) {
+  const { user } = useAuth();
+  const allowed = user?.role === 'MANAGER' || user?.role === 'DIRECTOR';
+  return allowed ? children : <Navigate to={homePathFor(user)} replace />;
 }
 
 /**
@@ -280,14 +323,18 @@ export default function App() {
       <Route path="/phong" element={<Navigate to="/so-do-phong?view=list" replace />} />
       <Route path="/phong/:id" element={inShell(<RoomDetailPage />)} />
       <Route path="/so-do-phong" element={inShell(<RoomBoardPage />)} />
-      {/* Dọn phòng — BR-HK-*. Bảng lịch dọn chỉ cho Quản lý chi nhánh; "việc của tôi" không
-          chặn vai trò vì backend tự ép nhân viên về việc của chính mình (BR-PERM-05). */}
-      <Route path="/don-phong" element={inShell(<RequireBranchManager><HousekeepingPage /></RequireBranchManager>)} />
+      {/* Dọn phòng — BR-HK-*. Bảng lịch dọn cho Quản lý chi nhánh và Giám sát vận hành (BR-PERM-07);
+          "việc của tôi" không chặn vai trò vì backend tự ép nhân viên về việc của chính mình (BR-PERM-05). */}
+      <Route path="/don-phong" element={inShell(<RequireHousekeepingBoard><HousekeepingPage /></RequireHousekeepingBoard>)} />
       <Route path="/don-phong/cua-toi" element={inShell(<MyTasksPage />)} />
       <Route path="/lich-don-phong" element={inShell(<RequireCleaningSchedule><CleaningSchedulePage /></RequireCleaningSchedule>)} />
       {/* Báo hỏng của nhân viên — BR-ASSET-05. Đường tĩnh nên được ưu tiên hơn /bao-hong/:id
-          (màn xử lý của Manager) dù khai báo ở đâu. */}
+          (màn xử lý của Manager / Giám sát) dù khai báo ở đâu. */}
       <Route path="/bao-hong/cua-toi" element={inShell(<RequireDamageReporter><MyDamageReportsPage /></RequireDamageReporter>)} />
+      {/* Hộp thư báo hỏng — Manager xử lý, Giám đốc xem, Giám sát vận hành xử lý (BR-PERM-07). Nằm
+          ngoài nhóm tài sản bên dưới vì Giám sát là STAFF mà vẫn phải vào được. */}
+      <Route path="/bao-hong" element={inShell(<RequireDamageInbox><IncidentListWrapper /></RequireDamageInbox>)} />
+      <Route path="/bao-hong/:id" element={inShell(<RequireDamageInbox><IncidentWrapper /></RequireDamageInbox>)} />
       {/* Danh mục tài sản cấp Tenant — BR-ASSET-09: Giám đốc CRUD, Manager chỉ xem. */}
       <Route path="/danh-muc-tai-san" element={inShell(<RequireManagementRole><AssetCategoriesPage /></RequireManagementRole>)} />
       {/* Loại phòng, Phòng ban, Vị trí công việc — BR-ORG-06, BR-ORG-11: chỉ Giám đốc; Manager vào thấy thông báo. */}
@@ -298,6 +345,9 @@ export default function App() {
       <Route path="/quy-dinh-ca" element={inShell(<RequireDirector><ScheduleRulesPage /></RequireDirector>)} />
       {/* Nhân viên xem ca của chính mình (BR-PERM-04..06); chấm công để sau. */}
       <Route path="/lich-ca-nhan" element={inShell(<RequireStaff><MySchedulePage /></RequireStaff>)} />
+      {/* Đơn xin nghỉ — BR-SCH-06..08: nhân viên, quản lý gửi đơn của mình; quản lý / giám đốc duyệt theo cấp. */}
+      <Route path="/don-nghi" element={inShell(<RequireLeaveRequester><MyLeavePage /></RequireLeaveRequester>)} />
+      <Route path="/duyet-don-nghi" element={inShell(<RequireLeaveApprover><LeaveReviewPage /></RequireLeaveApprover>)} />
       {/* Gói dịch vụ — chỉ Giám đốc (trang tự đưa vai trò khác về trang chủ). */}
       <Route path="/goi-dich-vu" element={inShell(<BillingPage />)} />
       {/* VNPay đưa Giám đốc về đây sau khi thanh toán (?vnp_...). */}
@@ -322,8 +372,6 @@ export default function App() {
         <Route path="/tai-san/:ref" element={<DetailWrapper />} />
         <Route path="/vat-tu" element={<ConsumableWrapper />} />
         <Route path="/khu-vuc" element={<AreaWrapper />} />
-        <Route path="/bao-hong" element={<IncidentListWrapper />} />
-        <Route path="/bao-hong/:id" element={<IncidentWrapper />} />
       </Route>
 
       {/* Admin Platform Routes */}

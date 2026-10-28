@@ -1,6 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.entity;
 
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.LeaveType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -9,10 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
- * Đơn xin nghỉ — BR-SCH-06, BR-SCH-07, BR-SCH-16.
+ * Đơn xin nghỉ — BR-SCH-06, BR-SCH-07, BR-SCH-16; bản M2 thêm loại nghỉ và quỹ phép năm (BR-SCH-27..31).
  *
  * <p>DM-07: nghỉ tính theo NGÀY NGUYÊN, không hỗ trợ nửa ngày. Duyệt đơn sẽ tự gỡ
  * người khỏi các ca trùng khoảng nghỉ với lý do {@code LEAVE_APPROVED} (BR-SCH-07).
@@ -42,6 +44,11 @@ public class LeaveRequest extends AuditableEntity {
     @Column(name = "requester_id", length = 36, nullable = false)
     private UUID requesterId;
 
+    /** Phép năm (trừ quỹ) hay không lương — BR-SCH-06 bản sửa M2. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "leave_type", length = 20, nullable = false)
+    private LeaveType leaveType;
+
     /** Ngày nguyên, không nửa ngày — DM-07. */
     @Column(name = "from_date", nullable = false)
     private LocalDate fromDate;
@@ -67,5 +74,10 @@ public class LeaveRequest extends AuditableEntity {
     /** BR-SCH-16: chỉ đơn PENDING mới được người gửi tự hủy. */
     public boolean isPending() {
         return status == LeaveRequestStatus.PENDING;
+    }
+
+    /** Số ngày nghỉ, tính cả hai đầu. Với phép năm, MỌI ngày trong khoảng đều trừ quỹ (BR-SCH-31). */
+    public int days() {
+        return (int) ChronoUnit.DAYS.between(fromDate, toDate) + 1;
     }
 }

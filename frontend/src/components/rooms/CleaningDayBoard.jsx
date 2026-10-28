@@ -33,9 +33,14 @@ const ROW_ORDER = ['IN_PROGRESS', 'PENDING_INSPECTION', 'COMPLETED'];
  *
  * Mọi thao tác (giao, thêm người, gỡ, kiểm tra) do trang cha giữ để dùng chung hộp thoại với bảng theo
  * trạng thái; `version` tăng sau mỗi thao tác thì bảng tải lại.
+ *
+ * @param canCoordinate được giao việc trên bảng — Quản lý chi nhánh và Giám sát vận hành (BR-PERM-07)
+ * @param canManage     Quản lý chi nhánh: gỡ người, xếp ca. Giám sát thì câu hướng dẫn chỉ sang Quản lý.
+ *                      Giám sát cũng chỉ đọc được ca của chính mình, nên giờ ca của người khác để trống.
  */
 export default function CleaningDayBoard({
   today,
+  canCoordinate,
   canManage,
   version,
   actionsFor,
@@ -54,10 +59,10 @@ export default function CleaningDayBoard({
     Promise.all([
       fetchAssignableStaff(date),
       fetchShifts({ from: date, to: date }),
-      fetchTasks({ assignedDate: date, size: PAGE_SIZE }),
-      fetchTasks({ status: 'UNASSIGNED', size: PAGE_SIZE }),
+      fetchTasks({ assignedDate: date, size: PAGE_SIZE, locationWide: true }),
+      fetchTasks({ status: 'UNASSIGNED', size: PAGE_SIZE, locationWide: true }),
       // Tồn đọng chỉ có nghĩa khi đang xem hôm nay.
-      date === today ? fetchTasks({ status: 'IN_PROGRESS', size: PAGE_SIZE }) : null,
+      date === today ? fetchTasks({ status: 'IN_PROGRESS', size: PAGE_SIZE, locationWide: true }) : null,
     ])
       .then(([people, shifts, ofDay, unassigned, inProgress]) => {
         if (cancelled) return;
@@ -116,7 +121,9 @@ export default function CleaningDayBoard({
       .sort((a, b) => compareNatural(a.task.roomNumber, b.task.roomNumber));
   }, [data]);
 
-  const readOnly = !canManage || date < today;
+  const readOnly = !canCoordinate || date < today;
+  // Việc kẹt (tồn đọng, mất ca) phải gỡ người rồi giao lại — gỡ người chỉ Quản lý làm được.
+  const releaseHint = canManage ? 'Gỡ người rồi giao lại' : 'Báo Quản lý gỡ người rồi giao lại';
   const canAssign = canAssignOn(date, today);
   const isFuture = date > today;
 
@@ -201,7 +208,7 @@ export default function CleaningDayBoard({
                   <span className="chip">{data.backlog.length}</span>
                 </header>
                 <p className="day-panel__note">
-                  Việc hôm trước chưa xong (BR-HK-04). Gỡ người rồi giao lại cho người có ca hôm nay nếu cần.
+                  Việc hôm trước chưa xong (BR-HK-04). {releaseHint} cho người có ca hôm nay nếu cần.
                 </p>
                 {data.backlog.map((task) => (
                   <TaskCard
@@ -224,8 +231,8 @@ export default function CleaningDayBoard({
                   <span className="chip">{orphans.length}</span>
                 </header>
                 <p className="day-panel__note">
-                  Người giữ các việc này không còn ca hoặc quyền Dọn dẹp ngày {formatDate(date)}. Gỡ người rồi
-                  giao lại cho người có ca.
+                  Người giữ các việc này không còn ca hoặc quyền Dọn dẹp ngày {formatDate(date)}. {releaseHint}{' '}
+                  cho người có ca.
                 </p>
                 <ul className="staff-row__tasks">
                   {orphans.map(({ task, offShift }) => (
@@ -245,8 +252,14 @@ export default function CleaningDayBoard({
               <div className="state state--empty day-board__empty">
                 <p>Không có nhân viên dọn phòng nào có ca ngày {formatDate(date)}.</p>
                 <p className="muted">
-                  Việc dọn chỉ giao được cho người có ca và có quyền Dọn dẹp. Xếp ca ở màn{' '}
-                  <Link to="/xep-lich">Xếp lịch làm việc</Link> trước rồi quay lại giao việc.
+                  Việc dọn chỉ giao được cho người có ca và có quyền Dọn dẹp.{' '}
+                  {canManage ? (
+                    <>
+                      Xếp ca ở màn <Link to="/xep-lich">Xếp lịch làm việc</Link> trước rồi quay lại giao việc.
+                    </>
+                  ) : (
+                    'Nhờ Quản lý xếp ca trước rồi quay lại giao việc.'
+                  )}
                 </p>
               </div>
             )}
@@ -257,7 +270,10 @@ export default function CleaningDayBoard({
                   <span className="avatar" aria-hidden="true">{initials(row.person.fullName)}</span>
                   <div className="staff-row__who">
                     <b>{row.person.fullName}</b>
-                    <small>Ca {row.shiftLabel || '—'}{row.person.phone ? ` · ${row.person.phone}` : ''}</small>
+                    <small>
+                      {row.shiftLabel ? `Ca ${row.shiftLabel}` : 'Có ca trong ngày'}
+                      {row.person.phone ? ` · ${row.person.phone}` : ''}
+                    </small>
                   </div>
                   <div className="staff-row__counts">
                     <span className="chip">{row.working} đang làm</span>

@@ -180,7 +180,7 @@ export default function OrganizationCatalogPage() {
       roomType: summary(data.roomType),
       department: summary(data.department),
       position: summary(data.position),
-      positionTypes: `Lễ tân ${byType('RECEPTION')} · Dọn dẹp ${byType('HOUSEKEEPING')} · Khác ${byType('OTHER')}`,
+      positionTypes: `Lễ tân ${byType('RECEPTION')} · Dọn dẹp ${byType('HOUSEKEEPING')} · Giám sát ${byType('SUPERVISION')} · Khác ${byType('OTHER')}`,
     };
   }, [data]);
 

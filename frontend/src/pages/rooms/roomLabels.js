@@ -45,6 +45,8 @@ export const CHANGE_SOURCE = {
   RECEPTION: 'Lễ tân',
   HOUSEKEEPING: 'Nhân viên dọn',
   MANAGER: 'Quản lý',
+  // Giám sát vận hành kiểm tra phòng thay Quản lý — BR-ROOM-02 bản sửa M2.
+  SUPERVISION: 'Giám sát',
   SYSTEM: 'Hệ thống',
 };
 

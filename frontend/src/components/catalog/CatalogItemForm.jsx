@@ -8,7 +8,7 @@ export const CATALOG_KINDS = {
   position: { title: 'Vị trí công việc', icon: '🪪', placeholder: 'Ví dụ: Nhân viên lễ tân' },
 };
 
-const POSITION_TYPES = ['RECEPTION', 'HOUSEKEEPING', 'OTHER'];
+const POSITION_TYPES = ['RECEPTION', 'HOUSEKEEPING', 'SUPERVISION', 'OTHER'];
 
 /**
  * Thêm / sửa một mục danh mục (Loại phòng, Phòng ban, Vị trí công việc) — đặt trong FormModal.

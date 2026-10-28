@@ -527,6 +527,20 @@ class RoomStatusServiceTest {
             assertThat(rows.getAllValues().get(1).getReason()).isEqualTo("Nhà tắm chưa sạch");
         }
 
+        /** BR-ROOM-02 bản sửa M2: Giám sát kiểm tra thay Manager — lịch sử ghi đúng tư cách Giám sát. */
+        @Test
+        void shouldRecordSupervisionAsSourceWhenSupervisorInspects() {
+            CustomUserDetails supervisor = TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.SUPERVISION);
+            Room room = room(RoomStatus.INSPECTION);
+
+            service.applyInspection(room, InspectionResult.PASS, null, TASK_ID);
+
+            assertThat(room.getStatus()).isEqualTo(RoomStatus.AVAILABLE);
+            RoomStatusHistory row = savedHistory();
+            assertThat(row.getChangeSource()).isEqualTo(ChangeSource.SUPERVISION);
+            assertThat(row.getChangedBy()).isEqualTo(supervisor.getId());
+        }
+
         /** RESERVED → AVAILABLE có trong ma trận (hủy đặt) nhưng KHÔNG phải kết quả kiểm tra. */
         @Test
         void shouldRejectInspectionWhenRoomNotPendingInspection() {

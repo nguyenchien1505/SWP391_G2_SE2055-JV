@@ -132,13 +132,16 @@ public class RoomStatusService {
     }
 
     /**
-     * Manager kiểm tra phòng: ĐẠT → Trống/Sẵn sàng, KHÔNG ĐẠT → Chờ dọn (BR-ROOM-02, BR-HK-06).
-     * Task dọn lại khi không đạt do Housekeeping tự sinh (BR-HK-12), nên ở đây không sinh.
+     * Manager hoặc Giám sát vận hành kiểm tra phòng: ĐẠT → Trống/Sẵn sàng, KHÔNG ĐẠT → Chờ dọn
+     * (BR-ROOM-02 bản sửa M2, BR-HK-06). Nguồn ghi vào lịch sử theo tư cách người đang đăng nhập —
+     * Giám sát là nhân viên, không ghi thành Manager. Task dọn lại khi không đạt do Housekeeping tự
+     * sinh (BR-HK-12), nên ở đây không sinh.
      */
     @Transactional
     public void applyInspection(Room room, InspectionResult result, String reason, UUID taskId) {
         RoomStatus target = result == InspectionResult.PASS ? RoomStatus.AVAILABLE : RoomStatus.DIRTY;
-        transition(room, RoomStatus.INSPECTION, target, ChangeSource.MANAGER, normalize(reason), taskId);
+        ChangeSource source = SecurityUtils.isSupervisor() ? ChangeSource.SUPERVISION : ChangeSource.MANAGER;
+        transition(room, RoomStatus.INSPECTION, target, source, normalize(reason), taskId);
     }
 
     // ── Lõi ─────────────────────────────────────────────────────────────────

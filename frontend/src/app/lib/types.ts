@@ -1,5 +1,5 @@
 export type Role = "PLATFORM_ADMIN" | "DIRECTOR" | "MANAGER" | "STAFF";
-export type PositionType = "RECEPTION" | "HOUSEKEEPING" | "OTHER";
+export type PositionType = "RECEPTION" | "HOUSEKEEPING" | "SUPERVISION" | "OTHER";
 export type TenantStatus = "TRIAL" | "ACTIVE" | "PAYMENT_OVERDUE" | "SUSPENDED";
 
 export interface CurrentUser {

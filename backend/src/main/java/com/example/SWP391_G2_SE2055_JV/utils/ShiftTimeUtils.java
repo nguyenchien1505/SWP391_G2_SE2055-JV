@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 
@@ -48,6 +49,11 @@ public final class ShiftTimeUtils {
      */
     public static LocalDate todayAt(String timezone) {
         return LocalDate.now(zoneOrHanoi(timezone));
+    }
+
+    /** Giờ hiện tại theo múi giờ của một Location — cùng quy tắc lùi về giờ Hà Nội như {@link #todayAt}. */
+    public static LocalDateTime nowAt(String timezone) {
+        return LocalDateTime.now(zoneOrHanoi(timezone));
     }
 
     private static ZoneId zoneOrHanoi(String timezone) {

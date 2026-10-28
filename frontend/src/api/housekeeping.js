@@ -18,10 +18,13 @@ function withoutEmpty(params) {
  * `roomTypeName` để hiện "101 - Deluxe" và `roomStatus` (trạng thái hiện tại của phòng).
  *
  * `from` + `to` (đi cùng nhau, tính cả hai đầu) lọc theo ngày làm — lịch dọn theo tuần.
+ *
+ * `locationWide: true` — bảng điều phối: Giám sát vận hành xem cả lịch dọn của khách sạn mình
+ * (BR-PERM-07) thay vì chỉ việc có mình trong nhóm. Vai trò khác backend bỏ qua cờ này.
  */
-export async function fetchTasks({ status, taskType, assignedDate, from, to, page = 0, size = 50, sort } = {}) {
+export async function fetchTasks({ status, taskType, assignedDate, from, to, locationWide, page = 0, size = 50, sort } = {}) {
   const { data } = await api.get('/housekeeping/tasks', {
-    params: withoutEmpty({ status, taskType, assignedDate, from, to, page, size, sort }),
+    params: withoutEmpty({ status, taskType, assignedDate, from, to, locationWide, page, size, sort }),
   });
   return data;
 }
@@ -35,7 +38,7 @@ export async function fetchTask(id) {
  * GET /housekeeping/tasks/assignable-staff?date= — nhân viên dọn phòng gán được việc trong ngày
  * đó: đang làm việc, cùng khách sạn, và CÓ CA ngày đó (BR-HK-03).
  *
- * Trả về MẢNG (không phân trang). Chỉ Quản lý chi nhánh gọi được.
+ * Trả về MẢNG (không phân trang). Chỉ Quản lý chi nhánh và Giám sát vận hành gọi được.
  */
 export async function fetchAssignableStaff(date) {
   const { data } = await api.get('/housekeeping/tasks/assignable-staff', { params: { date } });

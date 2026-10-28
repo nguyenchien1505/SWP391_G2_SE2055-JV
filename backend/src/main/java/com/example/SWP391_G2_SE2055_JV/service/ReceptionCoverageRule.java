@@ -90,6 +90,21 @@ public class ReceptionCoverageRule {
             name, templateName(leaving.getSourceTemplateId()), leaving.getShiftDate().format(DAY), name));
     }
 
+    /**
+     * BR-SCH-29 (duyệt đơn nghỉ): KHÔNG chặn, chỉ hỏi — gỡ người của {@code leaving} có làm ca theo mẫu đang
+     * có lễ tân thành hết lễ tân không, kể cả khi người đó là người cuối cùng của ca. Ca không theo mẫu, ca
+     * chưa giao người, hay ca vốn đã thiếu lễ tân thì trả {@code false}.
+     */
+    public boolean losesOnlyReceptionist(Shift leaving) {
+        if (leaving.getSourceTemplateId() == null || leaving.getStaffId() == null) {
+            return false;
+        }
+        Set<UUID> before = crewOf(leaving.getLocationId(), leaving.getShiftDate(), leaving.getSourceTemplateId(), null);
+        Set<UUID> after = crewOf(leaving.getLocationId(), leaving.getShiftDate(), leaving.getSourceTemplateId(),
+            leaving.getId());
+        return hasReceptionist(before) && !hasReceptionist(after);
+    }
+
     /** Người đang có trong ca, trừ slot {@code excludeShiftId} (nếu có). */
     private Set<UUID> crewOf(UUID locationId, LocalDate date, UUID templateId, UUID excludeShiftId) {
         Set<UUID> crew = new HashSet<>();
