@@ -9,15 +9,16 @@ import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * Ai nhận được task dọn phòng trong một ngày — BR-HK-02, BR-HK-03, BR-PERM-05.
  *
- * <p>Điều kiện ở đây là BẢN SAO ĐÚNG của {@code HousekeepingService.assertCanReceiveTask}: nhân
- * viên đang làm việc, cùng Location với phòng, được Manager cấp quyền Dọn dẹp, và CÓ CA trong
- * ngày đó.
+ * <p>Điều kiện ở đây là BẢN SAO ĐÚNG của {@code HousekeepingService.assertCanReceiveTask} (cùng
+ * {@code CleaningWorkDayRule.assertIsCurrentWorkDay}): nhân viên đang làm việc, cùng Location với
+ * phòng, được Manager cấp quyền Dọn dẹp, và CÓ CA trong ngày đó tại chính Location đó.
  * Nhờ vậy mọi người hiện ra trong hộp thoại phân công đều gán được — Manager không bấm rồi mới
  * nhận lỗi. Đổi luật ở một nơi thì phải đổi cả hai.
  *
@@ -43,7 +44,8 @@ public interface AssignableStaffRepository extends Repository<User, UUID> {
           and u.role = :role
           and u.status = :status
           and :permission member of u.permissions
-          and exists (select 1 from Shift s where s.staffId = u.id and s.shiftDate = :date)
+          and exists (select 1 from Shift s
+                      where s.staffId = u.id and s.locationId = :locationId and s.shiftDate = :date)
         order by u.fullName
         """)
     List<User> findAssignable(@Param("tenantId") UUID tenantId,
@@ -52,4 +54,29 @@ public interface AssignableStaffRepository extends Repository<User, UUID> {
                               @Param("role") Role role,
                               @Param("status") UserStatus status,
                               @Param("permission") StaffPermission permission);
+
+    /**
+     * Như {@link #findAssignable} nhưng chỉ người đang làm DỞ ca qua đêm bắt đầu ngày {@code date} —
+     * ca chưa tới giờ kết thúc ({@code now} theo giờ khách sạn). Hộp phân công dùng cho lựa chọn "Ca đêm
+     * từ hôm qua" (BR-SCH-03, chốt 28/10/2026).
+     */
+    @Query("""
+        select u from User u
+        where u.tenantId = :tenantId
+          and u.locationId = :locationId
+          and u.role = :role
+          and u.status = :status
+          and :permission member of u.permissions
+          and exists (select 1 from Shift s
+                      where s.staffId = u.id and s.locationId = :locationId and s.shiftDate = :date
+                        and s.overnight = true and s.endTime > :now)
+        order by u.fullName
+        """)
+    List<User> findOnOvernightShift(@Param("tenantId") UUID tenantId,
+                                    @Param("locationId") UUID locationId,
+                                    @Param("date") LocalDate date,
+                                    @Param("now") LocalTime now,
+                                    @Param("role") Role role,
+                                    @Param("status") UserStatus status,
+                                    @Param("permission") StaffPermission permission);
 }

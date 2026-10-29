@@ -9,11 +9,14 @@ public enum ChangeSource {
     /** Lễ tân: đặt trước, check-in, check-out. */
     RECEPTION,
 
-    /** Nhân viên dọn: bấm hoàn thành dọn. */
+    /** Nhân viên dọn: bấm hoàn thành dọn, hoặc trả lại việc đã tự nhận (BR-HK-17). */
     HOUSEKEEPING,
 
     /** Manager: kiểm tra phòng, vào/ra trạng thái Không khả dụng. */
     MANAGER,
+
+    /** Giám sát vận hành: kiểm tra phòng thay Manager (BR-ROOM-02 bản sửa M2). */
+    SUPERVISION,
 
     /** Hệ thống: tự động khi assign task dọn, hoặc khi task bị gỡ người giữa chừng. */
     SYSTEM

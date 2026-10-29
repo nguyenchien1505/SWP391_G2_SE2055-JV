@@ -23,7 +23,14 @@ public enum StaffPermission {
     RECEPTION,
 
     /** Dọn dẹp — nhận task dọn phòng, bấm hoàn thành (BR-PERM-05). */
-    HOUSEKEEPING;
+    HOUSEKEEPING,
+
+    /**
+     * Giám sát vận hành — làm thay Manager phần dọn phòng và báo hỏng: kiểm tra phòng sau dọn, gán
+     * task dọn, xem và đóng báo hỏng; chỉ trong ngày có ca (BR-PERM-07, chốt 19/10/2026). Tick kèm
+     * được Lễ tân / Dọn dẹp (BR-ORG-09 bản sửa M2).
+     */
+    SUPERVISION;
 
     /** Authority tương ứng trong session. */
     public String authority() {
@@ -37,6 +44,9 @@ public enum StaffPermission {
         }
         if (type == PositionType.HOUSEKEEPING) {
             return EnumSet.of(HOUSEKEEPING);
+        }
+        if (type == PositionType.SUPERVISION) {
+            return EnumSet.of(SUPERVISION);
         }
         return EnumSet.noneOf(StaffPermission.class);
     }

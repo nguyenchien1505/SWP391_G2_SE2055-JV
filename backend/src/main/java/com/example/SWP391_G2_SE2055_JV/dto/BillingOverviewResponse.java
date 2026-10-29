@@ -48,4 +48,7 @@ public class BillingOverviewResponse {
 
     /** Bảng giá đang hiệu lực hôm nay — dùng khi mua gói lần đầu. */
     private PricingConfigResponse currentPricing;
+
+    /** Số ngày dùng thử theo cấu hình hệ thống — hiển thị ở lựa chọn "Dùng thử" của Tenant mới. */
+    private int trialDays;
 }

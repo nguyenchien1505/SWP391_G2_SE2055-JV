@@ -201,11 +201,11 @@ class RoomValidatorTest {
         }
 
         /**
-         * Phải đếm bằng đúng {@code TenantUsageRepository.countRooms} — hàm tính CẢ phòng đã xóa
-         * mềm theo quy ước của team. Đếm lại bằng truy vấn riêng của module phòng sẽ ra số khác.
+         * Phải đếm bằng đúng {@code TenantUsageRepository.countRooms} — cùng con số với màn mức sử dụng
+         * và lúc mua gói. Đếm lại bằng truy vấn riêng của module phòng thì hai nơi có thể lệch nhau.
          */
         @Test
-        void shouldCountSoftDeletedRoomsTowardQuota() {
+        void shouldCountWithTenantUsageRepository() {
             stubQuota(10);
             when(tenantUsageRepository.countRooms(TENANT_ID)).thenReturn(10L);
 

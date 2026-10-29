@@ -13,7 +13,6 @@ import com.example.SWP391_G2_SE2055_JV.repository.SchedulePolicyRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.SubscriptionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.TenantRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
-import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +31,6 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.util.HtmlUtils;
 
 import java.io.UnsupportedEncodingException;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -44,6 +42,7 @@ import java.util.UUID;
  *   Đăng ký  → Giám đốc INACTIVE + {@link #issue} lưu 1 mã ngẫu nhiên
  *            → sau commit: gửi email có nút dẫn tới trang xác thực của FE
  *   Xác thực → {@link #verify}: tìm mã → Giám đốc ACTIVE → xóa mã (dùng một lần)
+ *            → đăng nhập: Giám đốc chọn Dùng thử hoặc Mua gói ở màn Gói dịch vụ
  * </pre>
  *
  * <p>Việc CHẶN đăng nhập khi chưa xác thực không nằm ở đây: luồng đăng nhập có sẵn đã từ chối
@@ -67,7 +66,6 @@ public class EmailVerificationService {
     private final TenantRepository                 tenantRepository;
     private final SubscriptionRepository           subscriptionRepository;
     private final SchedulePolicyRepository         schedulePolicyRepository;
-    private final PlatformConfigService            platformConfigService;
 
     /** Số ngày giữ đăng ký chưa xác thực trước khi job xóa — tính từ lúc đăng ký. */
     @Value("${app.unverified-cleanup.days:7}")
@@ -122,7 +120,7 @@ public class EmailVerificationService {
         if (user.getRole() == Role.DIRECTOR && user.getStatus() == UserStatus.INACTIVE) {
             user.setStatus(UserStatus.ACTIVE);
             userRepository.save(user);
-            startTrialFromToday(user.getTenantId());
+            resetToPlanNotChosen(user.getTenantId());
         }
         tokenRepository.delete(record);
 
@@ -130,17 +128,16 @@ public class EmailVerificationService {
     }
 
     /**
-     * Thời gian dùng thử tính từ ngày XÁC THỰC, không từ ngày đăng ký: thời gian chờ bấm link
-     * không ăn vào số ngày dùng thử. Nếu job hết hạn dùng thử đã lỡ khóa Tenant trong lúc chờ
+     * Xác thực xong, gói ở trạng thái "chưa chọn" ({@code is_trial} = true, {@code trial_ends_at} =
+     * NULL): dùng thử chỉ bắt đầu khi Giám đốc đăng nhập và chọn "Dùng thử" (BillingService.startTrial),
+     * hoặc chọn "Mua gói". Đăng ký mới đã ở sẵn trạng thái này; đăng ký tạo trước khi đổi luồng còn hạn
+     * dùng thử thì được đưa về. Nếu job hết hạn dùng thử đã lỡ khóa Tenant trong lúc chờ
      * (TRIAL_EXPIRED) thì mở lại về TRIAL — Tenant này chưa từng được dùng.
      */
-    private void startTrialFromToday(UUID tenantId) {
-        LocalDate today = ShiftTimeUtils.todayInHanoi();
-        int trialDays = platformConfigService.loadSystemConfig().getTrialDays();
-
+    private void resetToPlanNotChosen(UUID tenantId) {
         Subscription sub = subscriptionRepository.findByTenantId(tenantId).orElse(null);
-        if (sub != null && sub.isTrial()) {
-            sub.setTrialEndsAt(today.plusDays(trialDays));
+        if (sub != null && sub.isTrial() && sub.getTrialEndsAt() != null) {
+            sub.setTrialEndsAt(null);
             subscriptionRepository.save(sub);
         }
 

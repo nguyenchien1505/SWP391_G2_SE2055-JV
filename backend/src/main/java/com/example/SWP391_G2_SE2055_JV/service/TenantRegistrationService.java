@@ -32,7 +32,7 @@ import java.time.LocalDate;
  * <pre>
  *   1. tenants            status = TRIAL                                   (BR-SAAS-01, 13)
  *   2. users              role = DIRECTOR, email = email đăng ký           (BR-USER-05, BR-PERM-02)
- *   3. subscriptions      gói dùng thử, hạn = hôm nay + trialDays          (BR-SAAS-05, 08, DM-09)
+ *   3. subscriptions      gói "chưa chọn": is_trial = true, trial_ends_at = NULL (BR-SAAS-05, 08, DM-09)
  *   4. schedule_policies  bộ mặc định                                      (BR-SCH-20, DM-18)
  * </pre>
  *
@@ -76,10 +76,10 @@ public class TenantRegistrationService {
             throw new BusinessException("Email đã được sử dụng: " + email);
         }
 
-        // Hai hàm đọc của F1: số ngày dùng thử (BR-SAAS-08) và bảng giá đang hiệu lực (BR-SAAS-05).
-        // "Hôm nay" theo giờ Hà Nội — quy ước team, không dùng LocalDate.now() trần.
+        // Bảng giá đang hiệu lực (BR-SAAS-05). "Hôm nay" theo giờ Hà Nội — quy ước team, không
+        // dùng LocalDate.now() trần. Số ngày dùng thử không đọc ở đây nữa: dùng thử chỉ bắt đầu khi
+        // Giám đốc chọn "Dùng thử" sau khi đăng nhập (BillingService.startTrial).
         LocalDate    today   = ShiftTimeUtils.todayInHanoi();
-        int          trialDays = platformConfigService.loadSystemConfig().getTrialDays();
         PricingConfig pricing = platformConfigService.resolvePricing(today);
 
         // 1. Tenant. Không set suspendReason: chỉ có ý nghĩa khi SUSPENDED (BR-SAAS-16).
@@ -105,9 +105,9 @@ public class TenantRegistrationService {
             .phone(request.getPhone())
             .build());
 
-        // 3. Gói dùng thử. Ba cột giá là SNAPSHOT: Admin đổi bảng giá sau này không ảnh
-        //    hưởng gói đã chốt (BR-SAAS-05). Chu kỳ thanh toán để NULL cho tới khi trả phí.
-        LocalDate trialEndsAt = today.plusDays(trialDays);
+        // 3. Gói "chưa chọn": is_trial = true nhưng trial_ends_at = NULL. Sau khi xác thực email và
+        //    đăng nhập, Giám đốc chọn Dùng thử (đặt trial_ends_at) hoặc Mua gói (luồng mua lần đầu).
+        //    Ba cột giá là SNAPSHOT (BR-SAAS-05). Chu kỳ thanh toán để NULL cho tới khi trả phí.
         subscriptionRepository.save(Subscription.builder()
             .tenantId(tenant.getId())
             .quotaLocation(TRIAL_QUOTA_LOCATION)
@@ -117,7 +117,7 @@ public class TenantRegistrationService {
             .pricePerUser(pricing.getPricePerUser())
             .pricePerRoom(pricing.getPricePerRoom())
             .trial(true)
-            .trialEndsAt(trialEndsAt)
+            .trialEndsAt(null)
             .build());
 
         // 4. Policy mặc định (BR-SCH-20). Các giá trị 8h/48h/6/12h/1/24h nằm ở @Builder.Default
@@ -130,14 +130,14 @@ public class TenantRegistrationService {
         // 5. Mã xác thực email. Email được gửi SAU KHI transaction này commit.
         emailVerificationService.issue(director, tenant.getName());
 
-        log.info("Đăng ký Tenant mới {} ({}), Giám đốc {}, dùng thử đến {}",
-            tenant.getId(), tenant.getName(), email, trialEndsAt);
+        log.info("Đăng ký Tenant mới {} ({}), Giám đốc {}, chưa chọn gói",
+            tenant.getId(), tenant.getName(), email);
 
         return RegisterTenantResponse.builder()
             .tenantId(tenant.getId())
             .companyName(tenant.getName())
             .status(tenant.getStatus())
-            .trialEndsAt(trialEndsAt)
+            .trialEndsAt(null)
             .directorId(director.getId())
             .directorEmail(director.getEmail())
             .quotaLocation(TRIAL_QUOTA_LOCATION)

@@ -75,6 +75,28 @@ class UserPermissionsRepositoryTest {
             .containsExactlyInAnyOrder(StaffPermission.RECEPTION, StaffPermission.HOUSEKEEPING);
     }
 
+    /**
+     * V8 nới CHECK của {@code positions} và {@code user_permissions}: lưu được vị trí loại Giám sát vận
+     * hành và quyền Giám sát tick kèm Dọn dẹp (BR-ORG-08, BR-ORG-09 bản sửa M2).
+     */
+    @Test
+    void shouldStoreSupervisionPositionAndPermission() {
+        UUID department = persist(Department.builder().tenantId(tenantId).name("Giám sát").build()).getId();
+        UUID supervisorPosition = persistPosition(department, "Giám sát vận hành", PositionType.SUPERVISION);
+        UUID supervisor = persist(User.builder()
+            .tenantId(tenantId).locationId(location).positionId(supervisorPosition)
+            .permissions(EnumSet.of(StaffPermission.SUPERVISION, StaffPermission.HOUSEKEEPING))
+            .role(Role.STAFF).status(UserStatus.ACTIVE)
+            .email(uniqueEmail()).passwordHash("x").fullName("Trần Giám Sát").phone("0900000000")
+            .build()).getId();
+        em.flush();
+        em.clear();
+
+        assertThat(userRepository.findPermissionsOfUser(supervisor))
+            .containsExactlyInAnyOrder(StaffPermission.SUPERVISION, StaffPermission.HOUSEKEEPING);
+        assertThat(userRepository.isPositionHeld(supervisorPosition)).isTrue();
+    }
+
     /** Không tick ô nào = chỉ có quyền chung, dù vị trí là Lễ tân. */
     @Test
     void shouldReturnNoPermissionWhenNothingTicked() {

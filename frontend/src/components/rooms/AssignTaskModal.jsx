@@ -3,6 +3,7 @@ import { readErrorMessage } from '../../api/client';
 import { assignTask, fetchAssignableStaff } from '../../api/housekeeping';
 import { formatDate, todayIso } from '../../pages/rooms/format';
 import { taskRoomLabel, teamNames } from '../../pages/rooms/roomLabels';
+import { yesterdayIso } from '../../pages/rooms/workDay';
 
 /**
  * S-10 Phân công việc dọn — RM-14, BR-HK-02, BR-HK-03. Một phòng được NHIỀU người cùng dọn (chốt
@@ -17,17 +18,20 @@ import { taskRoomLabel, teamNames } from '../../pages/rooms/roomLabels';
  * sẽ kiểm lại: đang làm việc, cùng khách sạn, có quyền Dọn dẹp, và có ca ngày đó — ai hiện ra là gán
  * được. KHÔNG hiện giới hạn số việc mỗi người: BR-HK-02 nói rõ là không có giới hạn.
  *
- * Việc dọn chỉ giao trong ngày (phòng sang «Đang dọn» ngay khi giao — Q5), nên ngày không chọn được.
+ * Việc dọn chỉ giao cho NGÀY LÀM HIỆN TẠI (phòng sang «Đang dọn» ngay khi giao — Q5): hôm nay, hoặc
+ * ca qua đêm bắt đầu từ hôm qua mà người làm chưa hết ca (BR-SCH-03, chốt 28/10/2026). Lựa chọn "Ca đêm
+ * từ hôm qua" chỉ hiện khi đang có người như vậy; danh sách nào cũng do backend lọc (`ongoingOnly`).
  *
  * @param onAssigned nhận việc SAU KHI gán (kèm trạng thái và nhóm mới) để màn hình cập nhật ngay
  */
 export default function AssignTaskModal({ task, onClose, onAssigned }) {
   const adding = task.status === 'IN_PROGRESS';
-  // Thêm người: dọn cùng ngày với nhóm. Giao lần đầu: hôm nay.
-  const date = adding ? task.assignedDate : todayIso();
+  // Thêm người: dọn cùng ngày với nhóm. Giao lần đầu: hôm nay, hoặc ca đêm từ hôm qua.
+  const [days] = useState(() => (adding ? [task.assignedDate] : [todayIso(), yesterdayIso()]));
+  const [date, setDate] = useState(days[0]);
   const team = useMemo(() => new Set(task.assignedStaffIds ?? []), [task.assignedStaffIds]);
 
-  const [staff, setStaff] = useState(null); // null = đang tải
+  const [staffByDay, setStaffByDay] = useState(null); // null = đang tải; { ngày: người gán được ngay }
   const [selected, setSelected] = useState(() => new Set());
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -40,20 +44,36 @@ export default function AssignTaskModal({ task, onClose, onAssigned }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchAssignableStaff(date)
-      .then((data) => !cancelled && setStaff(data ?? []))
+    Promise.all(days.map((day) => fetchAssignableStaff(day, { ongoingOnly: true })))
+      .then((lists) => {
+        if (cancelled) return;
+        const byDay = Object.fromEntries(days.map((day, index) => [day, lists[index] ?? []]));
+        setStaffByDay(byDay);
+        // Hôm nay chưa ai vào ca mà ca đêm từ hôm qua còn người → mở sẵn ca đêm.
+        if (days.length > 1 && byDay[days[0]].length === 0 && byDay[days[1]].length > 0) {
+          setDate(days[1]);
+        }
+      })
       .catch((err) => {
         if (cancelled) return;
-        setStaff([]);
+        setStaffByDay(Object.fromEntries(days.map((day) => [day, []])));
         setError(readErrorMessage(err, 'Không tải được danh sách nhân viên.'));
       });
     return () => {
       cancelled = true;
     };
-  }, [date]);
+  }, [days]);
 
+  const staff = staffByDay?.[date] ?? null;
+  // Ca đêm từ hôm qua: chỉ cho chọn khi đang có người làm dở ca đó.
+  const nightShiftDay = !adding && staffByDay?.[days[1]]?.length > 0 ? days[1] : null;
   // Người đã trong nhóm thì không chọn lại.
   const candidates = (staff ?? []).filter((person) => !team.has(person.id));
+
+  function chooseDate(day) {
+    setDate(day);
+    setSelected(new Set());
+  }
 
   function toggle(id) {
     setSelected((current) => {
@@ -85,12 +105,30 @@ export default function AssignTaskModal({ task, onClose, onAssigned }) {
         <h2 id="assign-task-title">{adding ? `Thêm người dọn phòng ${room}` : `Phân công phòng ${room}`}</h2>
 
         <div className="modal__body">
+          {nightShiftDay && (
+            <div className="view-toggle" role="group" aria-label="Ngày làm">
+              {[days[0], nightShiftDay].map((day) => (
+                <button
+                  key={day}
+                  type="button"
+                  className={`view-toggle__btn ${date === day ? 'is-active' : ''}`}
+                  aria-pressed={date === day}
+                  disabled={submitting}
+                  onClick={() => chooseDate(day)}
+                >
+                  {day === nightShiftDay ? `Ca đêm từ ${formatDate(day)}` : `Ca hôm nay · ${formatDate(day)}`}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="readonly-box">
             <b>Ngày làm {formatDate(date)}</b>
             <p>
               {adding
                 ? `Đang dọn: ${teamNames(task) || '—'}. Người thêm vào dọn cùng nhóm; phòng vẫn «Đang dọn».`
-                : 'Phòng sẽ chuyển sang «Đang dọn» ngay khi phân công. Việc dọn chỉ giao được trong ngày.'}
+                : 'Phòng sẽ chuyển sang «Đang dọn» ngay khi phân công. Chỉ giao cho người đang trong ca hôm nay, '
+                  + 'hoặc ca đêm chưa kết thúc.'}
             </p>
           </div>
 
@@ -98,9 +136,11 @@ export default function AssignTaskModal({ task, onClose, onAssigned }) {
 
           {staff !== null && candidates.length === 0 && !error && (
             <div className="alert alert--info">
-              {staff.length === 0
-                ? `Không có nhân viên dọn phòng nào có ca ngày ${formatDate(date)}. Cần xếp ca trước khi giao việc.`
-                : 'Mọi người có ca hôm nay đều đã ở trong nhóm dọn phòng này.'}
+              {staff.length === 0 && adding
+                && `Không còn nhân viên dọn phòng nào trong ca của ngày làm ${formatDate(date)} để thêm vào nhóm.`}
+              {staff.length === 0 && !adding
+                && `Không có nhân viên dọn phòng nào có ca ngày ${formatDate(date)}. Cần xếp ca trước khi giao việc.`}
+              {staff.length > 0 && 'Mọi người đang trong ca đều đã ở trong nhóm dọn phòng này.'}
             </div>
           )}
 

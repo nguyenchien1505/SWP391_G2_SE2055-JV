@@ -40,9 +40,10 @@ public interface TenantUsageRepository extends Repository<Tenant, UUID> {
                     @Param("excluded") UserStatus excluded);
 
     /**
-     * MỌI phòng của Tenant, kể cả phòng đã xóa mềm ({@code is_active = false}): theo quyết định
-     * của team, phòng xóa mềm vẫn chiếm quota.
+     * Phòng đang dùng của Tenant — BR-SAAS-07 (M2): phòng đã xóa mềm ({@code is_active = false})
+     * KHÔNG chiếm quota, xóa phòng là trả lại một chỗ. Trước M2 câu này đếm cả phòng đã xóa, nên
+     * Tenant không bao giờ hạ được số phòng khi mua gói.
      */
-    @Query("SELECT COUNT(r) FROM Room r WHERE r.tenantId = :tenantId")
+    @Query("SELECT COUNT(r) FROM Room r WHERE r.tenantId = :tenantId AND r.active = true")
     long countRooms(@Param("tenantId") UUID tenantId);
 }

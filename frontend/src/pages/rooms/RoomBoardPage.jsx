@@ -105,8 +105,8 @@ export default function RoomBoardPage() {
   // Bảng chi tiết phòng chỉ đi cùng dạng sơ đồ.
   const showPanel = view === 'grid';
 
-  // Giám đốc: thêm / sửa phòng (form S-03 trong hộp thoại — sửa từ dòng danh sách hoặc bảng chi
-  // tiết) và xóa phòng ngay trên danh sách.
+  // Giám đốc: thêm / sửa phòng (form S-03 trong hộp thoại) và xóa phòng — sửa / xóa từ dòng danh
+  // sách hoặc từ bảng chi tiết.
   const roomTypes = useRoomTypes(isDirector);
   const [roomForm, setRoomForm] = useState(null); // null | { mode: 'create' } | { mode: 'edit', room }
   const [deleting, setDeleting] = useState(null);
@@ -294,6 +294,9 @@ export default function RoomBoardPage() {
   async function confirmDelete() {
     const room = deleting;
     setDeleting(null);
+    // Màn hẹp: xóa từ bảng chi tiết (đang đè lên trang) thì đóng bảng để câu báo — cả câu lỗi khi
+    // backend chặn — hiện ra.
+    if (!wideRef.current) setSelectedId(null);
     try {
       await deleteRoom(room.id);
       setBanner({ type: 'success', text: `Đã xóa phòng ${room.roomNumber}.` });
@@ -389,6 +392,7 @@ export default function RoomBoardPage() {
     onAssign: setAssigning,
     onEditNote: setNoteRoom,
     onEditInfo: editRoom,
+    onDelete: setDeleting,
     // Hộp thoại thêm tài sản hàng loạt, chọn sẵn phòng này làm vị trí đặt.
     onAddAsset: setAddingAssetTo,
     reports: reportsByRoom[selectedRoom.id] ?? [],

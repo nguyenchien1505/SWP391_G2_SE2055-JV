@@ -47,6 +47,16 @@ public class BillingController {
         return ResponseEntity.ok(billingService.listInvoices());
     }
 
+    /**
+     * Tenant mới chọn Dùng thử: bắt đầu dùng thử từ hôm nay. Trả {@code message} + {@code activated}
+     * (cùng dạng kết quả với các thao tác thanh toán để FE xử lý chung).
+     */
+    @PostMapping("/start-trial")
+    @PreAuthorize("hasRole('DIRECTOR')")
+    public ResponseEntity<PaymentUrlResponse> startTrial() {
+        return ResponseEntity.ok(billingService.startTrial());
+    }
+
     /** Mua gói lần đầu: trả link sang trang thanh toán VNPay. */
     @PostMapping("/purchase")
     @PreAuthorize("hasRole('DIRECTOR')")

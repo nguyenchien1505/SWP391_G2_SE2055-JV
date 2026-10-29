@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import { fetchTasks } from '../../api/housekeeping';
+import { fetchLeaveReviewQueue } from '../../api/leaveRequests';
 import { fetchRoomStatusSummary } from '../../api/rooms';
 import { fetchShifts } from '../../api/scheduling';
 import { fetchStaffDirectory } from '../../api/users';
@@ -14,7 +15,7 @@ import '../../pages/rooms/rooms.css';
  * trạng thái, nhân viên có ca hôm nay / tổng nhân viên, việc dọn theo trạng thái, đơn chờ duyệt.
  *
  * Đặt ở đầu /tong-quan, trên dashboard tài sản, chỉ cho Manager. Phạm vi do backend ép về khách sạn
- * của người đăng nhập. Đơn nghỉ phép / đổi ca chưa có module nên ô đó ghi "—" thay vì số 0 giả.
+ * của người đăng nhập. Ô đơn chờ duyệt mới đếm đơn nghỉ — đổi ca chưa có module.
  */
 export default function HotelOpsSummary() {
   const today = todayIso();
@@ -33,8 +34,9 @@ export default function HotelOpsSummary() {
       countTasks({ status: 'IN_PROGRESS' }),
       countTasks({ status: 'PENDING_INSPECTION' }),
       countTasks({ status: 'COMPLETED', assignedDate: today }),
+      fetchLeaveReviewQueue({ status: 'PENDING', size: 1 }).then((page) => page.totalElements ?? 0),
     ])
-      .then(([rooms, shifts, people, unassigned, inProgress, pending, doneToday]) => {
+      .then(([rooms, shifts, people, unassigned, inProgress, pending, doneToday, pendingLeave]) => {
         if (cancelled) return;
         // BR-DASH-03 đếm Staff. Quản lý không có ca (chốt 05/10/2026) — vẫn lọc theo role cho ca cũ.
         const staffIds = new Set(
@@ -49,6 +51,7 @@ export default function HotelOpsSummary() {
           inProgress,
           pending,
           doneToday,
+          pendingLeave,
         });
       })
       .catch((err) => !cancelled && setError(readErrorMessage(err, 'Không tải được số liệu vận hành.')));
@@ -102,13 +105,15 @@ export default function HotelOpsSummary() {
               tone="amber"
             />
           </Link>
-          <StatCard
-            label="Đơn chờ duyệt"
-            value="—"
-            note="Chưa có module nghỉ phép / đổi ca"
-            icon="📨"
-            tone="green"
-          />
+          <Link to="/duyet-don-nghi" className="ops-card-link">
+            <StatCard
+              label="Đơn nghỉ chờ duyệt"
+              value={stats.pendingLeave}
+              note="Đổi ca chưa có module"
+              icon="📨"
+              tone="green"
+            />
+          </Link>
         </div>
       )}
     </section>

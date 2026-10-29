@@ -330,7 +330,8 @@ export default function TenantDetailPage() {
                   {sub.trial ? (
                     <div>
                       <dt>Hết hạn dùng thử</dt>
-                      <dd>{formatDate(sub.trialEndsAt)}</dd>
+                      {/* Chưa có hạn = Giám đốc chưa chọn Dùng thử / Mua gói sau khi đăng ký. */}
+                      <dd>{sub.trialEndsAt ? formatDate(sub.trialEndsAt) : 'Chưa chọn gói'}</dd>
                     </div>
                   ) : (
                     <>

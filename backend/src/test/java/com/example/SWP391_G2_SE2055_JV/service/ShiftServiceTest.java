@@ -86,6 +86,7 @@ class ShiftServiceTest {
     @Mock SchedulePolicyValidator policyValidator;
     @Mock HousekeepingService     housekeepingService;
     @Mock ReceptionCoverageRule   receptionCoverage;
+    @Mock ShiftSwapService        shiftSwapService;
 
     @InjectMocks ShiftService service;
 
@@ -563,6 +564,32 @@ class ShiftServiceTest {
             verify(policyValidator).validate(TENANT_ID, STAFF_ID, shift, SHIFT_ID);
         }
 
+        /** Đổi ca (phương án a): ca đổi ngày giờ thì yêu cầu đổi ca đang chờ của nó tự hủy. */
+        @Test
+        void shouldExpirePendingSwapsWhenShiftMoves() {
+            givenOwnedShift(assignedShift());
+            givenSaveReturnsArgument();
+
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setStartTime(LocalTime.of(22, 0));
+            request.setEndTime(LocalTime.of(6, 0));
+            service.updateShift(SHIFT_ID, request);
+
+            verify(shiftSwapService).expirePendingForShift(SHIFT_ID);
+        }
+
+        @Test
+        void shouldKeepPendingSwapsWhenDateAndHoursStayTheSame() {
+            givenOwnedShift(assignedShift());
+            givenSaveReturnsArgument();
+
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setShiftDate(MONDAY);
+            service.updateShift(SHIFT_ID, request);
+
+            verify(shiftSwapService, never()).expirePendingForShift(any());
+        }
+
         /** DM-15: giờ check-in nằm trên bản ghi ca — đổi giờ ca sau đó là lệch dữ liệu chấm công. */
         @Test
         void shouldRejectEditingCheckedInShift() {
@@ -726,6 +753,17 @@ class ShiftServiceTest {
             verify(shiftRepository, never()).delete(any());
         }
 
+        /** Đổi ca (phương án a): ca không còn người thì yêu cầu đổi ca đang chờ của nó tự hủy. */
+        @Test
+        void shouldExpirePendingSwapsWhenUnassigning() {
+            givenOwnedShift(assignedShift());
+            givenSaveReturnsArgument();
+
+            service.unassignStaff(SHIFT_ID, UnassignedReason.MANAGER_MANUAL);
+
+            verify(shiftSwapService).expirePendingForShift(SHIFT_ID);
+        }
+
         @Test
         void shouldRejectUnassigningCheckedInShift() {
             Shift shift = assignedShift();
@@ -816,6 +854,19 @@ class ShiftServiceTest {
             assertThatThrownBy(() -> service.deleteShift(SHIFT_ID))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("việc dọn");
+            verify(shiftRepository, never()).delete(any());
+        }
+
+        /** Khóa ngoại của yêu cầu đổi ca giữ lịch sử: ca đã có yêu cầu thì chỉ gỡ người, không xóa. */
+        @Test
+        void shouldNotDeleteShiftThatHasSwapRequests() {
+            givenOwnedShift(assignedShift());
+            doThrow(new BusinessException("Ca này đã có yêu cầu đổi ca nên không xóa được"))
+                .when(shiftSwapService).assertNoSwapRequests(SHIFT_ID);
+
+            assertThatThrownBy(() -> service.deleteShift(SHIFT_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("yêu cầu đổi ca");
             verify(shiftRepository, never()).delete(any());
         }
 

@@ -59,7 +59,6 @@ export default function MyCleaningShiftBoard({
         <WorkBlock
           row={row}
           day={day}
-          today={today}
           cell={cell}
           freeTimes={freeTimes}
           onOpen={() => setOpened({ row, day, cell })}
@@ -81,7 +80,7 @@ export default function MyCleaningShiftBoard({
         label: row.name,
         start: shift?.startTime ?? null,
         end: shift?.endTime ?? null,
-        content: <CleaningCard cell={cell} today={today} onOpen={() => setOpened({ row, day, cell })} />,
+        content: <CleaningCard cell={cell} onOpen={() => setOpened({ row, day, cell })} />,
       }];
     });
   }
@@ -191,7 +190,7 @@ export default function MyCleaningShiftBoard({
  * Thẻ chi tiết một ca trên thời khóa biểu điện thoại: các phòng dọn (số phòng, loại, trạng thái) và nút
  * xem chi tiết — có cả người dọn cùng. Ca chưa có phòng chỉ ghi «Chưa có phòng».
  */
-function CleaningCard({ cell, today, onOpen }) {
+function CleaningCard({ cell, onOpen }) {
   const { tasks } = cell;
   return (
     <>
@@ -208,7 +207,7 @@ function CleaningCard({ cell, today, onOpen }) {
               <li key={task.id} className={`room-tone--${cleaningTone(task)}`}>
                 <span className="tt-rooms__name">{taskRoomLabel(task)}</span>
                 <CleaningStatusBadge task={task} />
-                {task.status === 'IN_PROGRESS' && task.assignedDate < today && (
+                {task.overdue && (
                   <span className="clean-entry__flag">Tồn đọng</span>
                 )}
               </li>
@@ -241,7 +240,7 @@ function IdleShiftBlock({ shifts }) {
 }
 
 /** Khối việc của một ca: số phòng, từng phòng "305 - Deluxe" kèm trạng thái. Bấm để xem chi tiết. */
-function WorkBlock({ row, day, today, cell, freeTimes, onOpen }) {
+function WorkBlock({ row, day, cell, freeTimes, onOpen }) {
   const tone = row.start ? shiftTone(row.start) : 'morning';
   return (
     <button
@@ -260,7 +259,7 @@ function WorkBlock({ row, day, today, cell, freeTimes, onOpen }) {
           <span key={task.id} className={`work-block__room room-tone--${cleaningTone(task)}`}>
             <span className="work-block__name">{taskRoomLabel(task)}</span>
             <CleaningStatusBadge task={task} />
-            {task.status === 'IN_PROGRESS' && task.assignedDate < today && (
+            {task.overdue && (
               <span className="clean-entry__flag">Tồn đọng</span>
             )}
           </span>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { STAFF_PERMISSIONS, canReportDamage, hasPermission } from '../permissions';
+import { STAFF_PERMISSIONS, canReportDamage, hasPermission, isSupervisor } from '../permissions';
 import Logo from './Logo';
 
 const ROLE_LABEL = {
@@ -94,12 +94,21 @@ const NAV_GROUPS = [
       // Schedule Policy và Shift Template — Giám đốc (BR-SCH-01, BR-SCH-22).
       { label: 'Quy định & Mẫu ca', to: '/quy-dinh-ca', visible: isDirector },
       { label: 'Xếp lịch làm việc', to: '/xep-lich', visible: isBranchManager },
-      { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
+      // Yêu cầu đổi ca đồng nghiệp đã đồng ý — BR-SCH-09 (Milestone 2).
+      { label: 'Duyệt đổi ca', to: '/duyet-doi-ca', visible: isBranchManager },
+      // Giám sát vận hành giao việc và kiểm tra phòng thay Quản lý (BR-PERM-07).
+      { label: 'Công việc dọn phòng', to: '/don-phong', visible: (user) => isBranchManager(user) || isSupervisor(user) },
       { label: 'Lịch dọn phòng', to: '/lich-don-phong', visible: isBranchManager },
       { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: (user) => isStaff(user) && isHousekeeper(user) },
       { label: 'Lịch dọn của tôi', to: '/lich-don-phong', visible: (user) => isStaff(user) && isHousekeeper(user) },
       // Chỉ xem lịch — chấm công (check-in / check-out) để sau.
       { label: 'Lịch cá nhân', to: '/lich-ca-nhan', visible: hasShifts },
+      // Gửi / trả lời yêu cầu đổi ca với đồng nghiệp — BR-SCH-09..11 (Milestone 2).
+      { label: 'Đổi ca', to: '/doi-ca', visible: hasShifts },
+      // Đơn xin nghỉ của chính mình — nhân viên và quản lý khách sạn (BR-PERM-06, BR-SCH-08).
+      { label: 'Đơn xin nghỉ', to: '/don-nghi', visible: (user) => isStaff(user) || isManager(user) },
+      // Duyệt theo cấp: quản lý duyệt đơn nhân viên, giám đốc duyệt đơn quản lý (BR-SCH-08).
+      { label: 'Duyệt đơn nghỉ', to: '/duyet-don-nghi', visible: (user) => isManager(user) || isDirector(user) },
     ],
   },
   {
@@ -121,8 +130,9 @@ const NAV_GROUPS = [
       { label: 'Tổng quan tài sản', to: '/tong-quan', visible: isManagement },
       { label: 'Quản lý tài sản', to: '/tai-san', visible: isManagement },
       { label: 'Vật tư tiêu hao', to: '/vat-tu', visible: isManagement },
-      // Màn xử lý báo hỏng của Manager (Giám đốc xem); nhân viên gửi báo hỏng ở mục riêng bên dưới.
-      { label: 'Báo hỏng', to: '/bao-hong', visible: isManagement },
+      // Màn xử lý báo hỏng của Manager và Giám sát vận hành (Giám đốc xem); nhân viên gửi báo hỏng ở mục
+      // riêng bên dưới.
+      { label: 'Báo hỏng', to: '/bao-hong', visible: (user) => isManagement(user) || isSupervisor(user) },
       // Lễ tân / Dọn dẹp — BR-ASSET-05. Tài sản trong phòng báo ở chi tiết phòng; trang này có
       // tài sản khu vực và các phiếu đã gửi.
       { label: 'Báo hỏng của tôi', to: '/bao-hong/cua-toi', visible: canReportDamage },
@@ -163,9 +173,13 @@ export default function AppLayout({ children }) {
   }, [navOpen]);
 
   // Bỏ cả nhóm khi vai trò này không còn mục nào — không để tiêu đề nhóm trơ trọi.
+  // Giám đốc của Tenant mới chưa chọn Dùng thử / Mua gói chỉ thấy mục Gói dịch vụ.
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !item.visible || item.visible(user)),
+    items: group.items.filter(
+      (item) =>
+        (!user?.planRequired || item.to === '/goi-dich-vu') && (!item.visible || item.visible(user)),
+    ),
   })).filter((group) => group.items.length > 0);
 
   return (

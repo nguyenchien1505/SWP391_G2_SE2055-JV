@@ -61,6 +61,12 @@ public class CustomUserDetails implements UserDetails {
     private final boolean      readOnly;
 
     /**
+     * Giám đốc của Tenant mới chưa chọn Dùng thử / Mua gói (xem {@link TenantAccessPolicy});
+     * {@link CurrentUserRefreshFilter} chỉ cho vào Gói dịch vụ khi cờ này bật.
+     */
+    private final boolean      planRequired;
+
+    /**
      * So mọi trường ảnh hưởng tới phân quyền — dùng để biết principal trong session có
      * cần thay bằng bản mới đọc từ DB hay không (xem {@link CurrentUserRefreshFilter}).
      */
@@ -71,6 +77,7 @@ public class CustomUserDetails implements UserDetails {
             && mustChangePassword == other.mustChangePassword
             && enabled == other.enabled
             && readOnly == other.readOnly
+            && planRequired == other.planRequired
             && Objects.equals(tenantId, other.tenantId)
             && Objects.equals(locationId, other.locationId)
             && Objects.equals(positionId, other.positionId);

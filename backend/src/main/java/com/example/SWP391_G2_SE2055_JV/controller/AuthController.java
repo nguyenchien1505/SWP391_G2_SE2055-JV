@@ -46,6 +46,8 @@ public class AuthController {
         // Tenant hết hạn dùng thử / thanh toán thất bại: Giám đốc chỉ được xem, frontend hiển thị
         // thông báo và ẩn các nút thao tác ghi.
         body.put("readOnly",           user.isReadOnly());
+        // Tenant mới chưa chọn Dùng thử / Mua gói: frontend chỉ mở trang Gói dịch vụ.
+        body.put("planRequired",       user.isPlanRequired());
         return ResponseEntity.ok(body);
     }
 

@@ -2,6 +2,7 @@ package com.example.SWP391_G2_SE2055_JV.entity;
 
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
+import com.example.SWP391_G2_SE2055_JV.enums.TaskAssignmentSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
@@ -83,6 +84,11 @@ public class HousekeepingTask extends AuditableEntity {
 
     @Column(name = "assigned_at")
     private LocalDateTime assignedAt;
+
+    /** Việc được bắt đầu bằng cách nào — BR-HK-12 (sửa M2). NULL khi chưa phân công. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "assignment_source", length = 20)
+    private TaskAssignmentSource assignmentSource;
 
     @Column(name = "completed_at")
     private LocalDateTime completedAt;

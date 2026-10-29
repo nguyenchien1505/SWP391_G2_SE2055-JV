@@ -4,7 +4,7 @@ import { readErrorMessage } from '../../api/client';
 import { fetchRoomHistory } from '../../api/rooms';
 import { assetService } from '../../services/assetApi';
 import { formatDateTime } from '../../pages/rooms/format';
-import { LOCK, roomActionsFor } from '../../pages/rooms/roomActions';
+import { LOCK, canDeleteRoom, roomActionsFor } from '../../pages/rooms/roomActions';
 import { whyNoRoomActions } from '../../pages/rooms/roomBoard';
 import { changeSourceLabel, roomStatusMeta } from '../../pages/rooms/roomLabels';
 import AssetReportList from '../damage-reports/AssetReportList';
@@ -28,8 +28,8 @@ const HISTORY_PREVIEW = 5;
  * người làm; ngay dưới nút đổi trạng thái là hàng công cụ Khóa / Mở khóa phòng, Thêm tài sản, Kiểm
  * kê. Các thao tác khác trên việc dọn (kiểm tra phòng, thêm / gỡ người dọn) ở màn Công việc dọn phòng.
  *
- * Giám đốc: nút "Sửa thông tin" mở form S-03 (RM-03, BR-ROOM-04) — cùng form với nút Sửa ở dạng
- * danh sách, để khỏi phải rời sơ đồ.
+ * Giám đốc: nút "Sửa thông tin" mở form S-03 (RM-03, BR-ROOM-04) và "Xóa phòng" (RM-05, BR-ROOM-08)
+ * — cùng form / hộp thoại xác nhận với nút Sửa / Xóa ở dạng danh sách, để khỏi phải rời sơ đồ.
  *
  * Nút đổi trạng thái vẽ từ `room.allowedTargets` do backend tính (F2) — không có dãy nút "chuyển
  * nhanh sang trạng thái bất kỳ": Đang dọn / Chờ kiểm tra chỉ đổi qua việc dọn (BR-ROOM-02).
@@ -38,6 +38,7 @@ const HISTORY_PREVIEW = 5;
  * @param tasks     việc dọn ĐANG MỞ của phòng (chỉ Quản lý chi nhánh có dữ liệu này) — dùng để
  *                  biết việc nào chưa phân công
  * @param onEditInfo chỉ Giám đốc: bấm "Sửa thông tin" → form sửa phòng (trang cha vẽ hộp thoại)
+ * @param onDelete   chỉ Giám đốc: bấm "Xóa phòng" → hộp thoại xác nhận (trang cha vẽ và gọi API)
  * @param historyKey đổi giá trị để nạp lại lịch sử sau mỗi lần phòng đổi trạng thái
  * @param assetsKey  đổi giá trị để nạp lại danh sách tài sản sau khi kiểm kê
  * @param reports    báo hỏng của tài sản trong phòng (chỉ Quản lý chi nhánh) — có thì hiện nút
@@ -62,6 +63,7 @@ export default function RoomBoardPanel({
   onAssign,
   onEditNote,
   onEditInfo,
+  onDelete,
   onAddAsset,
   onAuditAssets,
   reports = [],
@@ -163,13 +165,24 @@ export default function RoomBoardPanel({
               </button>
             </div>
           )}
-          {/* BR-ROOM-04: Giám đốc sửa mọi thông tin phòng (số phòng, tầng, loại, sức chứa, ghi chú). */}
+          {/* BR-ROOM-04: Giám đốc sửa mọi thông tin phòng (số phòng, tầng, loại, sức chứa, ghi chú).
+              BR-ROOM-08: nút Xóa chỉ hiện khi phòng còn xóa được, giống dòng danh sách và S-04. */}
           {role.isDirector && (
             <div className="board-panel__tools">
               <button type="button" className="btn btn--ghost board-tool" onClick={() => onEditInfo(room)}>
                 <span className="material-symbols-outlined" aria-hidden="true">edit</span>
                 Sửa thông tin
               </button>
+              {canDeleteRoom(room) && (
+                <button
+                  type="button"
+                  className="btn btn--ghost board-tool is-danger"
+                  onClick={() => onDelete(room)}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                  Xóa phòng
+                </button>
+              )}
             </div>
           )}
         </section>

@@ -6,6 +6,7 @@
 export const STAFF_PERMISSIONS = [
   { value: 'RECEPTION', label: 'Lễ tân', hint: 'Đặt / hủy đặt phòng, check-in, check-out' },
   { value: 'HOUSEKEEPING', label: 'Dọn dẹp', hint: 'Nhận việc dọn phòng, bấm hoàn thành' },
+  { value: 'SUPERVISION', label: 'Giám sát', hint: 'Giao việc dọn, kiểm tra phòng, xử lý báo hỏng — trong ngày có ca' },
 ];
 
 const LABEL = Object.fromEntries(STAFF_PERMISSIONS.map((p) => [p.value, p.label]));
@@ -28,6 +29,15 @@ export function permissionLabel(value) {
 /** Người đang đăng nhập có quyền này không — đọc từ `/auth/me` (`permissions`). */
 export function hasPermission(user, permission) {
   return (user?.permissions ?? []).includes(permission);
+}
+
+/**
+ * Giám sát vận hành (BR-PERM-07): nhân viên được tick quyền Giám sát — làm thay Quản lý phần giao việc
+ * dọn, kiểm tra phòng và xử lý báo hỏng trong khách sạn của mình, chỉ trong ngày có ca. Vẫn là STAFF:
+ * không duyệt đơn, không sửa công, không xem lương.
+ */
+export function isSupervisor(user) {
+  return user?.role === 'STAFF' && hasPermission(user, 'SUPERVISION');
 }
 
 /**

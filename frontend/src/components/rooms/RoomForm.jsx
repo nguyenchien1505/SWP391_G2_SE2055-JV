@@ -187,7 +187,7 @@ export default function RoomForm({ editing, locations, roomTypes, onSubmit, onCa
               Luôn ở trạng thái <b>Chờ dọn</b> và tự sinh một việc dọn phòng chưa phân công.
             </p>
             <small className="muted">
-              Phòng đã xóa vẫn tính vào hạn mức phòng của gói dịch vụ.
+              Hạn mức phòng của gói dịch vụ chỉ tính phòng đang dùng — phòng đã xóa không tính.
             </small>
           </>
         )}

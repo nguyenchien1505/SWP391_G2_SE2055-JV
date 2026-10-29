@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 
@@ -50,6 +51,11 @@ public final class ShiftTimeUtils {
         return LocalDate.now(zoneOrHanoi(timezone));
     }
 
+    /** Giờ hiện tại theo múi giờ của một Location — cùng quy tắc lùi về giờ Hà Nội như {@link #todayAt}. */
+    public static LocalDateTime nowAt(String timezone) {
+        return LocalDateTime.now(zoneOrHanoi(timezone));
+    }
+
     private static ZoneId zoneOrHanoi(String timezone) {
         if (timezone == null || timezone.isBlank()) {
             return HANOI_ZONE;
@@ -59,6 +65,20 @@ public final class ShiftTimeUtils {
         } catch (DateTimeException ex) {
             return HANOI_ZONE;
         }
+    }
+
+    /**
+     * Ca có thuộc "ngày làm hiện tại" không — BR-SCH-03: ca qua đêm thuộc ngày BẮT ĐẦU ca, nên ca
+     * 22:00–06:00 ngày D vẫn là ca đang làm lúc 02:00 ngày D+1, cho tới đúng giờ kết thúc. Dùng chung
+     * cho Giám sát trực ca (BR-PERM-07) và việc dọn (BR-HK-03, BR-HK-04).
+     *
+     * @param now giờ hiện tại theo múi giờ của khách sạn có ca này
+     */
+    public static boolean isInCurrentWorkDay(LocalDate shiftDate, boolean overnight, LocalTime endTime,
+                                             LocalDateTime now) {
+        LocalDate today = now.toLocalDate();
+        return shiftDate.equals(today)
+            || (shiftDate.equals(today.minusDays(1)) && overnight && now.toLocalTime().isBefore(endTime));
     }
 
     /** Ca kết thúc vào ngày hôm sau khi giờ kết thúc không lớn hơn giờ bắt đầu. */

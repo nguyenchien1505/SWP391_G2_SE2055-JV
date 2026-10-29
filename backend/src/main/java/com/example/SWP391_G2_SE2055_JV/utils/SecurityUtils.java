@@ -100,4 +100,13 @@ public final class SecurityUtils {
         CustomUserDetails user = getCurrentUserOrNull();
         return user != null && user.hasPermission(permission);
     }
+
+    /**
+     * Người đang đăng nhập thao tác với tư cách Giám sát vận hành: nhân viên được tick quyền Giám sát
+     * (BR-PERM-07). Giám sát vẫn là STAFF — không phải Manager — nên mọi nơi cho Giám sát làm việc
+     * của Manager phải hỏi hàm này, không hỏi role.
+     */
+    public static boolean isSupervisor() {
+        return hasRole(Role.STAFF) && hasPermission(StaffPermission.SUPERVISION);
+    }
 }

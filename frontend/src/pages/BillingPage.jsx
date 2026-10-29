@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { readErrorMessage } from '../api/client';
-import { fetchBillingOverview, fetchInvoices, purchasePlan, renewPlan, upgradePlan } from '../api/billing';
+import { fetchBillingOverview, fetchInvoices, purchasePlan, renewPlan, startTrial, upgradePlan } from '../api/billing';
 import { homePathFor } from '../homePath';
 import TenantStatusBadge, { SUSPEND_REASON_LABEL } from '../components/TenantStatusBadge';
+import ConfirmDialog from '../components/ConfirmDialog';
+import FormModal from '../components/FormModal';
 import { formatDate, formatDateTime, formatVnd } from './Admin_platform/format';
 import './Admin_platform/admin.css';
 
@@ -217,6 +219,112 @@ function BuyPlanPanel({ overview, retry }) {
   );
 }
 
+/**
+ * Tenant mới (đã xác thực email, chưa chọn gói): chọn Dùng thử hoặc Mua gói.
+ *  - Dùng thử → backend bắt đầu dùng thử từ hôm nay (số ngày theo cấu hình hệ thống), đọc lại quyền
+ *    để mở toàn bộ menu rồi về trang chủ.
+ *  - Mua gói  → pop-up chọn số lượng (dùng lại BuyPlanPanel) → VNPay. Thất bại / hủy thì trang kết
+ *    quả đưa về đây, số lượng lần trước được điền sẵn khi mở lại pop-up.
+ */
+function ChoosePlanPanel({ overview, retry }) {
+  const { refresh } = useAuth();
+  const navigate = useNavigate();
+  const [buying, setBuying] = useState(false);
+  const [confirmTrial, setConfirmTrial] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+
+  async function handleStartTrial() {
+    setConfirmTrial(false);
+    setError('');
+    setSubmitting(true);
+    try {
+      // activated = true: đã bắt đầu dùng thử, hoặc giao dịch mua gói trước đó hóa ra đã thành công.
+      const { message, activated } = await startTrial();
+      if (activated) {
+        setInfo(message);
+        const me = await refresh();
+        setTimeout(() => navigate(homePathFor(me), { replace: true }), 1500);
+        return;
+      }
+      setError(message);
+    } catch (err) {
+      setError(readErrorMessage(err, 'Không bắt đầu được dùng thử.'));
+    }
+    setSubmitting(false);
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel__head">
+        <h2>Chọn cách bắt đầu</h2>
+      </div>
+      <p className="muted">Chọn dùng thử miễn phí hoặc mua gói ngay để bắt đầu sử dụng hệ thống.</p>
+      <div className="meter-grid">
+        <div className="meter">
+          <div className="meter__label">
+            <span>Dùng thử miễn phí</span>
+            <span aria-hidden="true">🎁</span>
+          </div>
+          <p className="meter__value">
+            {overview.trialDays} <small>ngày</small>
+          </p>
+          <p className="meter__note">
+            Tối đa {overview.quotaLocation} khách sạn, {overview.quotaUser} nhân viên, {overview.quotaRoom} phòng.
+            Tính từ hôm nay, có thể mua gói bất cứ lúc nào.
+          </p>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={submitting}
+            onClick={() => setConfirmTrial(true)}
+          >
+            {submitting ? 'Đang xử lý…' : 'Dùng thử'}
+          </button>
+        </div>
+        <div className="meter">
+          <div className="meter__label">
+            <span>Mua gói</span>
+            <span aria-hidden="true">💳</span>
+          </div>
+          <p className="meter__value">
+            {CYCLE_DAYS} <small>ngày / kỳ</small>
+          </p>
+          <p className="meter__note">
+            Tự chọn số khách sạn, nhân viên, phòng. Thanh toán qua VNPay, kỳ 30 ngày tính từ ngày thanh toán.
+          </p>
+          <button type="button" className="btn btn--primary" disabled={submitting} onClick={() => setBuying(true)}>
+            Mua gói
+          </button>
+        </div>
+      </div>
+      <PaymentFeedback error={error} info={info} />
+
+      {confirmTrial && (
+        <ConfirmDialog
+          title="Bắt đầu dùng thử?"
+          message={
+            <>
+              Thời gian dùng thử <b>{overview.trialDays} ngày</b> bắt đầu tính từ hôm nay. Hết hạn mà chưa mua
+              gói thì tài khoản bị khóa cho tới khi thanh toán.
+            </>
+          }
+          confirmLabel="Bắt đầu dùng thử"
+          confirmTone="primary"
+          onCancel={() => setConfirmTrial(false)}
+          onConfirm={handleStartTrial}
+        />
+      )}
+      {buying && (
+        <FormModal onClose={() => setBuying(false)}>
+          <BuyPlanPanel overview={overview} retry={retry} />
+        </FormModal>
+      )}
+    </section>
+  );
+}
+
 /** Mua thêm quota giữa kỳ: chỉ tăng, trả chênh lệch cho số ngày còn lại tới ngày đến hạn. */
 function BuyMorePanel({ overview, retry }) {
   const [values, setValues] = useState(() => initialQuota(overview, retry));
@@ -376,6 +484,27 @@ export default function BillingPage() {
 
   const { status, suspendReason, trial } = overview;
   const adminLocked = status === 'SUSPENDED' && suspendReason === 'ADMIN_LOCKED';
+  // Tenant mới chưa chọn Dùng thử / Mua gói: gói còn dùng thử nhưng chưa có hạn dùng thử. Chưa có gói
+  // hay hóa đơn nào để hiện — chỉ hiện phần chọn Dùng thử / Mua gói.
+  const planNotChosen = trial && !overview.trialEndsAt;
+  if (planNotChosen) {
+    return (
+      <div className="page admin-page">
+        <div className="page__head">
+          <div>
+            <h1>Gói dịch vụ</h1>
+            <p className="muted">{overview.tenantName}</p>
+          </div>
+        </div>
+        {retryNotice && (
+          <div className="alert alert--warn" role="status">
+            {retryNotice}
+          </div>
+        )}
+        <ChoosePlanPanel overview={overview} retry={retry} />
+      </div>
+    );
+  }
 
   return (
     <div className="page admin-page">

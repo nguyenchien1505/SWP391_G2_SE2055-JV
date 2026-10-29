@@ -300,7 +300,7 @@ function DayCell({ day, today, cell, onOpen }) {
         <p className="clean-cell__shift">Ca {shifts.map((s) => timeRange(s.startTime, s.endTime)).join(' · ')}</p>
       )}
       {tasks.map((task) => {
-        const overdue = task.status === 'IN_PROGRESS' && task.assignedDate < today;
+        const overdue = Boolean(task.overdue);   // BR-HK-04 — cờ do backend tính (ca qua đêm)
         return (
           <button
             key={task.id}

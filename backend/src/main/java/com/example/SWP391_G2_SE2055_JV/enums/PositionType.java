@@ -15,6 +15,9 @@ public enum PositionType {
     /** Dọn dẹp — tick sẵn quyền Dọn dẹp. */
     HOUSEKEEPING,
 
+    /** Giám sát vận hành — tick sẵn quyền Giám sát (BR-ORG-08 bản sửa M2). */
+    SUPERVISION,
+
     /** Khác — không tick sẵn quyền nào; người giữ chỉ có quyền chung nếu Manager không tick thêm. */
     OTHER
 }
