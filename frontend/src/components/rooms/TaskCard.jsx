@@ -1,6 +1,8 @@
 import TaskStatusBadge from './TaskStatusBadge';
 import { formatDate } from '../../pages/rooms/format';
-import { taskSourceLabel, taskStatusMeta, teamNames, unassignedReasonLabel } from '../../pages/rooms/roomLabels';
+import {
+  assignmentSourceLabel, taskSourceLabel, taskStatusMeta, teamNames, unassignedReasonLabel,
+} from '../../pages/rooms/roomLabels';
 
 /**
  * Một việc dọn phòng dạng thẻ — S-09 / S-11 (bảng lịch dọn của Quản lý chi nhánh).
@@ -8,14 +10,12 @@ import { taskSourceLabel, taskStatusMeta, teamNames, unassignedReasonLabel } fro
  * Số phòng là thứ to nhất trên thẻ: người dùng quét bảng để tìm phòng, không phải tìm mã việc. Loại
  * phòng đi ngay sau số phòng ("301 - Deluxe") để biết phòng to nhỏ khi chia người.
  *
- * @param today      hôm nay theo ISO — để đánh dấu việc TỒN ĐỌNG (BR-HK-04)
  * @param actions    [{ key, label, danger, onClick }] — nút hiện dưới thẻ
  * @param onShowPreviousInspection  mở biên bản lần kiểm tra trước; chỉ có nghĩa với việc dọn lại
+ * @param onShowReturns  mở lịch sử trả lại; chỉ hiện khi việc đã từng bị trả lại (BR-HK-17)
  */
-export default function TaskCard({ task, today, actions = [], onShowPreviousInspection }) {
+export default function TaskCard({ task, actions = [], onShowPreviousInspection, onShowReturns }) {
   const tone = taskStatusMeta(task.status).tone;
-  // BR-HK-04: hết ca chưa xong thì việc TỒN ĐỌNG chứ không tự hủy — phải nhìn ra ngay.
-  const overdue = task.status === 'IN_PROGRESS' && task.assignedDate && task.assignedDate < today;
   const team = teamNames(task);
 
   return (
@@ -36,10 +36,14 @@ export default function TaskCard({ task, today, actions = [], onShowPreviousInsp
         <p className="task-card__meta">
           <b>{team}</b>
           {task.assignedDate ? ` · ${formatDate(task.assignedDate)}` : ''}
+          {/* BR-HK-12 (sửa M2): Quản lý giao / Giám sát giao / Tự nhận. */}
+          {assignmentSourceLabel(task.assignmentSource) ? ` · ${assignmentSourceLabel(task.assignmentSource)}` : ''}
         </p>
       )}
 
-      {overdue && (
+      {/* BR-HK-04: hết ca chưa xong thì việc TỒN ĐỌNG chứ không tự hủy — phải nhìn ra ngay. Backend tính
+          cờ này: việc của ca qua đêm bắt đầu hôm qua chưa tồn đọng khi ca chưa hết (BR-SCH-03). */}
+      {task.overdue && (
         <p className="task-card__flag">Tồn đọng từ {formatDate(task.assignedDate)}</p>
       )}
 
@@ -51,6 +55,13 @@ export default function TaskCard({ task, today, actions = [], onShowPreviousInsp
       {task.parentTaskId && onShowPreviousInspection && (
         <button type="button" className="link-btn" onClick={() => onShowPreviousInspection(task)}>
           Xem lần kiểm tra trước
+        </button>
+      )}
+
+      {/* BR-HK-17: nhóm còn người thì lần trả không vào lịch sử phòng — chỉ đọc được ở đây. */}
+      {task.returnCount > 0 && onShowReturns && (
+        <button type="button" className="link-btn" onClick={() => onShowReturns(task)}>
+          Lịch sử trả lại ({task.returnCount})
         </button>
       )}
 

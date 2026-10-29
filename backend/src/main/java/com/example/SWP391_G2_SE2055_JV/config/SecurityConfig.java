@@ -199,6 +199,11 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/housekeeping/tasks/*/inspection")
                     .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
                         hasAnyAuthority(authn, "ROLE_" + ADMIN, "ROLE_" + MANAGER, "POSITION_SUPERVISION")))
+                // Nhân viên Dọn dẹp tự nhận việc chưa phân công và trả lại việc mình đã tự nhận (BR-HK-02 bản
+                // sửa, BR-HK-17 — M2). Điều kiện ca / check-in / việc đang làm / ai được trả kiểm ở service.
+                .requestMatchers(HttpMethod.PATCH, "/housekeeping/tasks/*/claim", "/housekeeping/tasks/*/return")
+                    .access((authn, ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
+                        hasAnyAuthority(authn, "POSITION_HOUSEKEEPING")))
                 .requestMatchers(HttpMethod.GET, "/housekeeping/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers("/housekeeping/**")

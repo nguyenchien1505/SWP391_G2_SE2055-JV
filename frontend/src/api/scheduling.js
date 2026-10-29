@@ -138,6 +138,22 @@ export async function deleteShift(id) {
   await api.delete(`/scheduling/shifts/${id}`);
 }
 
+/**
+ * POST /scheduling/shifts/{id}/check-in — nhân viên vào ca của CHÍNH mình (chỉ ghi giờ — BR-DASH-01).
+ * Không gửi body: trường xác thực có mặt của chấm công M2 (BR-ATT-03) để trống. Khung giờ được vào ca
+ * do backend kiểm; câu lỗi hiện nguyên văn. Thêm cho màn "Việc của tôi" — tự nhận việc dọn đòi đã vào ca.
+ */
+export async function checkInShift(id) {
+  const { data } = await api.post(`/scheduling/shifts/${id}/check-in`);
+  return data;
+}
+
+/** POST /scheduling/shifts/{id}/check-out — kết thúc ca của chính mình; phải vào ca trước. */
+export async function checkOutShift(id) {
+  const { data } = await api.post(`/scheduling/shifts/${id}/check-out`);
+  return data;
+}
+
 // ── Đổi ca giữa hai nhân viên — BR-SCH-08..12, 18, 19, 25 (Milestone 2) ──────────
 
 /**

@@ -156,6 +156,56 @@ class AssignableStaffRepositoryTest {
             Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING)).isEmpty();
     }
 
+    /** Ca phải ở chính khách sạn của phòng — khớp luật giao việc ({@code CleaningWorkDayRule}). */
+    @Test
+    void shouldExcludeStaffWhoseShiftIsAtAnotherLocation() {
+        UUID roaming = persistHousekeeper("Đinh Ca Đà Nẵng");
+        persistShift(roaming, danang, today);
+        em.flush();
+        em.clear();
+
+        assertThat(names(findAssignable(hanoi, today))).doesNotContain("Đinh Ca Đà Nẵng");
+    }
+
+    // ── Ca qua đêm bắt đầu hôm qua — BR-SCH-03 (M2, chốt 28/10/2026) ────────
+
+    /**
+     * 02:00 sáng: người ca 22:00–06:00 hôm qua còn đang làm; người ca đêm kết thúc lúc 01:00 đã về; người
+     * ca ngày hôm qua và Lễ tân ca đêm đều không hiện.
+     */
+    @Test
+    void shouldListOnlyHousekeepersStillOnOvernightShift() {
+        LocalDate yesterday = today.minusDays(1);
+        persistNightShift(persistHousekeeper("Phan Còn Ca Đêm"), yesterday, LocalTime.of(6, 0));
+        persistNightShift(persistHousekeeper("Lý Hết Ca Đêm"), yesterday, LocalTime.of(1, 0));
+        persistShift(persistHousekeeper("Mai Ca Ngày"), hanoi, yesterday);
+        UUID nightReceptionist = persist(User.builder()
+            .tenantId(tenantId).locationId(hanoi).positionId(receptionPosition)
+            .permissions(EnumSet.of(RECEPTION))
+            .role(Role.STAFF).status(UserStatus.ACTIVE)
+            .email(uniqueEmail()).passwordHash("x").fullName("Lê Lễ Tân Đêm").phone("0900000000")
+            .build()).getId();
+        persistNightShift(nightReceptionist, yesterday, LocalTime.of(6, 0));
+        em.flush();
+        em.clear();
+
+        List<User> onNightShift = repository.findOnOvernightShift(tenantId, hanoi, yesterday, LocalTime.of(2, 0),
+            Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING);
+
+        assertThat(names(onNightShift)).containsExactly("Phan Còn Ca Đêm");
+    }
+
+    @Test
+    void shouldNotListNightStaffOfAnotherLocation() {
+        LocalDate yesterday = today.minusDays(1);
+        persistNightShift(persistHousekeeper("Phan Còn Ca Đêm"), yesterday, LocalTime.of(6, 0));
+        em.flush();
+        em.clear();
+
+        assertThat(repository.findOnOvernightShift(tenantId, danang, yesterday, LocalTime.of(2, 0),
+            Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING)).isEmpty();
+    }
+
     // ── Dữ liệu ─────────────────────────────────────────────────────────────
 
     private List<User> findAssignable(UUID locationId, LocalDate date) {
@@ -181,6 +231,25 @@ class AssignableStaffRepositoryTest {
             .email(uniqueEmail()).passwordHash("x").fullName(fullName).phone("0900000000")
             .build());
         persistShift(staff.getId(), locationId, shiftDate);
+    }
+
+    /** Nhân viên dọn phòng ở Hà Nội, chưa có ca nào — test tự xếp ca. */
+    private UUID persistHousekeeper(String fullName) {
+        return persist(User.builder()
+            .tenantId(tenantId).locationId(hanoi).positionId(housekeepingPosition)
+            .permissions(EnumSet.of(HOUSEKEEPING))
+            .role(Role.STAFF).status(UserStatus.ACTIVE)
+            .email(uniqueEmail()).passwordHash("x").fullName(fullName).phone("0900000000")
+            .build()).getId();
+    }
+
+    /** Ca qua đêm 22:00 → {@code end} ngày hôm sau, ở Hà Nội — BR-SCH-03: thuộc ngày {@code date}. */
+    private void persistNightShift(UUID staffId, LocalDate date, LocalTime end) {
+        persist(Shift.builder()
+            .tenantId(tenantId).locationId(hanoi).staffId(staffId).shiftDate(date)
+            .startTime(LocalTime.of(22, 0)).endTime(end).overnight(true)
+            .durationHours(new BigDecimal("8.00"))
+            .build());
     }
 
     private void persistShift(UUID staffId, UUID locationId, LocalDate date) {

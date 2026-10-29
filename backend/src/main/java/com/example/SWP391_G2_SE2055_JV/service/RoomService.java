@@ -227,7 +227,7 @@ public class RoomService {
      * thể còn task cũ trỏ tới, xóa cứng sẽ mất dấu vết.
      *
      * <p>Số phòng được giải phóng ngay nhờ cột sinh {@code active_room_number} nên tạo lại phòng
-     * trùng số là được. Hạn mức gói dịch vụ thì KHÔNG được trả lại — xem
+     * trùng số là được. Hạn mức phòng của gói dịch vụ cũng được trả lại ngay (BR-SAAS-07) — xem
      * {@link RoomValidator#assertRoomQuotaAvailable}.
      */
     @Transactional

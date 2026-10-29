@@ -372,13 +372,13 @@ export default function App() {
       <Route path="/quy-dinh-ca" element={inShell(<RequireDirector><ScheduleRulesPage /></RequireDirector>)} />
       {/* Nhân viên xem ca của chính mình (BR-PERM-04..06); chấm công để sau. */}
       <Route path="/lich-ca-nhan" element={inShell(<RequireStaff><MySchedulePage /></RequireStaff>)} />
+      {/* Đơn xin nghỉ — BR-SCH-06..08: nhân viên, quản lý gửi đơn của mình; quản lý / giám đốc duyệt theo cấp. */}
+      <Route path="/don-nghi" element={inShell(<RequireLeaveRequester><MyLeavePage /></RequireLeaveRequester>)} />
+      <Route path="/duyet-don-nghi" element={inShell(<RequireLeaveApprover><LeaveReviewPage /></RequireLeaveApprover>)} />
       {/* Đổi ca — BR-SCH-08..12, 18, 19 (Milestone 2): nhân viên gửi / trả lời yêu cầu, Manager duyệt
           cho khách sạn mình. Quản lý không có ca nên không có trang Đổi ca. */}
       <Route path="/doi-ca" element={inShell(<RequireStaff><ShiftSwapsPage /></RequireStaff>)} />
       <Route path="/duyet-doi-ca" element={inShell(<RequireBranchManager><SwapApprovalsPage /></RequireBranchManager>)} />
-      {/* Đơn xin nghỉ — BR-SCH-06..08: nhân viên, quản lý gửi đơn của mình; quản lý / giám đốc duyệt theo cấp. */}
-      <Route path="/don-nghi" element={inShell(<RequireLeaveRequester><MyLeavePage /></RequireLeaveRequester>)} />
-      <Route path="/duyet-don-nghi" element={inShell(<RequireLeaveApprover><LeaveReviewPage /></RequireLeaveApprover>)} />
       {/* Hồ sơ cá nhân — BR-PERM-06: chỉ xem; mở từ nút «Hồ sơ» trên thanh tiêu đề. */}
       <Route path="/ho-so" element={inShell(<RequireTenantUser><ProfilePage /></RequireTenantUser>)} />
       {/* Gói dịch vụ — chỉ Giám đốc (trang tự đưa vai trò khác về trang chủ). */}

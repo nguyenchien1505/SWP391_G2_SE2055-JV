@@ -2,7 +2,7 @@
 // hiển thị. Mọi thứ ở đây đều SUY RA từ dữ liệu thật (phòng + việc dọn đang mở), không có dữ
 // liệu khách: hệ thống không lưu thông tin khách lưu trú (BR-ROOM-09, DM-06).
 
-import { formatDate, formatShortDateTime, todayIso } from './format';
+import { formatDate, formatShortDateTime } from './format';
 import { compareNatural, teamNames } from './roomLabels';
 
 /**
@@ -62,9 +62,12 @@ export function indexOpenTasks(tasks) {
   return byRoom;
 }
 
-/** BR-HK-04: hết ca chưa xong thì việc TỒN ĐỌNG chứ không tự hủy — phải nhìn ra ngay. */
+/**
+ * BR-HK-04: hết ca chưa xong thì việc TỒN ĐỌNG chứ không tự hủy — phải nhìn ra ngay. Backend tính cờ
+ * này: việc của ca qua đêm bắt đầu hôm qua chưa tồn đọng khi ca chưa hết (BR-SCH-03).
+ */
 export function isOverdue(task) {
-  return task?.status === 'IN_PROGRESS' && Boolean(task.assignedDate) && task.assignedDate < todayIso();
+  return Boolean(task?.overdue);
 }
 
 /**

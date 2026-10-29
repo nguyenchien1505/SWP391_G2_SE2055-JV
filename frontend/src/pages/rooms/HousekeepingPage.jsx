@@ -10,6 +10,7 @@ import InspectTaskModal from '../../components/rooms/InspectTaskModal';
 import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import ReleaseTaskModal from '../../components/rooms/ReleaseTaskModal';
 import TaskCard from '../../components/rooms/TaskCard';
+import TaskReturnsModal from '../../components/rooms/TaskReturnsModal';
 import { todayIso } from './format';
 import { TASK_STATUS_ORDER, compareNatural, taskRoomLabel, taskStatusMeta, teamNames } from './roomLabels';
 import './rooms.css';
@@ -81,6 +82,7 @@ export default function HousekeepingPage() {
   const [releasing, setReleasing] = useState(null);      // việc đang mở hộp thoại gỡ người
   const [inspecting, setInspecting] = useState(null);    // việc đang mở hộp thoại kiểm tra (S-13)
   const [previousOf, setPreviousOf] = useState(null);    // việc dọn lại đang xem biên bản của task cha
+  const [returnsOf, setReturnsOf] = useState(null);      // việc đang xem lịch sử trả lại (BR-HK-17)
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -273,6 +275,7 @@ export default function HousekeepingPage() {
           actionsFor={actionsFor}
           onAssignToPerson={setAssigningPerson}
           onShowPreviousInspection={setPreviousOf}
+          onShowReturns={setReturnsOf}
         />
       )}
 
@@ -322,9 +325,9 @@ export default function HousekeepingPage() {
                   <TaskCard
                     key={task.id}
                     task={task}
-                    today={today}
                     actions={actionsFor(task)}
                     onShowPreviousInspection={setPreviousOf}
+                    onShowReturns={setReturnsOf}
                   />
                 ))}
               </section>
@@ -359,6 +362,8 @@ export default function HousekeepingPage() {
       {previousOf && (
         <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />
       )}
+
+      {returnsOf && <TaskReturnsModal task={returnsOf} onClose={() => setReturnsOf(null)} />}
     </div>
   );
 }

@@ -46,6 +46,7 @@ export default function CleaningDayBoard({
   actionsFor,
   onAssignToPerson,
   onShowPreviousInspection,
+  onShowReturns,
 }) {
   const [date, setDate] = useState(today);
   const [data, setData] = useState(null);
@@ -71,8 +72,9 @@ export default function CleaningDayBoard({
           shifts,
           dayTasks: (ofDay.content ?? []).filter((task) => task.status !== 'CANCELLED'),
           queue: [...(unassigned.content ?? [])].sort(compareQueue),
+          // BR-HK-04: cờ tồn đọng do backend tính — việc ca đêm từ hôm qua chưa tồn đọng khi ca chưa hết.
           backlog: (inProgress?.content ?? [])
-            .filter((task) => task.assignedDate && task.assignedDate < date)
+            .filter((task) => task.overdue)
             .sort((a, b) => compareNatural(a.roomNumber, b.roomNumber)),
         });
       })
@@ -194,9 +196,9 @@ export default function CleaningDayBoard({
                 <TaskCard
                   key={task.id}
                   task={task}
-                  today={today}
                   actions={queueActions(task)}
                   onShowPreviousInspection={onShowPreviousInspection}
+                  onShowReturns={onShowReturns}
                 />
               ))}
             </section>
@@ -214,9 +216,9 @@ export default function CleaningDayBoard({
                   <TaskCard
                     key={task.id}
                     task={task}
-                    today={today}
                     actions={readOnly ? [] : actionsFor(task)}
                     onShowPreviousInspection={onShowPreviousInspection}
+                    onShowReturns={onShowReturns}
                   />
                 ))}
               </section>
@@ -242,6 +244,7 @@ export default function CleaningDayBoard({
                       who={offShift.map((member) => member.fullName ?? 'Nhân viên đã nghỉ').join(', ')}
                       actions={readOnly ? [] : actionsFor(task)}
                       onShowPreviousInspection={onShowPreviousInspection}
+                      onShowReturns={onShowReturns}
                     />
                   ))}
                 </ul>
@@ -310,6 +313,7 @@ export default function CleaningDayBoard({
                         who={teamNames(task, row.person.id) && `Cùng: ${teamNames(task, row.person.id)}`}
                         actions={readOnly ? [] : actionsFor(task)}
                         onShowPreviousInspection={onShowPreviousInspection}
+                        onShowReturns={onShowReturns}
                       />
                     ))}
                   </ul>
@@ -324,7 +328,7 @@ export default function CleaningDayBoard({
 }
 
 /** Một việc dạng gọn trong hàng của một người — "301 - Deluxe", trạng thái, người dọn cùng và nút. */
-function TaskChip({ task, who, actions, onShowPreviousInspection }) {
+function TaskChip({ task, who, actions, onShowPreviousInspection, onShowReturns }) {
   return (
     <li className={`hk-chip room-tone--${taskStatusMeta(task.status).tone}`}>
       <div className="hk-chip__main">
@@ -336,6 +340,11 @@ function TaskChip({ task, who, actions, onShowPreviousInspection }) {
       {isRedo(task) && task.parentTaskId && (
         <button type="button" className="link-btn" onClick={() => onShowPreviousInspection(task)}>
           Dọn lại · xem lý do
+        </button>
+      )}
+      {task.returnCount > 0 && (
+        <button type="button" className="link-btn" onClick={() => onShowReturns(task)}>
+          Lịch sử trả lại ({task.returnCount})
         </button>
       )}
       {actions.length > 0 && (

@@ -114,12 +114,25 @@ export const TASK_CREATED_SOURCE = {
 
 export const taskSourceLabel = (source) => TASK_CREATED_SOURCE[source] ?? source ?? '—';
 
+/**
+ * BR-HK-12 (sửa M2): việc được BẮT ĐẦU bằng cách nào — để Quản lý thấy việc tự nhận đang được dùng ra
+ * sao. Việc chưa phân công thì không có.
+ */
+export const TASK_ASSIGNMENT_SOURCE = {
+  MANAGER: 'Quản lý giao',
+  SUPERVISION: 'Giám sát giao',
+  SELF_CLAIM: 'Tự nhận',
+};
+
+export const assignmentSourceLabel = (source) => TASK_ASSIGNMENT_SOURCE[source] ?? null;
+
 /** BR-HK-07 / BR-SCH-24: vì sao việc này quay lại hàng chờ. */
 export const UNASSIGNED_REASON = {
   TRANSFER: 'Người làm được điều chuyển',
   TERMINATION: 'Người làm đã nghỉ việc',
   LEAVE_APPROVED: 'Người làm được duyệt nghỉ',
   MANAGER_MANUAL: 'Quản lý gỡ người',
+  SELF_RETURNED: 'Nhân viên trả lại',
 };
 
 export const unassignedReasonLabel = (reason) => UNASSIGNED_REASON[reason] ?? reason ?? null;

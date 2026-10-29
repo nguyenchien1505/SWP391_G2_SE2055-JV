@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.RoomStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.TaskAssignmentSource;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCancelReason;
 import com.example.SWP391_G2_SE2055_JV.enums.TaskCreatedSource;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
@@ -41,8 +42,20 @@ public class HousekeepingTaskResponse {
      */
     private List<Assignee>         assignees;
     private LocalDate              assignedDate;
+    /**
+     * «Tồn đọng» — BR-HK-04: đang làm mà ngày làm đã qua. Backend tính để FE khỏi tự so ngày: việc của
+     * ca qua đêm bắt đầu hôm qua chưa tồn đọng khi ca đó chưa hết (BR-SCH-03).
+     */
+    private boolean                overdue;
     private UUID                   assignedBy;
     private LocalDateTime          assignedAt;
+    /**
+     * Việc được bắt đầu bằng cách nào — Quản lý giao, Giám sát giao hay tự nhận (BR-HK-12 sửa M2). Cùng
+     * {@code assignedBy}, màn "Việc của tôi" biết ai được trả lại việc (BR-HK-17).
+     */
+    private TaskAssignmentSource   assignmentSource;
+    /** Số lần việc này bị người tự nhận trả lại (BR-HK-17) — thẻ việc hiện liên kết "Lịch sử trả lại". */
+    private int                    returnCount;
     private LocalDateTime          completedAt;
     private TaskCreatedSource      createdSource;
     private UUID                   parentTaskId;
@@ -57,9 +70,12 @@ public class HousekeepingTaskResponse {
      * @param room         có thể {@code null} nếu phòng không còn tải được — khi đó bỏ trống số phòng
      * @param roomTypeName có thể {@code null}
      * @param staffNames   họ tên theo id; người không tra được (dữ liệu cũ) để tên trống
+     * @param overdue      việc đang tồn đọng — do {@code CleaningWorkDayRule} tính
+     * @param returnCount  số lần bị trả lại
      */
     public static HousekeepingTaskResponse fromEntity(HousekeepingTask task, Room room, String roomTypeName,
-                                                      Map<UUID, String> staffNames) {
+                                                      Map<UUID, String> staffNames, boolean overdue,
+                                                      int returnCount) {
         List<Assignee> assignees = task.getAssigneeIds().stream()
             .map(id -> new Assignee(id, staffNames.get(id)))
             .sorted(Comparator.comparing(a -> a.fullName() == null ? "" : a.fullName()))
@@ -77,8 +93,11 @@ public class HousekeepingTaskResponse {
             .assignedStaffIds(assignees.stream().map(Assignee::staffId).toList())
             .assignees(assignees)
             .assignedDate(task.getAssignedDate())
+            .overdue(overdue)
             .assignedBy(task.getAssignedBy())
             .assignedAt(task.getAssignedAt())
+            .assignmentSource(task.getAssignmentSource())
+            .returnCount(returnCount)
             .completedAt(task.getCompletedAt())
             .createdSource(task.getCreatedSource())
             .parentTaskId(task.getParentTaskId())

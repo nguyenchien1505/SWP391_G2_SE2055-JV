@@ -215,7 +215,7 @@ class LeaveRequestFlowTest {
     }
 
     /**
-     * BR-SCH-16 bản sửa 28/10/2026: hủy cả đơn chưa tới ngày nghỉ — V10 cho phép đơn CANCELLED giữ người duyệt
+     * BR-SCH-16 bản sửa 28/10/2026: hủy cả đơn chưa tới ngày nghỉ — V12 cho phép đơn CANCELLED giữ người duyệt
      * khi có người hủy, và quỹ phép tự hoàn vì được cộng lại từ đơn đã duyệt.
      */
     @Test
@@ -257,7 +257,7 @@ class LeaveRequestFlowTest {
         assertThat(reloaded.getOriginalToDate()).isEqualTo(today.plusDays(2));
     }
 
-    /** V10: có người hủy thì phải có lý do — DB chặn dù có đường ghi nào bỏ sót ở service. */
+    /** V12: có người hủy thì phải có lý do — DB chặn dù có đường ghi nào bỏ sót ở service. */
     @Test
     void shouldRequireRevokeReasonAtDatabaseLevel() {
         LeaveRequest broken = approvedAnnual(today.plusDays(5), today.plusDays(5));

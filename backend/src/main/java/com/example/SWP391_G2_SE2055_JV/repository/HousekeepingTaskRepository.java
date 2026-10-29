@@ -3,9 +3,11 @@ package com.example.SWP391_G2_SE2055_JV.repository;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -20,6 +22,18 @@ import java.util.UUID;
 public interface HousekeepingTaskRepository extends JpaRepository<HousekeepingTask, UUID> {
 
     Optional<HousekeepingTask> findByIdAndTenantId(UUID id, UUID tenantId);
+
+    /**
+     * Như {@link #findByIdAndTenantId} nhưng KHÓA dòng việc tới hết transaction ({@code SELECT … FOR
+     * UPDATE}) — mọi đường GHI việc dọn đi qua đây để hai người không cùng giao / nhận / gỡ một việc
+     * (BR-HK-16, BR-HK-18). Người tới sau phải chờ, rồi đọc được trạng thái MỚI NHẤT.
+     *
+     * <p>⚠️ Phải là lần tải việc ĐẦU TIÊN trong transaction: việc đã nằm trong persistence context thì
+     * Hibernate vẫn khóa nhưng trả lại object cũ, không đọc lại trạng thái.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from HousekeepingTask t where t.id = :id and t.tenantId = :tenantId")
+    Optional<HousekeepingTask> findByIdAndTenantIdForUpdate(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
 
     /**
      * Lịch dọn. Tham số nào {@code null} thì bỏ qua điều kiện đó; {@code tenantId} luôn

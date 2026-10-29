@@ -64,12 +64,10 @@ public class SupervisorDutyRule {
      * @param now    giờ hiện tại theo múi giờ của khách sạn
      */
     static boolean isOnDuty(Collection<Shift> shifts, UUID locationId, LocalDateTime now) {
-        LocalDate today = now.toLocalDate();
+        // Điều kiện "ca thuộc ngày làm hiện tại" dùng chung với việc dọn ca đêm.
         return shifts.stream()
             .filter(shift -> locationId.equals(shift.getLocationId()))
-            .anyMatch(shift -> shift.getShiftDate().equals(today)
-                || (shift.getShiftDate().equals(today.minusDays(1))
-                    && shift.isOvernight()
-                    && now.toLocalTime().isBefore(shift.getEndTime())));
+            .anyMatch(shift -> ShiftTimeUtils.isInCurrentWorkDay(
+                shift.getShiftDate(), shift.isOvernight(), shift.getEndTime(), now));
     }
 }
