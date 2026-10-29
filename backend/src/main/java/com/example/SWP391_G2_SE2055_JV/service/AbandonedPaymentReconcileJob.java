@@ -10,15 +10,22 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Đối soát các lần thanh toán bị bỏ dở: Giám đốc mở trang VNPay rồi đóng tab / quay lại, hệ thống
+ * Đối soát các lần thanh toán bị bỏ dở: Giám đốc mở trang VNPay rồi đóng tab /
+ * quay lại, hệ thống
  * không nhận được kết quả nên hóa đơn còn Chờ thanh toán.
  *
- * <p>Mỗi 30 phút, với hóa đơn chờ quá {@code app.payment-reconcile.after-minutes} phút (mặc định
- * 60 — lâu hơn hạn 15 phút của link VNPay để không đụng giao dịch đang diễn ra), hỏi VNPay giao
- * dịch đã trả chưa: đã trả thì kích hoạt gói, chưa trả thì xóa hóa đơn. Hỏi trước khi xóa để không
+ * <p>
+ * Mỗi 30 phút, với hóa đơn chờ quá {@code app.payment-reconcile.after-minutes}
+ * phút (mặc định
+ * 60 — lâu hơn hạn 15 phút của link VNPay để không đụng giao dịch đang diễn
+ * ra), hỏi VNPay giao
+ * dịch đã trả chưa: đã trả thì kích hoạt gói, chưa trả thì xóa hóa đơn. Hỏi
+ * trước khi xóa để không
  * bao giờ xóa mất hóa đơn của khách đã trả tiền.
  *
- * <p>Mỗi hóa đơn xử lý trong transaction riêng: một hóa đơn lỗi không chặn các hóa đơn khác.
+ * <p>
+ * Mỗi hóa đơn xử lý trong transaction riêng: một hóa đơn lỗi không chặn các hóa
+ * đơn khác.
  */
 @Slf4j
 @Component
