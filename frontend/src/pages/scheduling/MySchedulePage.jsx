@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
-import { fetchShiftTemplates, fetchShifts } from '../../api/scheduling';
+import { fetchShiftTemplates, fetchShifts, fetchSwapRequests } from '../../api/scheduling';
+import SwapRequestDialog from '../../components/scheduling/SwapRequestDialog';
 import TimeRangeText from '../../components/scheduling/TimeRangeText';
 import WeekTimetable, { TIMETABLE_QUERY } from '../../components/scheduling/WeekTimetable';
 import { useAuth } from '../../context/AuthContext';
@@ -19,6 +21,7 @@ import {
   weekDays,
   weekStartOf,
 } from './scheduleFormat';
+import { PENDING_SWAP_STATUSES, isSwappable } from './swapRequests';
 import './scheduling.css';
 
 /**
@@ -30,8 +33,9 @@ import './scheduling.css';
  * ({@link WeekTimetable}, kiểu "Weekly timetable" — chốt 13/10/2026): mỗi mục một ca, thẻ bên phải ghi
  * khách sạn, số giờ và chấm công nếu đã có — bảng 7 cột trên màn hẹp phải kéo ngang mới thấy hết tuần.
  *
- * Chỉ xem: chấm công (check-in / check-out) để sau (chốt 11/10/2026); xin nghỉ, đổi ca là phần «làm
- * sau» của BR-SCH.
+ * Ca chưa bắt đầu, chưa check-in có nút «Đổi ca» (BR-SCH-09, BR-SCH-25 — Milestone 2); ca đang nằm
+ * trong yêu cầu đổi ca chờ xử lý thì thay bằng nhãn dẫn tới trang Đổi ca (BR-SCH-19). Chấm công
+ * (check-in / check-out) để sau (chốt 11/10/2026); xin nghỉ là phần «làm sau» của BR-SCH.
  */
 export default function MySchedulePage() {
   const { user } = useAuth();
@@ -56,6 +60,34 @@ export default function MySchedulePage() {
       cancelled = true;
     };
   }, []);
+
+  const [swapping, setSwapping] = useState(null); // ca đang mở hộp thoại «Đổi ca»
+  const [notice, setNotice] = useState('');
+  // Ca đang nằm trong yêu cầu đổi ca chờ xử lý — mình gửi hay gửi cho mình đều không đổi thêm được
+  // (BR-SCH-19). Tải lại sau mỗi lần gửi. Lỗi thì như chưa có: backend vẫn chặn và báo lý do khi gửi.
+  const [heldShiftIds, setHeldShiftIds] = useState(() => new Set());
+  const [swapsVersion, setSwapsVersion] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(['SENT', 'RECEIVED'].map((box) => fetchSwapRequests({ box, statuses: PENDING_SWAP_STATUSES })))
+      .then((pages) => {
+        if (cancelled) return;
+        const ids = pages.flatMap((page) => (page.content ?? [])
+          .flatMap((request) => [request.requester.shift?.id, request.peer.shift?.id]));
+        setHeldShiftIds(new Set(ids.filter(Boolean)));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [swapsVersion]);
+
+  function handleSwapSent(text) {
+    setSwapping(null);
+    setNotice(text);
+    setSwapsVersion((v) => v + 1);
+  }
 
   // Bấm chuyển tuần nhanh hơn tốc độ mạng: chỉ nhận kết quả của lần gọi mới nhất.
   const latestRequest = useRef(0);
@@ -149,6 +181,15 @@ export default function MySchedulePage() {
         )}
       </div>
 
+      {notice && (
+        <div className="alert alert--success" role="status">
+          {notice}{' '}
+          <Link className="inline-link" to="/doi-ca">Xem yêu cầu đổi ca</Link>
+          <button type="button" className="alert__close" onClick={() => setNotice('')} aria-label="Đóng">
+            ×
+          </button>
+        </div>
+      )}
       {error && <div className="alert alert--error" role="alert">{error}</div>}
       {!ready && !error && <p className="state">Đang tải lịch…</p>}
 
@@ -172,7 +213,15 @@ export default function MySchedulePage() {
                 label: shift.sourceTemplateName ?? 'Ca giờ khác',
                 start: shift.startTime,
                 end: shift.endTime,
-                content: <ShiftCard shift={shift} today={today} locationName={user?.locationName} />,
+                content: (
+                  <ShiftCard
+                    shift={shift}
+                    today={today}
+                    locationName={user?.locationName}
+                    held={heldShiftIds.has(shift.id)}
+                    onSwap={setSwapping}
+                  />
+                ),
               }))}
             onPrevWeek={() => setWeekStart(addDays(weekStart, -7))}
             onNextWeek={() => setWeekStart(addDays(weekStart, 7))}
@@ -221,7 +270,12 @@ export default function MySchedulePage() {
                   {days.map((day) => (
                     <td key={day} className={dayClass(day, today)}>
                       {board.cellOf(row.id, day).map((shift) => (
-                        <ShiftBlock key={shift.id} shift={shift} />
+                        <ShiftBlock
+                          key={shift.id}
+                          shift={shift}
+                          held={heldShiftIds.has(shift.id)}
+                          onSwap={setSwapping}
+                        />
                       ))}
                     </td>
                   ))}
@@ -233,14 +287,23 @@ export default function MySchedulePage() {
       )}
 
       <p className="alert alert--info">
-        Ca qua đêm thuộc về ngày bắt đầu ca. Muốn đổi ca hoặc xin nghỉ, hãy báo quản lý chi nhánh.
+        Ca qua đêm thuộc về ngày bắt đầu ca. Muốn đổi ca thì bấm «Đổi ca» trên ca chưa bắt đầu — đồng nghiệp
+        đồng ý rồi quản lý duyệt (<Link className="inline-link" to="/doi-ca">xem yêu cầu đổi ca</Link>). Xin nghỉ
+        thì báo quản lý chi nhánh.
       </p>
+
+      {swapping && (
+        <SwapRequestDialog shift={swapping} onClose={() => setSwapping(null)} onSent={handleSwapSent} />
+      )}
     </div>
   );
 }
 
-/** Thẻ chi tiết một ca trên thời khóa biểu điện thoại: khách sạn, số giờ, chấm công nếu đã có. */
-function ShiftCard({ shift, today, locationName }) {
+/**
+ * Thẻ chi tiết một ca trên thời khóa biểu điện thoại: khách sạn, số giờ, chấm công nếu đã có, và nút
+ * «Đổi ca» khi ca còn đổi được.
+ */
+function ShiftCard({ shift, today, locationName, held, onSwap }) {
   const pills = attendancePills(shift, today);
   return (
     <>
@@ -261,6 +324,15 @@ function ShiftCard({ shift, today, locationName }) {
           ))}
         </div>
       )}
+      {held ? (
+        <Link className="tt-swap-held" to="/doi-ca">Đang chờ đổi ca — xem yêu cầu</Link>
+      ) : (
+        isSwappable(shift) && (
+          <button type="button" className="tt-action" onClick={() => onSwap(shift)}>
+            Đổi ca
+          </button>
+        )
+      )}
     </>
   );
 }
@@ -277,8 +349,11 @@ function attendancePills(shift, today) {
   return pills;
 }
 
-/** Một ca trong ô: khung giờ, số giờ, cờ qua đêm. Chỉ để xem nên không bấm được. */
-function ShiftBlock({ shift }) {
+/**
+ * Một ca trong ô: khung giờ, số giờ, cờ qua đêm. Khối chỉ để xem; riêng nút «Đổi ca» (ca còn đổi
+ * được) hoặc nhãn «Chờ đổi ca» (ca đang trong yêu cầu chờ xử lý) bấm được.
+ */
+function ShiftBlock({ shift, held, onSwap }) {
   return (
     <div className={`cell-block cell-block--static shift-tone--${shiftTone(shift.startTime)}`}>
       <b className="my-shift__time">
@@ -288,6 +363,15 @@ function ShiftBlock({ shift }) {
         {formatHours(shift.durationHours)}
         {shift.overnight ? ' · qua đêm' : ''}
       </span>
+      {held ? (
+        <Link className="cell-block__swap is-held" to="/doi-ca">Chờ đổi ca</Link>
+      ) : (
+        isSwappable(shift) && (
+          <button type="button" className="cell-block__swap" onClick={() => onSwap(shift)}>
+            Đổi ca
+          </button>
+        )
+      )}
     </div>
   );
 }

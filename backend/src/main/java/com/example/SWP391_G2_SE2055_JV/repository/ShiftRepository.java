@@ -1,9 +1,11 @@
 package com.example.SWP391_G2_SE2055_JV.repository;
 
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -36,6 +38,14 @@ public interface ShiftRepository extends JpaRepository<Shift, UUID> {
         UUID staffId, LocalDate fromDate, LocalDate toDate, Pageable pageable);
 
     Optional<Shift> findByIdAndTenantId(UUID id, UUID tenantId);
+
+    /**
+     * Tải ca và GIỮ KHÓA GHI tới hết transaction — duyệt đổi ca hoán đổi người của 2 ca, không để
+     * Manager sửa / gỡ người cùng lúc chen vào giữa bước kiểm tra và bước ghi (BR-SCH-18).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Shift s WHERE s.id = :id AND s.tenantId = :tenantId")
+    Optional<Shift> findForUpdate(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
 
     /**
      * Cửa sổ ca của một nhân viên, dùng cho toàn bộ kiểm tra Schedule Policy

@@ -64,6 +64,9 @@ public class ShiftService {
     private final HousekeepingService      housekeepingService;
     // Mỗi ca theo mẫu phải có ít nhất 1 lễ tân (chốt 05/10/2026).
     private final ReceptionCoverageRule    receptionCoverage;
+    // Đổi ca (M2): sửa / gỡ người khỏi ca thì yêu cầu đổi ca đang chờ tự hủy; ca có yêu cầu thì không
+    // xóa được. Không vòng bean — ShiftSwapService không dùng ShiftService.
+    private final ShiftSwapService         shiftSwapService;
 
     /**
      * @param from ngày bắt đầu ca nhỏ nhất (tính cả ngày này), đi cùng {@code to}. Bỏ trống cả
@@ -217,6 +220,9 @@ public class ShiftService {
         if (shift.isCheckedIn()) {
             throw new BusinessException("Không sửa được ca đã check-in — giờ ca sẽ lệch với dữ liệu chấm công.");
         }
+        LocalDate oldDate = shift.getShiftDate();
+        LocalTime oldStart = shift.getStartTime();
+        LocalTime oldEnd = shift.getEndTime();
 
         // Dời ca sang ngày khác: người được gán mất ngày CŨ — kiểm tra trước khi đổi (BR-HK-03).
         boolean movingDay = request.getShiftDate() != null
@@ -275,6 +281,13 @@ public class ShiftService {
         }
         policyValidator.validate(shift.getTenantId(), shift.getStaffId(), shift, shift.getId());
 
+        // Đổi ca (chốt phương án a): ca đổi ngày giờ thì yêu cầu đổi ca đang chờ của nó không còn đúng
+        // thứ hai người đã thỏa thuận — tự hủy.
+        if (!oldDate.equals(shift.getShiftDate()) || !oldStart.equals(shift.getStartTime())
+                || !oldEnd.equals(shift.getEndTime())) {
+            shiftSwapService.expirePendingForShift(id);
+        }
+
         log.info("Cập nhật ca {}", id);
         return toResponse(shiftRepository.save(shift));
     }
@@ -321,6 +334,8 @@ public class ShiftService {
         // BR-HK-03: không bỏ lại việc dọn trên tên một người đã hết ca hôm đó.
         housekeepingService.assertCanLeaveShiftDay(shift.getStaffId(), shift.getShiftDate(), shift.getId());
         receptionCoverage.assertStillCoveredAfterRemoving(shift);
+        // Đổi ca (chốt phương án a): ca không còn người thì yêu cầu đổi ca đang chờ của nó tự hủy.
+        shiftSwapService.expirePendingForShift(id);
 
         shift.setStaffId(null);
         shift.setUnassignedReason(reason);
@@ -338,6 +353,8 @@ public class ShiftService {
         if (shift.isCheckedIn()) {
             throw new BusinessException("Không xóa được ca đã check-in — sẽ mất dữ liệu chấm công.");
         }
+        // Khóa ngoại của yêu cầu đổi ca giữ lịch sử — muốn bỏ ca thì gỡ người thay vì xóa.
+        shiftSwapService.assertNoSwapRequests(id);
         if (shift.isAssigned()) {
             housekeepingService.assertCanLeaveShiftDay(shift.getStaffId(), shift.getShiftDate(), shift.getId());
             receptionCoverage.assertStillCoveredAfterRemoving(shift);
