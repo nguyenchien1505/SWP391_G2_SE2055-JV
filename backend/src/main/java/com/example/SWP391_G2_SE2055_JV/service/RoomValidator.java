@@ -94,9 +94,8 @@ public class RoomValidator {
     /**
      * BR-SAAS-02: không tạo quá hạn mức phòng của gói dịch vụ.
      *
-     * <p>Đếm bằng đúng {@link TenantUsageRepository#countRooms} — hàm này tính CẢ phòng đã xóa
-     * mềm, theo quy ước đếm mà team đã chốt. Hệ quả: xóa phòng KHÔNG trả lại hạn mức, màn hình
-     * tạo phòng phải nói rõ điều đó.
+     * <p>Đếm bằng đúng {@link TenantUsageRepository#countRooms} để khớp con số ở màn mức sử dụng và
+     * lúc mua gói. Hàm này chỉ đếm phòng đang dùng (BR-SAAS-07): xóa phòng là trả lại một chỗ.
      *
      * <p>Tenant chưa có Subscription thì không chặn — cùng cách xử lý với
      * {@link TenantUsageService}: thiếu gói dịch vụ là dữ liệu chưa đủ, không phải vi phạm.

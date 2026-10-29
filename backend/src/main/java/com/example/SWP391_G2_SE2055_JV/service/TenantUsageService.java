@@ -29,7 +29,7 @@ import java.util.UUID;
  * thuộc Tenant nào; quyền truy cập do rule URL {@code /platform/**} và {@code @PreAuthorize}.
  *
  * <p>Quy tắc đếm (chi tiết ở {@link TenantUsageRepository}): Location — tất cả; Staff — chỉ Staff,
- * chưa nghỉ việc, tính cả INACTIVE; Phòng — tất cả kể cả đã xóa mềm.
+ * chưa nghỉ việc, tính cả INACTIVE; Phòng — chỉ phòng đang dùng, không tính phòng đã xóa mềm.
  */
 @Service
 @RequiredArgsConstructor

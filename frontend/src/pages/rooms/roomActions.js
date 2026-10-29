@@ -135,8 +135,8 @@ export function canDeleteRoom(room) {
 /** Câu hỏi lại trước khi xóa phòng — dùng chung cho S-02 Danh sách phòng và S-04 Chi tiết phòng. */
 export const DELETE_ROOM_WARNING =
   'Thao tác này không hoàn tác được. Hệ thống sẽ từ chối nếu phòng đang có khách hoặc đang trong '
-  + 'quy trình dọn, còn việc dọn phòng chưa kết thúc, hoặc còn tài sản cố định gắn vào. Phòng đã '
-  + 'xóa vẫn tính vào hạn mức của gói dịch vụ.';
+  + 'quy trình dọn, còn việc dọn phòng chưa kết thúc, hoặc còn tài sản cố định gắn vào. Xóa xong, '
+  + 'phòng không còn tính vào hạn mức của gói dịch vụ.';
 
 /**
  * Câu báo thành công sau khi đổi trạng thái. Nêu luôn HỆ QUẢ mà người dùng không nhìn thấy trên
