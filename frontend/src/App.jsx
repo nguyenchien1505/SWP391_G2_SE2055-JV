@@ -21,6 +21,8 @@ import ScheduleRulesPage from './pages/scheduling/ScheduleRulesPage';
 import MySchedulePage from './pages/scheduling/MySchedulePage';
 import MyLeavePage from './pages/scheduling/MyLeavePage';
 import LeaveReviewPage from './pages/scheduling/LeaveReviewPage';
+import ShiftSwapsPage from './pages/scheduling/ShiftSwapsPage';
+import SwapApprovalsPage from './pages/scheduling/SwapApprovalsPage';
 import ChainRoomSummary from './components/rooms/ChainRoomSummary';
 import HotelOpsSummary from './components/rooms/HotelOpsSummary';
 import ReserveManagerPage from './pages/ReserveManagerPage';
@@ -348,6 +350,10 @@ export default function App() {
       {/* Đơn xin nghỉ — BR-SCH-06..08: nhân viên, quản lý gửi đơn của mình; quản lý / giám đốc duyệt theo cấp. */}
       <Route path="/don-nghi" element={inShell(<RequireLeaveRequester><MyLeavePage /></RequireLeaveRequester>)} />
       <Route path="/duyet-don-nghi" element={inShell(<RequireLeaveApprover><LeaveReviewPage /></RequireLeaveApprover>)} />
+      {/* Đổi ca — BR-SCH-08..12, 18, 19 (Milestone 2): nhân viên gửi / trả lời yêu cầu, Manager duyệt
+          cho khách sạn mình. Quản lý không có ca nên không có trang Đổi ca. */}
+      <Route path="/doi-ca" element={inShell(<RequireStaff><ShiftSwapsPage /></RequireStaff>)} />
+      <Route path="/duyet-doi-ca" element={inShell(<RequireBranchManager><SwapApprovalsPage /></RequireBranchManager>)} />
       {/* Gói dịch vụ — chỉ Giám đốc (trang tự đưa vai trò khác về trang chủ). */}
       <Route path="/goi-dich-vu" element={inShell(<BillingPage />)} />
       {/* VNPay đưa Giám đốc về đây sau khi thanh toán (?vnp_...). */}

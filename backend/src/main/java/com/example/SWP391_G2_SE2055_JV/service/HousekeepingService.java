@@ -413,6 +413,37 @@ public class HousekeepingService {
     }
 
     /**
+     * BR-SCH-26 (M2, chốt 19/10/2026): đổi ca đã duyệt mà người đổi đi KHÔNG còn ca nào trong ngày
+     * {@code date} thì việc dọn đang làm ngày đó của họ chuyển sang người nhận ca. Còn ca khác trong
+     * ngày thì giữ nguyên. Người nhận đã có trong nhóm dọn thì chỉ rút tên người đổi đi.
+     *
+     * <p>Gọi SAU khi hai ca đã hoán đổi người và đã flush, để "còn ca trong ngày" đọc đúng lịch mới.
+     * Người nhận cùng bộ quyền với người đổi đi (BR-SCH-12) và vừa nhận ca của ngày này, nên vẫn đủ
+     * điều kiện nhận việc dọn (BR-HK-03). Chỉ chuyển việc «Đang thực hiện»: việc «Chờ kiểm tra» người
+     * dọn đã làm xong phần mình.
+     *
+     * @return số việc đã chuyển
+     */
+    @Transactional
+    public int transferTasksOnSwap(UUID fromStaffId, UUID toStaffId, LocalDate date) {
+        if (shiftRepository.existsByStaffIdAndShiftDate(fromStaffId, date)) {
+            return 0;
+        }
+        List<HousekeepingTask> tasks =
+            taskRepository.findOfStaffOn(fromStaffId, date, HousekeepingTaskStatus.IN_PROGRESS);
+        for (HousekeepingTask task : tasks) {
+            task.getAssigneeIds().remove(fromStaffId);
+            task.getAssigneeIds().add(toStaffId);
+        }
+        taskRepository.saveAll(tasks);
+        if (!tasks.isEmpty()) {
+            log.info("Đổi ca ngày {}: chuyển {} việc dọn từ staff {} sang staff {}",
+                date, tasks.size(), fromStaffId, toStaffId);
+        }
+        return tasks.size();
+    }
+
+    /**
      * BR-HK-03 từ phía lịch làm việc: gỡ người khỏi ca, xóa ca hay dời ca sang ngày khác không
      * được làm một người MẤT ngày làm việc trong khi họ còn việc dọn đang làm hôm đó — nếu không,
      * việc sẽ nằm trên tên một người không có ca. Nhóm đã chốt: CHẶN và chỉ rõ phòng để Manager

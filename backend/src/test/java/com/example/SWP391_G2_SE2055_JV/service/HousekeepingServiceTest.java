@@ -814,6 +814,57 @@ class HousekeepingServiceTest {
         }
     }
 
+    // ── Đổi ca được duyệt — BR-SCH-26 ───────────────────────────────────────
+
+    @Nested
+    class TransferTasksOnSwap {
+
+        private final UUID receiverId = UUID.randomUUID();
+
+        /** Người đổi đi không còn ca nào trong ngày: việc đang làm ngày đó chuyển sang người nhận ca. */
+        @Test
+        void shouldMoveTasksToReceiverWhenGiverHasNoShiftLeftThatDay() {
+            when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_ID, today)).thenReturn(false);
+            HousekeepingTask alone = inProgressTask(STAFF_ID);
+            HousekeepingTask shared = inProgressTask(STAFF_ID, STAFF_2_ID);
+            when(taskRepository.findOfStaffOn(STAFF_ID, today, HousekeepingTaskStatus.IN_PROGRESS))
+                .thenReturn(List.of(alone, shared));
+
+            int moved = service.transferTasksOnSwap(STAFF_ID, receiverId, today);
+
+            assertThat(moved).isEqualTo(2);
+            assertThat(alone.getAssigneeIds()).containsExactly(receiverId);
+            assertThat(shared.getAssigneeIds()).containsExactlyInAnyOrder(STAFF_2_ID, receiverId);
+            assertThat(alone.getStatus()).isEqualTo(HousekeepingTaskStatus.IN_PROGRESS);
+            verify(taskRepository).saveAll(List.of(alone, shared));
+            verifyNoInteractions(roomStatusService);
+        }
+
+        /** Người nhận đã có trong nhóm dọn thì chỉ rút tên người đổi đi. */
+        @Test
+        void shouldOnlyRemoveGiverWhenReceiverAlreadyInTeam() {
+            when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_ID, today)).thenReturn(false);
+            HousekeepingTask shared = inProgressTask(STAFF_ID, STAFF_2_ID);
+            when(taskRepository.findOfStaffOn(STAFF_ID, today, HousekeepingTaskStatus.IN_PROGRESS))
+                .thenReturn(List.of(shared));
+
+            service.transferTasksOnSwap(STAFF_ID, STAFF_2_ID, today);
+
+            assertThat(shared.getAssigneeIds()).containsExactly(STAFF_2_ID);
+        }
+
+        /** Còn ca khác trong ngày (ví dụ 2 ca đổi cho nhau cùng một ngày) thì việc dọn giữ nguyên. */
+        @Test
+        void shouldKeepTasksWhenGiverStillHasShiftThatDay() {
+            when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_ID, today)).thenReturn(true);
+
+            assertThat(service.transferTasksOnSwap(STAFF_ID, receiverId, today)).isZero();
+
+            verify(taskRepository, never()).findOfStaffOn(any(), any(), any());
+            verify(taskRepository, never()).saveAll(any());
+        }
+    }
+
     // ── Phạm vi dữ liệu và nội dung trả về ──────────────────────────────────
 
     @Nested

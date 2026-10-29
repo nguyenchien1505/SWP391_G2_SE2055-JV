@@ -907,3 +907,151 @@
     width: 150px;
   }
 }
+
+/* ── Đổi ca giữa hai nhân viên (Milestone 2) ─────────────────────────────
+ * Lịch cá nhân: khối ca vẫn chỉ để xem, riêng nút «Đổi ca» / nhãn «Chờ đổi ca» bấm được.
+ */
+.cell-block__swap {
+  justify-self: start;
+  min-height: 28px;
+  margin-top: 4px;
+  padding: 2px 10px;
+  border: 1px solid var(--tone, var(--accent));
+  border-radius: 999px;
+  background: #fff;
+  color: var(--primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.cell-block__swap:hover,
+.cell-block__swap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.cell-block__swap.is-held {
+  border-style: dashed;
+  color: var(--muted);
+}
+.tt-swap-held {
+  justify-self: start;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Hộp thoại Đổi ca: mỗi ca của đồng nghiệp là một dòng chọn, cao đủ cho ngón tay. */
+.swap-options {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.swap-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+.swap-option:hover {
+  border-color: var(--accent);
+}
+.swap-option.is-selected {
+  border-color: var(--primary);
+  background: #eef4fb;
+}
+.swap-option input {
+  margin-top: 3px;
+}
+.swap-option span {
+  display: grid;
+  gap: 2px;
+}
+.swap-option small {
+  color: var(--muted);
+}
+
+/* Trang Đổi ca: hai khung «Đang chờ» / «Đã xử lý» xếp chồng — .panel không tự cách nhau. */
+.swap-section + .swap-section {
+  margin-top: 16px;
+}
+
+/* Danh sách yêu cầu đổi ca — thẻ thay cho bảng, đọc được trên điện thoại. */
+.swap-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.swap-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+}
+.swap-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.swap-card__title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.swap-pair {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.swap-pair__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) 1fr;
+  gap: 2px 12px;
+  padding-left: 8px;
+  border-left: 3px solid var(--border);
+}
+.swap-pair dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+.swap-pair dd {
+  margin: 0;
+  font-weight: 600;
+}
+.swap-card__meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.swap-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Bị từ chối — cùng màu .badge--red của màn báo hỏng; khai báo lại vì màn lịch không nạp file đó. */
+.badge--red {
+  background: #fdecea;
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .swap-pair__row {
+    grid-template-columns: 1fr;
+  }
+  .swap-card__actions .btn {
+    flex: 1 1 auto;
+  }
+}
