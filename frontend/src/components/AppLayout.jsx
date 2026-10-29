@@ -94,12 +94,16 @@ const NAV_GROUPS = [
       // Schedule Policy và Shift Template — Giám đốc (BR-SCH-01, BR-SCH-22).
       { label: 'Quy định & Mẫu ca', to: '/quy-dinh-ca', visible: isDirector },
       { label: 'Xếp lịch làm việc', to: '/xep-lich', visible: isBranchManager },
+      // Yêu cầu đổi ca đồng nghiệp đã đồng ý — BR-SCH-09 (Milestone 2).
+      { label: 'Duyệt đổi ca', to: '/duyet-doi-ca', visible: isBranchManager },
       { label: 'Công việc dọn phòng', to: '/don-phong', visible: isBranchManager },
       { label: 'Lịch dọn phòng', to: '/lich-don-phong', visible: isBranchManager },
       { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: (user) => isStaff(user) && isHousekeeper(user) },
       { label: 'Lịch dọn của tôi', to: '/lich-don-phong', visible: (user) => isStaff(user) && isHousekeeper(user) },
       // Chỉ xem lịch — chấm công (check-in / check-out) để sau.
       { label: 'Lịch cá nhân', to: '/lich-ca-nhan', visible: hasShifts },
+      // Gửi / trả lời yêu cầu đổi ca với đồng nghiệp — BR-SCH-09..11 (Milestone 2).
+      { label: 'Đổi ca', to: '/doi-ca', visible: hasShifts },
     ],
   },
   {

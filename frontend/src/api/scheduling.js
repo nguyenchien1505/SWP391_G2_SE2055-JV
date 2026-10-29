@@ -137,3 +137,62 @@ export async function unassignShift(id) {
 export async function deleteShift(id) {
   await api.delete(`/scheduling/shifts/${id}`);
 }
+
+// ── Đổi ca giữa hai nhân viên — BR-SCH-08..12, 18, 19, 25 (Milestone 2) ──────────
+
+/**
+ * Ca của đồng nghiệp đổi được với ca `shiftId` của mình: cùng khách sạn, cùng vị trí và cùng quyền
+ * nghiệp vụ, chưa bắt đầu, chưa check-in, chưa nằm trong yêu cầu đang chờ nào, trong 31 ngày tới.
+ * Trả `[{ staffId, fullName, shift }]`. Schedule Policy chưa kiểm ở đây — kiểm khi gửi.
+ */
+export async function fetchSwapCandidates(shiftId) {
+  const { data } = await api.get('/scheduling/shift-swap-requests/candidates', { params: { shiftId } });
+  return data;
+}
+
+/** Gửi yêu cầu: đổi ca `requesterShiftId` của mình lấy ca `peerShiftId` của đồng nghiệp. */
+export async function createSwapRequest({ requesterShiftId, peerShiftId }) {
+  const { data } = await api.post('/scheduling/shift-swap-requests', { requesterShiftId, peerShiftId });
+  return data;
+}
+
+/**
+ * `box`: `'SENT'` (tôi đã gửi), `'RECEIVED'` (gửi cho tôi) hoặc `'LOCATION'` (mọi yêu cầu của khách
+ * sạn — chỉ Manager). Backend so đúng chữ hoa. `statuses` bỏ trống = mọi trạng thái. Mới nhất trước.
+ */
+export async function fetchSwapRequests({ box, statuses, page = 0, size = 50 }) {
+  const { data } = await api.get('/scheduling/shift-swap-requests', {
+    params: { box, status: statuses, page, size },
+    // Spring đọc danh sách dạng status=a&status=b, không phải status[]=a.
+    paramsSerializer: { indexes: null },
+  });
+  return data;
+}
+
+/** Đồng nghiệp đồng ý — backend kiểm lại quy định xếp ca cho cả hai người (BR-SCH-10). */
+export async function acceptSwap(id) {
+  const { data } = await api.patch(`/scheduling/shift-swap-requests/${id}/accept`);
+  return data;
+}
+
+export async function declineSwap(id) {
+  const { data } = await api.patch(`/scheduling/shift-swap-requests/${id}/decline`);
+  return data;
+}
+
+/** Người gửi tự hủy khi yêu cầu còn chờ. */
+export async function cancelSwap(id) {
+  const { data } = await api.patch(`/scheduling/shift-swap-requests/${id}/cancel`);
+  return data;
+}
+
+/** Manager duyệt: hai ca hoán đổi người, việc dọn đi theo người nhận ca (BR-SCH-18, 26). */
+export async function approveSwap(id) {
+  const { data } = await api.patch(`/scheduling/shift-swap-requests/${id}/approve`);
+  return data;
+}
+
+export async function rejectSwap(id) {
+  const { data } = await api.patch(`/scheduling/shift-swap-requests/${id}/reject`);
+  return data;
+}
