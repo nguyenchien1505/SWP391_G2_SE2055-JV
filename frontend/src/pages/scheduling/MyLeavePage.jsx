@@ -30,6 +30,7 @@ const TABS = [
  * Đầu trang là quỹ phép năm: phép tích lũy theo tháng làm việc, đơn đang chờ duyệt đã tính vào phần "còn lại"
  * (BR-SCH-28). Đơn của nhân viên do quản lý khách sạn duyệt, đơn của quản lý do giám đốc duyệt (BR-SCH-08).
  * Chỉ đơn còn chờ duyệt mới tự hủy được; đơn đã duyệt thì người duyệt hủy phần còn lại (BR-SCH-16 sửa 28/10/2026).
+ * Đơn bị từ chối luôn kèm lý do của người duyệt, hiện ngay trên thẻ đơn (chốt 31/10/2026).
  */
 export default function MyLeavePage() {
   const { user } = useAuth();

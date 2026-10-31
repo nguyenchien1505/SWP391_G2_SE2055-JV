@@ -42,6 +42,8 @@ public class LeaveRequestResponse {
     private UUID               approverId;
     private String             approverName;
     private LocalDateTime      decidedAt;
+    /** Lý do người duyệt ghi khi từ chối (chốt 31/10/2026); null nếu đơn không bị từ chối. */
+    private String             rejectReason;
     /** Người duyệt hủy phần ngày chưa tới — BR-SCH-16 bản sửa 28/10/2026; null nếu đơn không bị hủy kiểu này. */
     private UUID               revokedById;
     private String             revokedByName;
@@ -77,6 +79,7 @@ public class LeaveRequestResponse {
             .approverId(leave.getApproverId())
             .approverName(approver == null ? null : approver.getFullName())
             .decidedAt(leave.getDecidedAt())
+            .rejectReason(leave.getRejectReason())
             .revokedById(leave.getRevokedBy())
             .revokedByName(revoker == null ? null : revoker.getFullName())
             .revokedAt(leave.getRevokedAt())

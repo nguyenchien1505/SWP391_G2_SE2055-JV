@@ -1,6 +1,9 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest.ReceptionReplacement;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Replacement;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.ShiftImpact;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveRequestResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.PageImpl;
@@ -23,10 +27,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -198,19 +204,52 @@ class LeaveRequestControllerTest {
             verifyNoInteractions(leaveRequestService);
         }
 
+        /** Đơn không làm ca nào thiếu lễ tân thì duyệt không cần body. */
         @ParameterizedTest
         @ValueSource(strings = {"ROLE_MANAGER", "ROLE_DIRECTOR"})
         void shouldLetReviewersApprove(String authorities) throws Exception {
-            when(leaveRequestService.approveLeaveRequest(LEAVE_ID)).thenReturn(LeaveApprovalResponse.builder()
-                .request(sample(LeaveRequestStatus.APPROVED))
-                .releasedShifts(List.of()).keptShifts(List.of())
-                .receptionWarnings(List.of("Ca chiều ngày 03/11/2026"))
-                .build());
+            when(leaveRequestService.approveLeaveRequest(LEAVE_ID, List.of())).thenReturn(approved(List.of()));
 
             mockMvc.perform(patch("/scheduling/leave-requests/{id}/approve", LEAVE_ID).with(authorities(authorities)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.request.status").value("APPROVED"))
-                .andExpect(jsonPath("$.receptionWarnings[0]").value("Ca chiều ngày 03/11/2026"));
+                .andExpect(jsonPath("$.replacements").isEmpty());
+        }
+
+        /** BR-SCH-29 sửa (chốt 31/10/2026): lễ tân thay cho ca sẽ mất lễ tân đi kèm lệnh duyệt. */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldPassReceptionReplacementsToService() throws Exception {
+            UUID shiftId = UUID.randomUUID();
+            UUID staffId = UUID.randomUUID();
+            ShiftImpact shift = new ShiftImpact(shiftId, LocalDate.of(2026, 11, 3), LocalTime.of(14, 0),
+                LocalTime.of(22, 0), "Ca chiều", null);
+            when(leaveRequestService.approveLeaveRequest(eq(LEAVE_ID), any()))
+                .thenReturn(approved(List.of(new Replacement(shift, staffId, "Lễ tân Test"))));
+
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/approve", LEAVE_ID)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"replacements\": [{\"shiftId\": \"" + shiftId + "\", \"staffId\": \"" + staffId + "\"}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.replacements[0].fullName").value("Lễ tân Test"))
+                .andExpect(jsonPath("$.replacements[0].shift.templateName").value("Ca chiều"));
+
+            ArgumentCaptor<List<ReceptionReplacement>> sent = ArgumentCaptor.forClass(List.class);
+            verify(leaveRequestService).approveLeaveRequest(eq(LEAVE_ID), sent.capture());
+            assertThat(sent.getValue()).singleElement().satisfies(replacement -> {
+                assertThat(replacement.getShiftId()).isEqualTo(shiftId);
+                assertThat(replacement.getStaffId()).isEqualTo(staffId);
+            });
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldRequireStaffForEveryReplacement() throws Exception {
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/approve", LEAVE_ID)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"replacements\": [{\"shiftId\": \"" + UUID.randomUUID() + "\"}]}"))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(leaveRequestService);
         }
 
         /** Giám sát vận hành không duyệt đơn (BR-PERM-07) — chặn ở tầng URL, service không được gọi. */
@@ -219,7 +258,8 @@ class LeaveRequestControllerTest {
         void shouldForbidStaffAndSupervisorsFromDeciding(String authorities) throws Exception {
             mockMvc.perform(patch("/scheduling/leave-requests/{id}/approve", LEAVE_ID).with(authorities(authorities)))
                 .andExpect(status().isForbidden());
-            mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID).with(authorities(authorities)))
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID).with(authorities(authorities))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"reason\": \"Thiếu người\"}"))
                 .andExpect(status().isForbidden());
             mockMvc.perform(get("/scheduling/leave-requests/{id}/approval-preview", LEAVE_ID)
                     .with(authorities(authorities)))
@@ -252,14 +292,38 @@ class LeaveRequestControllerTest {
             verifyNoInteractions(leaveRequestService);
         }
 
+        /** Chốt 31/10/2026: từ chối kèm lý do, và lý do có trong response để người gửi đọc được. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_MANAGER", "ROLE_DIRECTOR"})
+        void shouldLetReviewersRejectWithReason(String authorities) throws Exception {
+            LeaveRequestResponse rejected = sample(LeaveRequestStatus.REJECTED);
+            rejected.setRejectReason("Cuối tuần thiếu người");
+            when(leaveRequestService.rejectLeaveRequest(LEAVE_ID, "Cuối tuần thiếu người")).thenReturn(rejected);
+
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID).with(authorities(authorities))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"reason\": \"Cuối tuần thiếu người\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectReason").value("Cuối tuần thiếu người"));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"{}", "{\"reason\": \"  \"}"})
+        @WithMockUser(roles = "MANAGER")
+        void shouldRequireReasonToReject(String body) throws Exception {
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(leaveRequestService);
+        }
+
+        /** Gọi kiểu cũ, không kèm body, thì 400 — không có đường nào từ chối đơn mà thiếu lý do. */
         @Test
         @WithMockUser(roles = "MANAGER")
-        void shouldRejectForManager() throws Exception {
-            when(leaveRequestService.rejectLeaveRequest(LEAVE_ID)).thenReturn(sample(LeaveRequestStatus.REJECTED));
-
+        void shouldRefuseRejectWithoutBody() throws Exception {
             mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("REJECTED"));
+                .andExpect(status().isBadRequest());
+            verifyNoInteractions(leaveRequestService);
         }
 
         /** Đơn ngoài phạm vi duyệt (khách sạn khác, đơn của chính mình) trả 404. */
@@ -281,6 +345,14 @@ class LeaveRequestControllerTest {
             Arrays.stream(commaSeparated.split(","))
                 .map(SimpleGrantedAuthority::new)
                 .toList());
+    }
+
+    private static LeaveApprovalResponse approved(List<Replacement> replacements) {
+        return LeaveApprovalResponse.builder()
+            .request(sample(LeaveRequestStatus.APPROVED))
+            .releasedShifts(List.of()).keptShifts(List.of())
+            .receptionGaps(List.of()).replacements(replacements)
+            .build();
     }
 
     private static LeaveRequestResponse sample(LeaveRequestStatus status) {

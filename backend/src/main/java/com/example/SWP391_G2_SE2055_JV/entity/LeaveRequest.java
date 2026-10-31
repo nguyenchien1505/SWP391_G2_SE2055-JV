@@ -71,6 +71,10 @@ public class LeaveRequest extends AuditableEntity {
     @Column(name = "decided_at")
     private LocalDateTime decidedAt;
 
+    /** Bắt buộc khi đơn bị từ chối (chốt 31/10/2026) — người gửi đọc được; null với mọi trạng thái khác. */
+    @Column(name = "reject_reason", length = 500)
+    private String rejectReason;
+
     /**
      * Người duyệt hủy phần ngày chưa tới của đơn đã duyệt — BR-SCH-16 bản sửa 28/10/2026. Hủy cả đơn thì đơn sang
      * CANCELLED; rút ngắn thì đơn vẫn APPROVED với {@link #originalToDate}.

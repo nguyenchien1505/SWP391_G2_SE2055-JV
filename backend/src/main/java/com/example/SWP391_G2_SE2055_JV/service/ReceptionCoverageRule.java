@@ -91,9 +91,10 @@ public class ReceptionCoverageRule {
     }
 
     /**
-     * BR-SCH-29 (duyệt đơn nghỉ): KHÔNG chặn, chỉ hỏi — gỡ người của {@code leaving} có làm ca theo mẫu đang
-     * có lễ tân thành hết lễ tân không, kể cả khi người đó là người cuối cùng của ca. Ca không theo mẫu, ca
-     * chưa giao người, hay ca vốn đã thiếu lễ tân thì trả {@code false}.
+     * Duyệt đơn nghỉ: KHÔNG chặn, chỉ hỏi — gỡ người của {@code leaving} có làm ca theo mẫu đang có lễ tân thành
+     * hết lễ tân không, kể cả khi người đó là người cuối cùng của ca. Ca không theo mẫu, ca chưa giao người, hay ca
+     * vốn đã thiếu lễ tân thì trả {@code false}. Ca trả {@code true} thì người duyệt phải xếp lễ tân thay mới duyệt
+     * được (BR-SCH-29 sửa, chốt 31/10/2026 — {@code LeaveRequestService}).
      */
     public boolean losesOnlyReceptionist(Shift leaving) {
         if (leaving.getSourceTemplateId() == null || leaving.getStaffId() == null) {

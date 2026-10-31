@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
-import { fetchLeaveReviewQueue, rejectLeaveRequest } from '../../api/leaveRequests';
-import ConfirmDialog from '../../components/ConfirmDialog';
+import { fetchLeaveReviewQueue } from '../../api/leaveRequests';
 import LeaveApprovalDialog from '../../components/scheduling/LeaveApprovalDialog';
 import LeaveTicket from '../../components/scheduling/LeaveTicket';
+import RejectLeaveDialog from '../../components/scheduling/RejectLeaveDialog';
 import RevokeLeaveDialog from '../../components/scheduling/RevokeLeaveDialog';
 import { useAuth } from '../../context/AuthContext';
-import { todayIso } from '../rooms/format';
-import { daysInclusive, formatLeaveRange } from './leaveLabels';
+import { formatDate, todayIso } from '../rooms/format';
+import { daysInclusive } from './leaveLabels';
 import '../rooms/rooms.css';
 import './leave.css';
 
@@ -26,8 +26,8 @@ const TABS = [
  * đơn của các quản lý. Giám sát vận hành không duyệt (BR-PERM-07) nên không vào được màn này.
  *
  * "Duyệt" mở hộp thoại xem trước các ca sẽ bị gỡ và cảnh báo mất lễ tân (BR-SCH-29) rồi mới xác nhận; "Từ chối"
- * chỉ cần xác nhận — lịch làm việc không đổi. Đơn đã duyệt còn ngày chưa tới thì người duyệt hủy được phần đó, kèm
- * lý do (BR-SCH-16 sửa 28/10/2026).
+ * bắt buộc nhập lý do, người gửi đọc được (chốt 31/10/2026) — lịch làm việc không đổi. Đơn đã duyệt còn ngày chưa
+ * tới thì người duyệt hủy được phần đó, kèm lý do (BR-SCH-16 sửa 28/10/2026).
  */
 export default function LeaveReviewPage() {
   const { user } = useAuth();
@@ -42,7 +42,7 @@ export default function LeaveReviewPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [approving, setApproving] = useState(null); // đơn đang mở hộp thoại duyệt
-  const [rejecting, setRejecting] = useState(null); // đơn đang chờ xác nhận từ chối
+  const [rejecting, setRejecting] = useState(null); // đơn đang mở hộp thoại từ chối
   const [revoking, setRevoking] = useState(null); // đơn đã duyệt đang mở hộp thoại hủy phần còn lại
   const [banner, setBanner] = useState(null); // { type, text }
 
@@ -66,7 +66,7 @@ export default function LeaveReviewPage() {
     load(0);
   }, [load]);
 
-  /** Báo lại đúng điều đã xảy ra với LỊCH: bao nhiêu ca bị gỡ, ca nào giữ, ca nào mất lễ tân. */
+  /** Báo lại đúng điều đã xảy ra với LỊCH: bao nhiêu ca bị gỡ, ai được xếp thay lễ tân, ca nào giữ. */
   function finishApprove(result) {
     const leave = result.request;
     setApproving(null);
@@ -74,26 +74,25 @@ export default function LeaveReviewPage() {
     parts.push(result.releasedShifts.length > 0
       ? `Đã gỡ khỏi ${result.releasedShifts.length} ca trong khoảng nghỉ.`
       : 'Lịch làm việc không đổi.');
+    if (result.replacements.length > 0) {
+      const names = result.replacements.map(({ shift, fullName }) =>
+        `${fullName} (${shift.templateName ?? 'Ca giờ khác'} ${formatDate(shift.shiftDate)})`);
+      parts.push(`Lễ tân thay: ${names.join(', ')}.`);
+    }
     if (result.keptShifts.length > 0) {
       parts.push(`${result.keptShifts.length} ca giữ nguyên (ca hôm nay hoặc đã check-in) — gỡ tay ở Xếp lịch làm việc nếu cần.`);
     }
-    if (result.receptionWarnings.length > 0) {
-      parts.push(`Ca không còn lễ tân: ${result.receptionWarnings.join(', ')} — nhớ xếp lễ tân thay.`);
-    }
-    setBanner({ type: result.receptionWarnings.length > 0 ? 'warn' : 'success', text: parts.join(' ') });
+    setBanner({ type: 'success', text: parts.join(' ') });
     load(0);
   }
 
-  async function confirmReject() {
-    const target = rejecting;
+  function finishReject(updated) {
     setRejecting(null);
-    try {
-      await rejectLeaveRequest(target.id);
-      setBanner({ type: 'success', text: `Đã từ chối đơn nghỉ của ${target.requesterName}.` });
-      load(0);
-    } catch (err) {
-      setBanner({ type: 'error', text: readErrorMessage(err, 'Không từ chối được đơn này.') });
-    }
+    setBanner({
+      type: 'success',
+      text: `Đã từ chối đơn nghỉ của ${updated.requesterName}. Người gửi sẽ thấy lý do trên đơn của mình.`,
+    });
+    load(0);
   }
 
   /** Số ngày vừa hủy đọc từ chính kết quả backend: hủy cả đơn, hoặc phần sau ngày kết thúc mới. */
@@ -113,7 +112,7 @@ export default function LeaveReviewPage() {
     if (leave.status === 'PENDING') {
       return [
         { key: 'approve', label: 'Duyệt…', onClick: () => setApproving(leave) },
-        { key: 'reject', label: 'Từ chối', tone: 'ghost', onClick: () => setRejecting(leave) },
+        { key: 'reject', label: 'Từ chối…', tone: 'ghost', onClick: () => setRejecting(leave) },
       ];
     }
     // BR-SCH-16 sửa 28/10/2026: đơn đã duyệt còn ngày chưa tới thì người duyệt hủy được phần đó.
@@ -208,13 +207,7 @@ export default function LeaveReviewPage() {
       )}
 
       {rejecting && (
-        <ConfirmDialog
-          title="Từ chối đơn nghỉ?"
-          message={`Đơn nghỉ ${formatLeaveRange(rejecting.fromDate, rejecting.toDate)} của ${rejecting.requesterName} sẽ bị từ chối. Lịch làm việc giữ nguyên.`}
-          confirmLabel="Từ chối"
-          onConfirm={confirmReject}
-          onCancel={() => setRejecting(null)}
-        />
+        <RejectLeaveDialog leave={rejecting} onClose={() => setRejecting(null)} onRejected={finishReject} />
       )}
     </div>
   );

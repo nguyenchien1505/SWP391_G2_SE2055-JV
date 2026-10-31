@@ -1,7 +1,11 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest.ReceptionReplacement;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Candidate;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.ReceptionGap;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Replacement;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.ShiftImpact;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveRequestResponse;
@@ -14,6 +18,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
@@ -30,6 +35,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +46,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -61,8 +69,10 @@ import java.util.stream.Stream;
  *       không lương, gửi được cả cho hôm nay. Không gửi cho ngày đã qua; một người không có hai đơn còn hiệu
  *       lực trùng ngày.</li>
  *   <li>Duyệt đơn: gỡ người khỏi các ca từ NGÀY MAI trở đi trong khoảng nghỉ, lý do LEAVE_APPROVED; ca của chính
- *       hôm nay giữ nguyên để Manager tự quyết (BR-SCH-17). Ca theo mẫu mất lễ tân duy nhất chỉ cảnh báo, vẫn
- *       duyệt được (BR-SCH-29).</li>
+ *       hôm nay giữ nguyên để Manager tự quyết (BR-SCH-17). Ca theo mẫu sẽ mất lễ tân duy nhất thì người duyệt
+ *       phải chọn lễ tân thay cho từng ca mới duyệt được (BR-SCH-29 sửa, chốt 31/10/2026 — trước đó chỉ cảnh
+ *       báo).</li>
+ *   <li>Từ chối đơn: bắt buộc lý do, người gửi đọc được vì sao đơn không được duyệt (chốt 31/10/2026).</li>
  *   <li>Đơn đã duyệt: người gửi không tự hủy; người duyệt hủy được phần ngày chưa tới, bắt buộc lý do, quỹ phép
  *       tự hoàn (BR-SCH-16 bản sửa 28/10/2026).</li>
  * </ul>
@@ -81,6 +91,8 @@ public class LeaveRequestService {
     private static final Set<LeaveRequestStatus> ACTIVE =
         EnumSet.of(LeaveRequestStatus.PENDING, LeaveRequestStatus.APPROVED);
 
+    private static final Set<LeaveRequestStatus> APPROVED_ONLY = EnumSet.of(LeaveRequestStatus.APPROVED);
+
     private final LeaveRequestRepository  leaveRequestRepository;
     private final UserRepository          userRepository;
     private final PositionRepository      positionRepository;
@@ -89,6 +101,8 @@ public class LeaveRequestService {
     private final ShiftTemplateRepository shiftTemplateRepository;
     private final ReceptionCoverageRule   receptionCoverage;
     private final LeaveQuota              leaveQuota;
+    // Lễ tân thay phải qua đủ Schedule Policy như khi xếp ca tay (BR-SCH-02).
+    private final SchedulePolicyValidator policyValidator;
 
     // ── Người gửi ───────────────────────────────────────────────────────────
 
@@ -176,24 +190,28 @@ public class LeaveRequestService {
     }
 
     /**
-     * Xem trước khi duyệt: những ca sẽ bị gỡ, ca giữ nguyên, cảnh báo mất lễ tân (BR-SCH-29) và quỹ phép năm
-     * của người gửi — để người duyệt quyết định khi đã biết hệ quả.
+     * Xem trước khi duyệt: những ca sẽ bị gỡ, ca giữ nguyên, ca sẽ mất lễ tân duy nhất kèm các lễ tân xếp thay được
+     * (BR-SCH-29 sửa) và quỹ phép năm của người gửi — để người duyệt quyết định khi đã biết hệ quả.
      */
     @Transactional(readOnly = true)
     public LeaveApprovalResponse previewApproval(UUID id) {
         LeaveRequest leave = getOwnedRequest(id);
         User requester = requesterInReviewScope(leave);
         LocalDate today = todayAt(leave.getLocationId(), leave.getTenantId());
-        return toApprovalResponse(leave, impactOn(leave, requester, today), balanceIfAnnual(leave, requester, today));
+        Impact impact = impactOn(leave, requester, today);
+        return toApprovalResponse(leave, impact, receptionGapsOf(impact, requester), List.of(),
+            balanceIfAnnual(leave, requester, today));
     }
 
     /**
-     * Duyệt đơn — BR-SCH-07, BR-SCH-17, BR-SCH-24, BR-SCH-29, BR-SCH-31. Phép năm bị trừ quỹ từ lúc này.
+     * Duyệt đơn — BR-SCH-07, BR-SCH-17, BR-SCH-24, BR-SCH-29 (sửa 31/10/2026), BR-SCH-31. Phép năm bị trừ quỹ từ
+     * lúc này.
      *
-     * @return các ca đã gỡ / giữ, cảnh báo lễ tân (tính TRƯỚC khi gỡ) và quỹ phép sau khi duyệt
+     * @param replacements lễ tân thay cho từng ca sẽ mất lễ tân duy nhất — bắt buộc đủ, nếu không thì không duyệt
+     * @return các ca đã gỡ / giữ, lễ tân đã xếp thay và quỹ phép sau khi duyệt
      */
     @Transactional
-    public LeaveApprovalResponse approveLeaveRequest(UUID id) {
+    public LeaveApprovalResponse approveLeaveRequest(UUID id, List<ReceptionReplacement> replacements) {
         LeaveRequest leave = getOwnedRequest(id);
         User requester = requesterInReviewScope(leave);
         assertPending(leave);
@@ -205,31 +223,40 @@ public class LeaveRequestService {
             assertQuotaCovers(leave, requester, today);
         }
 
-        // Cảnh báo lễ tân phải tính khi người đó CÒN trong ca.
+        // Ca mất lễ tân phải tính khi người đó CÒN trong ca.
         Impact impact = impactOn(leave, requester, today);
+        Map<UUID, UUID> chosen = chosenReplacements(replacements, impact, requester);
         LocalDateTime now = nowAt(leave.getLocationId(), leave.getTenantId());
         release(impact.released(), now);
+        List<Replacement> assigned = assignReplacements(impact, chosen, requester);
 
         leave.setStatus(LeaveRequestStatus.APPROVED);
         leave.setApproverId(SecurityUtils.getCurrentUserId());
         leave.setDecidedAt(now);
         leaveRequestRepository.save(leave);
 
-        log.info("Duyệt đơn nghỉ {} của {} — gỡ {} ca, {} cảnh báo lễ tân", id, requester.getEmail(),
-            impact.released().size(), impact.receptionWarnings().size());
-        return toApprovalResponse(leave, impact, balanceIfAnnual(leave, requester, today));
+        log.info("Duyệt đơn nghỉ {} của {} — gỡ {} ca, xếp {} lễ tân thay", id, requester.getEmail(),
+            impact.released().size(), assigned.size());
+        return toApprovalResponse(leave, impact, List.of(), assigned, balanceIfAnnual(leave, requester, today));
     }
 
-    /** Từ chối đơn — BR-SCH-08, BR-SCH-23. Lịch làm việc không đổi. */
+    /**
+     * Từ chối đơn — BR-SCH-08, BR-SCH-23. Bắt buộc lý do (chốt 31/10/2026): người gửi đọc được vì sao đơn không được
+     * duyệt. Lịch làm việc không đổi.
+     */
     @Transactional
-    public LeaveRequestResponse rejectLeaveRequest(UUID id) {
+    public LeaveRequestResponse rejectLeaveRequest(UUID id, String reason) {
         LeaveRequest leave = getOwnedRequest(id);
         requesterInReviewScope(leave);
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException("Nhập lý do từ chối để người gửi biết vì sao đơn không được duyệt.");
+        }
         assertPending(leave);
 
         leave.setStatus(LeaveRequestStatus.REJECTED);
         leave.setApproverId(SecurityUtils.getCurrentUserId());
         leave.setDecidedAt(nowAt(leave.getLocationId(), leave.getTenantId()));
+        leave.setRejectReason(reason.trim());
         log.info("Từ chối đơn nghỉ {}", id);
         return toResponse(leaveRequestRepository.save(leave));
     }
@@ -358,8 +385,11 @@ public class LeaveRequestService {
 
     // ── Hệ quả lên lịch làm việc ────────────────────────────────────────────
 
-    /** Ca bị gỡ, ca giữ nguyên kèm lý do, cảnh báo lễ tân và tên mẫu của các ca đó. */
-    private record Impact(List<Shift> released, List<Kept> kept, List<String> receptionWarnings,
+    /**
+     * Ca bị gỡ, ca giữ nguyên kèm lý do, các ca bị gỡ mà sẽ mất lễ tân duy nhất (phải xếp người thay) và tên mẫu
+     * của các ca đó.
+     */
+    private record Impact(List<Shift> released, List<Kept> kept, List<Shift> receptionGaps,
                           Map<UUID, String> templateNames) {}
 
     private record Kept(Shift shift, String note) {}
@@ -385,18 +415,14 @@ public class LeaveRequestService {
                 released.add(shift);
             }
         }
-        Map<UUID, String> templateNames = templateNamesOf(shifts);
-        List<String> warnings = released.stream()
-            .filter(receptionCoverage::losesOnlyReceptionist)
-            .map(shift -> shiftLabel(shift, templateNames))
-            .toList();
-        return new Impact(released, kept, warnings, templateNames);
+        List<Shift> receptionGaps = released.stream().filter(receptionCoverage::losesOnlyReceptionist).toList();
+        return new Impact(released, kept, receptionGaps, templateNamesOf(shifts));
     }
 
     /**
      * Gỡ người khỏi các ca bị đơn nghỉ trùng — BR-SCH-07, BR-SCH-24. Bản ghi ca giữ nguyên (DM-03), chỉ bỏ người
-     * và ghi lý do. Không đi qua luật lễ tân của {@code ShiftService.unassignStaff}: ở đây BR-SCH-29 chỉ cảnh
-     * báo chứ không chặn.
+     * và ghi lý do. Không đi qua luật lễ tân của {@code ShiftService.unassignStaff} ("giao thêm lễ tân trước rồi mới
+     * gỡ"): ca sẽ mất lễ tân đã có người thay xếp ngay sau đó, trong cùng giao dịch ({@link #assignReplacements}).
      */
     private void release(List<Shift> shifts, LocalDateTime now) {
         for (Shift shift : shifts) {
@@ -405,6 +431,133 @@ public class LeaveRequestService {
             shift.setUnassignedAt(now);
         }
         shiftRepository.saveAll(shifts);
+    }
+
+    // ── Lễ tân thay — BR-SCH-29 sửa (chốt 31/10/2026) ───────────────────────
+    // Mỗi ca theo mẫu phải có lễ tân (chốt 05/10/2026, ReceptionCoverageRule). Trước đây duyệt đơn chỉ cảnh báo ca sẽ
+    // mất lễ tân; giờ người duyệt chọn lễ tân thay cho từng ca đó, và lễ tân thay vào CHÍNH ca của người nghỉ.
+
+    /**
+     * Mỗi ca sẽ mất lễ tân duy nhất kèm các lễ tân xếp thay được — cùng luật với lúc duyệt
+     * ({@link #whyNotReplacement}), nên ai hiện trong danh sách cũng chọn được.
+     */
+    private List<ReceptionGap> receptionGapsOf(Impact impact, User requester) {
+        if (impact.receptionGaps().isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, List<User>> receptionistsByLocation = new HashMap<>();
+        for (Shift gap : impact.receptionGaps()) {
+            receptionistsByLocation.computeIfAbsent(gap.getLocationId(),
+                locationId -> receptionistsAt(gap.getTenantId(), locationId));
+        }
+        Map<UUID, String> positionNames = positionNamesOf(
+            receptionistsByLocation.values().stream().flatMap(List::stream).toList());
+        return impact.receptionGaps().stream()
+            .map(gap -> new ReceptionGap(shiftImpact(gap, impact.templateNames(), null),
+                receptionistsByLocation.get(gap.getLocationId()).stream()
+                    .filter(person -> whyNotReplacement(gap, person, requester) == null)
+                    .map(person -> new Candidate(person.getId(), person.getFullName(),
+                        person.getPositionId() == null ? null : positionNames.get(person.getPositionId())))
+                    .toList()))
+            .toList();
+    }
+
+    /**
+     * Lễ tân thay theo từng ca: mỗi ca sẽ mất lễ tân phải có đúng một người, và chỉ những ca đó. Lịch đổi giữa lúc
+     * xem trước và lúc duyệt (ví dụ vừa có lễ tân khác vào ca) thì báo để mở lại hộp thoại, không xếp nhầm.
+     */
+    private Map<UUID, UUID> chosenReplacements(List<ReceptionReplacement> replacements, Impact impact,
+                                               User requester) {
+        Map<UUID, UUID> chosen = new LinkedHashMap<>();
+        for (ReceptionReplacement replacement : replacements == null ? List.<ReceptionReplacement>of() : replacements) {
+            if (chosen.put(replacement.getShiftId(), replacement.getStaffId()) != null) {
+                throw new BusinessException("Mỗi ca chỉ chọn một lễ tân thay.");
+            }
+        }
+        Set<UUID> gapIds = impact.receptionGaps().stream().map(Shift::getId).collect(Collectors.toSet());
+        if (!gapIds.containsAll(chosen.keySet())) {
+            throw new BusinessException(
+                "Lịch làm việc vừa thay đổi — có ca không còn cần lễ tân thay. Mở lại hộp thoại duyệt để xem lại.");
+        }
+        List<String> missing = impact.receptionGaps().stream()
+            .filter(gap -> !chosen.containsKey(gap.getId()))
+            .map(gap -> shiftLabel(gap, impact.templateNames()))
+            .toList();
+        if (!missing.isEmpty()) {
+            throw new BusinessException(String.format(
+                "Mỗi ca phải có lễ tân: %s sẽ không còn lễ tân nào khi %s nghỉ. Chọn lễ tân thay cho %s rồi mới duyệt.",
+                String.join(", ", missing), requester.getFullName(), missing.size() > 1 ? "từng ca" : "ca này"));
+        }
+        return chosen;
+    }
+
+    /**
+     * Xếp lễ tân thay vào chính ca của người nghỉ (ca vừa gỡ ở {@link #release}). Xếp lần lượt và ghi xuống từng ca,
+     * nên một người thay nhiều ca thì ca sau được kiểm tra tính cả ca trước vừa nhận (giờ/tuần, ngày liên tiếp…).
+     */
+    private List<Replacement> assignReplacements(Impact impact, Map<UUID, UUID> chosen, User requester) {
+        List<Replacement> assigned = new ArrayList<>();
+        for (Shift gap : impact.receptionGaps()) {
+            String label = shiftLabel(gap, impact.templateNames());
+            User person = userRepository.findByIdAndTenantId(chosen.get(gap.getId()), gap.getTenantId())
+                .orElseThrow(() -> new BusinessException("Không tìm thấy lễ tân được chọn cho " + label + "."));
+            String problem = whyNotReplacement(gap, person, requester);
+            if (problem != null) {
+                throw new BusinessException(person.getFullName() + " không thay được ở " + label + ": " + problem);
+            }
+            gap.setStaffId(person.getId());
+            gap.setUnassignedReason(null);
+            gap.setUnassignedAt(null);
+            shiftRepository.saveAndFlush(gap);
+            assigned.add(new Replacement(shiftImpact(gap, impact.templateNames(), null), person.getId(),
+                person.getFullName()));
+        }
+        return assigned;
+    }
+
+    /**
+     * Vì sao {@code person} KHÔNG thay được người nghỉ ở ca {@code gap}; {@code null} = thay được. Một luật cho cả danh
+     * sách gợi ý lúc xem trước lẫn lựa chọn gửi lên lúc duyệt: nhân viên đang làm ở khách sạn của ca, có quyền Lễ tân,
+     * không nghỉ (đơn đã duyệt) ngày đó, và qua đủ Schedule Policy như khi xếp ca tay (BR-SCH-02).
+     */
+    private String whyNotReplacement(Shift gap, User person, User requester) {
+        if (person.getId().equals(requester.getId())) {
+            return "Đây là chính người xin nghỉ.";
+        }
+        if (person.getRole() != Role.STAFF || !person.isActive() || !gap.getLocationId().equals(person.getLocationId())) {
+            return "Không phải nhân viên đang làm việc ở khách sạn này.";
+        }
+        if (!person.getPermissions().contains(StaffPermission.RECEPTION)) {
+            return "Không có quyền Lễ tân.";
+        }
+        if (!leaveRequestRepository.findOverlapping(person.getId(), APPROVED_ONLY, gap.getShiftDate(),
+                gap.getShiftDate()).isEmpty()) {
+            return "Đã được duyệt nghỉ ngày " + gap.getShiftDate().format(DAY) + ".";
+        }
+        try {
+            policyValidator.validate(gap.getTenantId(), person.getId(), gap, gap.getId());
+            return null;
+        } catch (BusinessException ex) {
+            return ex.getMessage();
+        }
+    }
+
+    /**
+     * Lễ tân đang làm việc ở một khách sạn — quyền Lễ tân tick theo từng người, kể cả người kiêm. Theo tên, sắp ở DB
+     * như danh sách giao việc dọn phòng ("Đỗ" đứng cạnh "Dương", không bị đẩy xuống cuối).
+     */
+    private List<User> receptionistsAt(UUID tenantId, UUID locationId) {
+        return userRepository.findByTenantIdAndLocationIdAndRole(tenantId, locationId, Role.STAFF,
+                Pageable.unpaged(Sort.by("fullName")))
+            .stream()
+            .filter(person -> person.isActive() && person.getPermissions().contains(StaffPermission.RECEPTION))
+            .toList();
+    }
+
+    private Map<UUID, String> positionNamesOf(Collection<User> people) {
+        Set<UUID> ids = people.stream().map(User::getPositionId).filter(Objects::nonNull).collect(Collectors.toSet());
+        return ids.isEmpty() ? Map.of()
+            : positionRepository.findAllById(ids).stream().collect(Collectors.toMap(Position::getId, Position::getName));
     }
 
     private LeaveBalanceResponse balanceIfAnnual(LeaveRequest leave, User requester, LocalDate today) {
@@ -432,7 +585,8 @@ public class LeaveRequestService {
 
     // ── Dựng response ───────────────────────────────────────────────────────
 
-    private LeaveApprovalResponse toApprovalResponse(LeaveRequest leave, Impact impact, LeaveBalanceResponse balance) {
+    private LeaveApprovalResponse toApprovalResponse(LeaveRequest leave, Impact impact, List<ReceptionGap> receptionGaps,
+                                                     List<Replacement> replacements, LeaveBalanceResponse balance) {
         return LeaveApprovalResponse.builder()
             .request(toResponse(leave))
             .releasedShifts(impact.released().stream()
@@ -441,7 +595,8 @@ public class LeaveRequestService {
             .keptShifts(impact.kept().stream()
                 .map(kept -> shiftImpact(kept.shift(), impact.templateNames(), kept.note()))
                 .toList())
-            .receptionWarnings(impact.receptionWarnings())
+            .receptionGaps(receptionGaps)
+            .replacements(replacements)
             .balance(balance)
             .build();
     }

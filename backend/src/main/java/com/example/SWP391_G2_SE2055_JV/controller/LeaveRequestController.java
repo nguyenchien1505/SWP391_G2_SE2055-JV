@@ -1,9 +1,11 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveRequestResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.RejectLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RevokeLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
 import com.example.SWP391_G2_SE2055_JV.service.LeaveRequestService;
@@ -18,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -78,23 +81,37 @@ public class LeaveRequestController {
         return ResponseEntity.ok(leaveRequestService.getReviewQueue(status, pageable));
     }
 
-    /** Xem trước hệ quả của việc duyệt: ca sẽ gỡ, ca giữ, cảnh báo lễ tân (BR-SCH-29), quỹ phép năm. */
+    /**
+     * Xem trước hệ quả của việc duyệt: ca sẽ gỡ, ca giữ, ca sẽ mất lễ tân duy nhất kèm các lễ tân xếp thay được
+     * (BR-SCH-29 sửa 31/10/2026), quỹ phép năm.
+     */
     @GetMapping("/{id}/approval-preview")
     @PreAuthorize("hasAnyRole('MANAGER','DIRECTOR')")
     public ResponseEntity<LeaveApprovalResponse> previewApproval(@PathVariable UUID id) {
         return ResponseEntity.ok(leaveRequestService.previewApproval(id));
     }
 
+    /**
+     * Duyệt đơn. Ca theo mẫu sẽ mất lễ tân duy nhất thì phải gửi kèm lễ tân thay cho từng ca (BR-SCH-29 sửa
+     * 31/10/2026), chọn trong danh sách của {@code approval-preview}; đơn không làm ca nào thiếu lễ tân thì không cần
+     * body.
+     */
     @PatchMapping("/{id}/approve")
     @PreAuthorize("hasAnyRole('MANAGER','DIRECTOR')")
-    public ResponseEntity<LeaveApprovalResponse> approveLeaveRequest(@PathVariable UUID id) {
-        return ResponseEntity.ok(leaveRequestService.approveLeaveRequest(id));
+    public ResponseEntity<LeaveApprovalResponse> approveLeaveRequest(
+            @PathVariable UUID id,
+            @Valid @RequestBody(required = false) ApproveLeaveRequestRequest request) {
+        return ResponseEntity.ok(leaveRequestService.approveLeaveRequest(id,
+            request == null ? List.of() : request.getReplacements()));
     }
 
+    /** Từ chối đơn đang chờ duyệt, bắt buộc lý do — người gửi đọc được (chốt 31/10/2026). Lịch làm việc không đổi. */
     @PatchMapping("/{id}/reject")
     @PreAuthorize("hasAnyRole('MANAGER','DIRECTOR')")
-    public ResponseEntity<LeaveRequestResponse> rejectLeaveRequest(@PathVariable UUID id) {
-        return ResponseEntity.ok(leaveRequestService.rejectLeaveRequest(id));
+    public ResponseEntity<LeaveRequestResponse> rejectLeaveRequest(
+            @PathVariable UUID id,
+            @Valid @RequestBody RejectLeaveRequestRequest request) {
+        return ResponseEntity.ok(leaveRequestService.rejectLeaveRequest(id, request.getReason()));
     }
 
     /** BR-SCH-16 bản sửa 28/10/2026: người duyệt hủy phần ngày chưa tới của đơn đã duyệt, bắt buộc lý do. */

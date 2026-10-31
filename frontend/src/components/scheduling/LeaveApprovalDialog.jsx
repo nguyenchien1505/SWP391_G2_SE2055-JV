@@ -10,14 +10,16 @@ import { timeRange } from '../../pages/scheduling/scheduleFormat';
  * <ul>
  *   <li>ca từ ngày mai trong khoảng nghỉ sẽ bị gỡ người;</li>
  *   <li>ca của chính hôm nay (và ca đã check-in) giữ nguyên — quản lý tự gỡ tay nếu cần;</li>
- *   <li>ca sẽ mất lễ tân duy nhất chỉ là CẢNH BÁO — vẫn duyệt được;</li>
+ *   <li>ca sẽ mất lễ tân duy nhất: mỗi ca phải có lễ tân, nên chọn lễ tân thay cho TỪNG ca thì mới duyệt được
+ *       (BR-SCH-29 sửa 31/10/2026). Danh sách chỉ có người backend đã kiểm là xếp được;</li>
  *   <li>phép năm: quỹ của người gửi, bị trừ khi duyệt.</li>
  * </ul>
  *
- * @param onApproved nhận kết quả duyệt (các ca ĐÃ gỡ, cảnh báo) để màn hình báo lại
+ * @param onApproved nhận kết quả duyệt (các ca ĐÃ gỡ, lễ tân đã xếp thay) để màn hình báo lại
  */
 export default function LeaveApprovalDialog({ leave, onClose, onApproved }) {
   const [preview, setPreview] = useState(null);
+  const [chosen, setChosen] = useState({}); // shiftId → staffId của lễ tân thay
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -38,11 +40,17 @@ export default function LeaveApprovalDialog({ leave, onClose, onApproved }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [submitting, onClose]);
 
+  const gaps = preview?.receptionGaps ?? [];
+  const missing = gaps.filter((gap) => !chosen[gap.shift.shiftId]).length;
+  // Có ca không ai thay được thì chọn gì cũng không duyệt được — dòng báo đỏ của ca đó đã nói phải làm gì.
+  const noCandidate = gaps.some((gap) => gap.candidates.length === 0);
+
   async function approve() {
     setSubmitting(true);
     setError('');
     try {
-      onApproved(await approveLeaveRequest(leave.id));
+      const replacements = gaps.map((gap) => ({ shiftId: gap.shift.shiftId, staffId: chosen[gap.shift.shiftId] }));
+      onApproved(await approveLeaveRequest(leave.id, replacements));
     } catch (err) {
       setError(readErrorMessage(err, 'Không duyệt được đơn này.'));
       setSubmitting(false);
@@ -100,11 +108,50 @@ export default function LeaveApprovalDialog({ leave, onClose, onApproved }) {
                 </>
               )}
 
-              {preview.receptionWarnings.length > 0 && (
-                <div className="alert alert--warn" role="status">
-                  <b>Ca sẽ không còn lễ tân:</b> {preview.receptionWarnings.join(', ')}. Bạn vẫn duyệt được — nhớ xếp
-                  một lễ tân khác cho {preview.receptionWarnings.length > 1 ? 'các ca này' : 'ca này'}.
-                </div>
+              {gaps.length > 0 && (
+                <section className="leave-gaps" aria-labelledby="leave-gaps-title">
+                  <h3 id="leave-gaps-title">Chọn lễ tân thay ({gaps.length})</h3>
+                  <p className="muted">
+                    Mỗi ca phải có lễ tân. {leave.requesterName ?? 'Người này'} là lễ tân duy nhất của{' '}
+                    {gaps.length > 1 ? 'các ca dưới đây' : 'ca dưới đây'} — chọn người thay vào ca thì mới duyệt được.
+                  </p>
+                  <ul className="leave-impact">
+                    {gaps.map((gap) => (
+                      <ShiftLine key={gap.shift.shiftId} shift={gap.shift}>
+                        {gap.candidates.length === 0 ? (
+                          <span className="leave-gap__none" role="alert">
+                            Không có lễ tân nào xếp được vào ca này (trùng ca, vượt giờ hoặc đang nghỉ). Sắp lại lịch ở
+                            «Xếp lịch làm việc» rồi duyệt lại, hoặc từ chối đơn.
+                          </span>
+                        ) : (
+                          <label className="field leave-gap__field">
+                            <span className="field__label">
+                              Lễ tân thay <span className="req">*</span>
+                            </span>
+                            <select
+                              value={chosen[gap.shift.shiftId] ?? ''}
+                              onChange={(e) => setChosen((prev) => ({ ...prev, [gap.shift.shiftId]: e.target.value }))}
+                              disabled={submitting}
+                            >
+                              <option value="">— Chọn lễ tân —</option>
+                              {gap.candidates.map((person) => (
+                                <option key={person.staffId} value={person.staffId}>
+                                  {person.fullName}
+                                  {person.positionName ? ` · ${person.positionName}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                      </ShiftLine>
+                    ))}
+                  </ul>
+                  {missing > 0 && !noCandidate && (
+                    <p className="leave-gaps__hint">
+                      Còn {missing} ca chưa có lễ tân thay — chọn đủ thì nút «Xếp lễ tân & duyệt» mới bấm được.
+                    </p>
+                  )}
+                </section>
               )}
             </>
           )}
@@ -120,8 +167,9 @@ export default function LeaveApprovalDialog({ leave, onClose, onApproved }) {
           <button type="button" className="btn btn--ghost" onClick={onClose} disabled={submitting}>
             Hủy
           </button>
-          <button type="button" className="btn btn--primary" onClick={approve} disabled={submitting || !preview}>
-            {submitting ? 'Đang duyệt…' : 'Duyệt đơn'}
+          <button type="button" className="btn btn--primary" onClick={approve}
+                  disabled={submitting || !preview || missing > 0}>
+            {submitting ? 'Đang duyệt…' : gaps.length > 0 ? 'Xếp lễ tân & duyệt' : 'Duyệt đơn'}
           </button>
         </div>
       </div>
@@ -129,13 +177,14 @@ export default function LeaveApprovalDialog({ leave, onClose, onApproved }) {
   );
 }
 
-/** "Ca chiều · 28/10/2026 · 14:00 – 22:00", kèm lý do giữ nếu có. */
-function ShiftLine({ shift }) {
+/** "Ca chiều · 28/10/2026 · 14:00 – 22:00", kèm lý do giữ nếu có; `children` là phần chọn lễ tân thay. */
+function ShiftLine({ shift, children }) {
   return (
     <li>
       <b>{shift.templateName ?? 'Ca giờ khác'}</b> · {formatDate(shift.shiftDate)} ·{' '}
       {timeRange(shift.startTime, shift.endTime)}
       {shift.note && <span className="leave-impact__note">{shift.note}</span>}
+      {children}
     </li>
   );
 }

@@ -28,10 +28,14 @@ public class LeaveApprovalResponse {
     private List<ShiftImpact> keptShifts;
 
     /**
-     * BR-SCH-29: các ca theo mẫu sẽ mất lễ tân duy nhất, dạng "Ca chiều ngày 28/10/2026". Chỉ là cảnh báo —
-     * vẫn duyệt được.
+     * Ca theo mẫu sẽ mất lễ tân duy nhất khi gỡ người gửi. BR-SCH-29 sửa (chốt 31/10/2026): mỗi ca theo mẫu phải có
+     * lễ tân, nên phải chọn một lễ tân thay cho TỪNG ca này thì mới duyệt được. Kết quả duyệt thì rỗng — ca nào cũng
+     * đã có người thay ở {@link #replacements}.
      */
-    private List<String> receptionWarnings;
+    private List<ReceptionGap> receptionGaps;
+
+    /** Kết quả duyệt: lễ tân đã xếp thay vào các ca mất lễ tân. Rỗng ở bản xem trước. */
+    private List<Replacement> replacements;
 
     /** Quỹ phép năm của người gửi trong năm của đơn; null với nghỉ không lương. */
     private LeaveBalanceResponse balance;
@@ -39,4 +43,15 @@ public class LeaveApprovalResponse {
     /** @param note vì sao ca này được giữ — chỉ có ở {@code keptShifts} */
     public record ShiftImpact(UUID shiftId, LocalDate shiftDate, LocalTime startTime, LocalTime endTime,
                               String templateName, String note) {}
+
+    /**
+     * @param candidates lễ tân xếp được vào ca này: đang làm ở khách sạn, không nghỉ (đơn đã duyệt) ngày đó và qua
+     *                   đủ Schedule Policy (BR-SCH-02). Rỗng thì chưa duyệt được — sắp lại lịch hoặc từ chối đơn.
+     */
+    public record ReceptionGap(ShiftImpact shift, List<Candidate> candidates) {}
+
+    /** @param positionName vị trí của lễ tân; null nếu hồ sơ chưa có */
+    public record Candidate(UUID staffId, String fullName, String positionName) {}
+
+    public record Replacement(ShiftImpact shift, UUID staffId, String fullName) {}
 }

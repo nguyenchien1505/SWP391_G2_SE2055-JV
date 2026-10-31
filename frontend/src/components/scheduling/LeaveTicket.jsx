@@ -37,6 +37,10 @@ export default function LeaveTicket({ leave, showRequester = false, showLocation
           {revoked ? 'Đã duyệt' : status.label} bởi {leave.approverName ?? '—'} lúc {formatDateTime(leave.decidedAt)}
         </span>
       )}
+      {/* Chốt 31/10/2026: từ chối bắt buộc lý do — người gửi đọc được ngay trên đơn của mình. */}
+      {leave.rejectReason && (
+        <span className="leave-ticket__reject">Lý do từ chối: {leave.rejectReason}</span>
+      )}
       {revoked && (
         <span className="leave-ticket__revoke">
           {revoked} — {leave.revokedByName ?? '—'}, {formatDateTime(leave.revokedAt)}: {leave.revokeReason}
