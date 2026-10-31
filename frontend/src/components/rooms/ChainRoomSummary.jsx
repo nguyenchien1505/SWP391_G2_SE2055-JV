@@ -9,8 +9,8 @@ import '../../pages/rooms/rooms.css';
 
 /**
  * Phòng toàn chuỗi — phần dashboard Giám đốc theo BR-DASH-02: tổng phòng toàn Tenant theo 7 trạng
- * thái và so sánh nhanh giữa các khách sạn. Cùng chỗ với khối "Vận hành hôm nay" của Manager
- * (`HotelOpsSummary`) ở đầu /tong-quan.
+ * thái và so sánh nhanh giữa các khách sạn, ở đầu /tong-quan. Khối "Vận hành hôm nay" của Manager
+ * (`HotelOpsSummary`) nằm ở màn Thông tin khách sạn.
  *
  * Sơ đồ phòng vẫn là của MỘT khách sạn (hai khách sạn đều có "phòng 102", trộn chung dễ nhầm); bấm
  * tên khách sạn ở đây là mở sơ đồ của khách sạn đó (`/so-do-phong?locationId=…`).

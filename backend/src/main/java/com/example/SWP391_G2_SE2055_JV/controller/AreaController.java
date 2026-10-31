@@ -32,16 +32,19 @@ public class AreaController {
 
     private final AreaService areaService;
 
-    /** Giám đốc nhận toàn Tenant, Manager chỉ nhận Location của mình — lọc ở service. */
+    /**
+     * Giám đốc nhận toàn Tenant (chỉ xem); Manager và nhân viên chỉ nhận Location của mình — lọc ở service.
+     * Nhân viên xem để báo hỏng tài sản khu vực (BR-ASSET-05).
+     */
     @GetMapping
-    @PreAuthorize("hasAnyRole('DIRECTOR','MANAGER')")
+    @PreAuthorize("hasAnyRole('DIRECTOR','MANAGER','STAFF')")
     public ResponseEntity<Page<AreaResponse>> getAreas(
             @PageableDefault(size = 20, sort = "name", direction = Sort.Direction.ASC) Pageable pageable) {
         return ResponseEntity.ok(areaService.getAreas(pageable));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DIRECTOR','MANAGER')")
+    @PreAuthorize("hasAnyRole('DIRECTOR','MANAGER','STAFF')")
     public ResponseEntity<AreaResponse> getAreaById(@PathVariable UUID id) {
         return ResponseEntity.ok(areaService.getAreaById(id));
     }

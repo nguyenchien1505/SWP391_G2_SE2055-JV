@@ -14,6 +14,7 @@ import FormModal from '../components/FormModal';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
 import TodayAttendancePanel from '../components/scheduling/TodayAttendancePanel';
+import HotelOpsSummary from '../components/rooms/HotelOpsSummary';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { formatDate, todayIso } from './rooms/format';
 
@@ -166,6 +167,8 @@ export default function LocationsPage() {
 
       {/* Chấm công M2: trang đầu của quản lý chi nhánh có ngay tình hình ca hôm nay. */}
       {user?.role === 'MANAGER' && <TodayAttendancePanel />}
+      {/* BR-DASH-03: số liệu vận hành của khách sạn mình — phòng, nhân viên có ca, việc dọn, đơn chờ duyệt. */}
+      {user?.role === 'MANAGER' && <HotelOpsSummary />}
 
       <div className="stat-grid">
         <StatCard

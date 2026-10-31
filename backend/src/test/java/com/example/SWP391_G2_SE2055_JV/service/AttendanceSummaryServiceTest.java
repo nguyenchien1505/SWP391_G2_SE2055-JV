@@ -103,7 +103,7 @@ class AttendanceSummaryServiceTest {
             .checkInAt(checkIn)
             .checkOutAt(checkOut)
             .build();
-        views.put(shift.getId(), new AttendanceView(status, late, early, null, null));
+        views.put(shift.getId(), new AttendanceView(status, late, early, null, null, false));
         return shift;
     }
 

@@ -34,9 +34,14 @@ public class AttendanceStatusResolver {
     private final LocationRepository     locationRepository;
     private final LeaveRequestRepository leaveRequestRepository;
 
-    /** Chấm công của một ca, gửi kèm ca để giao diện không tự tính lại khung giờ. */
+    /**
+     * Chấm công của một ca, gửi kèm ca để giao diện không tự tính lại khung giờ.
+     *
+     * @param ended ca đã hết giờ theo giờ khách sạn — cùng luật với chốt chặn sửa / gỡ / xóa ca đã qua của
+     *              {@code ShiftService}, để giao diện khóa đúng những ca backend sẽ chặn
+     */
     public record AttendanceView(AttendanceStatus status, Long lateMinutes, Long earlyLeaveMinutes,
-                                 LocalDateTime checkInOpensAt, LocalDateTime checkOutClosesAt) {}
+                                 LocalDateTime checkInOpensAt, LocalDateTime checkOutClosesAt, boolean ended) {}
 
     /** @return theo id ca; ca chưa có người không có mặt trong kết quả */
     public Map<UUID, AttendanceView> resolve(Collection<Shift> shifts) {
@@ -56,7 +61,8 @@ public class AttendanceStatusResolver {
                 AttendanceRules.lateMinutes(shift),
                 AttendanceRules.earlyLeaveMinutes(shift),
                 AttendanceRules.checkInOpensAt(shift),
-                AttendanceRules.checkOutClosesAt(shift)));
+                AttendanceRules.checkOutClosesAt(shift),
+                AttendanceRules.hasEnded(shift, now)));
         }
         return views;
     }

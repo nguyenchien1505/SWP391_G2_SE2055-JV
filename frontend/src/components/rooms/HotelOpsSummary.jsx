@@ -14,7 +14,7 @@ import '../../pages/rooms/rooms.css';
  * Số liệu vận hành hôm nay của MỘT khách sạn — phần dashboard Manager theo BR-DASH-03: phòng theo
  * trạng thái, nhân viên có ca hôm nay / tổng nhân viên, việc dọn theo trạng thái, đơn chờ duyệt.
  *
- * Đặt ở đầu /tong-quan, trên dashboard tài sản, chỉ cho Manager. Phạm vi do backend ép về khách sạn
+ * Đặt ở màn Thông tin khách sạn (/khach-san) của Manager. Phạm vi do backend ép về khách sạn
  * của người đăng nhập. Ô đơn chờ duyệt mới đếm đơn nghỉ — đổi ca chưa có module.
  */
 export default function HotelOpsSummary() {

@@ -15,6 +15,7 @@ import DamageReportDialog from '../../components/damage-reports/DamageReportDial
 import { groupReportsBy } from '../../components/damage-reports/ViewReportButton';
 import { assetService } from '../../services/assetApi';
 import AssignTaskModal from '../../components/rooms/AssignTaskModal';
+import InspectTaskModal from '../../components/rooms/InspectTaskModal';
 import LockRoomModal from '../../components/rooms/LockRoomModal';
 import RoomActionDialog from '../../components/rooms/RoomActionDialog';
 import RoomBoardPanel from '../../components/rooms/RoomBoardPanel';
@@ -133,6 +134,7 @@ export default function RoomBoardPage() {
   const [tasksByRoom, setTasksByRoom] = useState({});
 
   const [assigning, setAssigning] = useState(null);
+  const [inspecting, setInspecting] = useState(null);   // việc dọn «Chờ kiểm tra» đang mở hộp đạt / không đạt
   const [noteRoom, setNoteRoom] = useState(null);
   const [auditing, setAuditing] = useState(null);
   const [addingAssetTo, setAddingAssetTo] = useState(null);
@@ -270,6 +272,20 @@ export default function RoomBoardPage() {
     afterChange();
   }
 
+  /** Kiểm tra xong: đạt thì phòng Sẵn sàng, không đạt thì có việc dọn lại và phòng về «Chờ dọn» (BR-HK-06/08). */
+  function finishInspection(record) {
+    const task = inspecting;
+    setInspecting(null);
+    setBanner({
+      type: 'success',
+      text: record.result === 'PASS'
+        ? `Phòng ${taskRoomLabel(task)} đã Sẵn sàng.`
+        : `Đã tạo việc dọn lại cho phòng ${taskRoomLabel(task)}. Phòng quay về «Chờ dọn».`,
+    });
+    refreshRoom(task.roomId);
+    afterChange();
+  }
+
   function saveNote(updated) {
     setNoteRoom(null);
     replaceRoom(updated);
@@ -401,6 +417,10 @@ export default function RoomBoardPage() {
       action.start(selectedRoom, picked);
     },
     onAssign: setAssigning,
+    onInspect: (task) => {
+      setBanner(null);
+      setInspecting(task);
+    },
     onEditNote: setNoteRoom,
     onEditInfo: editRoom,
     onDelete: setDeleting,
@@ -701,6 +721,9 @@ export default function RoomBoardPage() {
 
       {assigning && (
         <AssignTaskModal task={assigning} onClose={() => setAssigning(null)} onAssigned={finishAssign} />
+      )}
+      {inspecting && (
+        <InspectTaskModal task={inspecting} onClose={() => setInspecting(null)} onInspected={finishInspection} />
       )}
       {roomForm && (
         <FormModal onClose={() => setRoomForm(null)}>

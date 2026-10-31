@@ -1207,6 +1207,11 @@
 .board-panel__head-actions .btn {
   white-space: nowrap;
 }
+/* Phân công / Kiểm tra: cùng một chỗ, cùng cỡ — chữ dài ngắn khác nhau nên cố định chiều rộng tối thiểu. */
+.board-panel__head-action {
+  min-width: 128px;
+  justify-content: center;
+}
 /* Báo hỏng trong bảng chi tiết khu vực — mỗi phiếu một thẻ, Manager bấm để mở hộp thoại xử lý. */
 .area-report__pending {
   color: var(--orange);

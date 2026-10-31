@@ -28,7 +28,6 @@ import LeaveReviewPage from './pages/scheduling/LeaveReviewPage';
 import ShiftSwapsPage from './pages/scheduling/ShiftSwapsPage';
 import SwapApprovalsPage from './pages/scheduling/SwapApprovalsPage';
 import ChainRoomSummary from './components/rooms/ChainRoomSummary';
-import HotelOpsSummary from './components/rooms/HotelOpsSummary';
 import ReserveManagerPage from './pages/ReserveManagerPage';
 import AssetCategoriesPage from './pages/AssetCategoriesPage';
 import OrganizationCatalogPage from './pages/OrganizationCatalogPage';
@@ -240,8 +239,7 @@ function OverviewWrapper() {
   const onNavigate = useAssetNavigate();
   return (
     <>
-      {/* BR-DASH-03: Manager thấy số liệu vận hành của khách sạn mình trước phần tài sản. */}
-      {user?.role === 'MANAGER' && <HotelOpsSummary />}
+      {/* BR-DASH-03: «Vận hành hôm nay» của Manager nằm ở màn Thông tin khách sạn (LocationsPage). */}
       {/* BR-DASH-02: Giám đốc thấy phòng theo trạng thái của cả chuỗi, so sánh giữa các khách sạn. */}
       {user?.role === 'DIRECTOR' && <ChainRoomSummary />}
       <DashboardScreen onNavigate={onNavigate} />
@@ -264,8 +262,12 @@ function ConsumableWrapper() {
  */
 function AreaWrapper() {
   const { user } = useAuth();
-  if (user?.role !== 'MANAGER') return <Navigate to={homePathFor(user)} replace />;
-  return <AreaManagementScreen userRole={user.role} />;
+  // Manager CRUD; Giám đốc chỉ xem cả chuỗi; nhân viên Lễ tân / Dọn dẹp xem để báo hỏng (BR-ASSET-05).
+  const canReport = user?.role === 'STAFF' && canReportDamage(user);
+  if (user?.role !== 'MANAGER' && user?.role !== 'DIRECTOR' && !canReport) {
+    return <Navigate to={homePathFor(user)} replace />;
+  }
+  return <AreaManagementScreen userRole={user.role} canReport={canReport} />;
 }
 function DetailWrapper() {
   const { ref } = useParams();
@@ -413,8 +415,10 @@ export default function App() {
         {/* :ref là id tài sản; mã tài sản (link cũ) vẫn được nhận. */}
         <Route path="/tai-san/:ref" element={<DetailWrapper />} />
         <Route path="/vat-tu" element={<ConsumableWrapper />} />
-        <Route path="/khu-vuc" element={<AreaWrapper />} />
       </Route>
+      {/* Khu vực: ngoài nhóm trên vì nhân viên Lễ tân / Dọn dẹp cũng vào được (xem để báo hỏng) —
+          AreaWrapper tự kiểm vai trò. */}
+      <Route path="/khu-vuc" element={inShell(<AreaWrapper />)} />
 
       {/* Admin Platform Routes */}
       <Route

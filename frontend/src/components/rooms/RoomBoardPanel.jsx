@@ -26,7 +26,8 @@ const HISTORY_PREVIEW = 5;
  *
  * Quản lý chi nhánh: đầu bảng báo "Chưa phân công" + nút Phân công khi phòng có việc dọn chưa có
  * người làm; ngay dưới nút đổi trạng thái là hàng công cụ Khóa / Mở khóa phòng, Thêm tài sản, Kiểm
- * kê. Các thao tác khác trên việc dọn (kiểm tra phòng, thêm / gỡ người dọn) ở màn Công việc dọn phòng.
+ * kê. Phòng «Chờ kiểm tra» có nút Kiểm tra cạnh tên phòng (cùng hộp đạt / không đạt với màn Công việc dọn
+ * phòng). Thêm / gỡ người dọn vẫn ở màn Công việc dọn phòng.
  *
  * Giám đốc: nút "Sửa thông tin" mở form S-03 (RM-03, BR-ROOM-04) và "Xóa phòng" (RM-05, BR-ROOM-08)
  * — cùng form / hộp thoại xác nhận với nút Sửa / Xóa ở dạng danh sách, để khỏi phải rời sơ đồ.
@@ -39,6 +40,8 @@ const HISTORY_PREVIEW = 5;
  *                  biết việc nào chưa phân công
  * @param onEditInfo chỉ Giám đốc: bấm "Sửa thông tin" → form sửa phòng (trang cha vẽ hộp thoại)
  * @param onDelete   chỉ Giám đốc: bấm "Xóa phòng" → hộp thoại xác nhận (trang cha vẽ và gọi API)
+ * @param onInspect chỉ Quản lý chi nhánh: phòng có việc dọn «Chờ kiểm tra» thì hiện nút Kiểm tra cạnh tên
+ *                  phòng; bấm → hộp kiểm tra đạt / không đạt (trang cha vẽ hộp thoại)
  * @param historyKey đổi giá trị để nạp lại lịch sử sau mỗi lần phòng đổi trạng thái
  * @param assetsKey  đổi giá trị để nạp lại danh sách tài sản sau khi kiểm kê
  * @param reports    báo hỏng của tài sản trong phòng (chỉ Quản lý chi nhánh) — có thì hiện nút
@@ -61,6 +64,7 @@ export default function RoomBoardPanel({
   onClose,
   onAction,
   onAssign,
+  onInspect,
   onEditNote,
   onEditInfo,
   onDelete,
@@ -79,6 +83,9 @@ export default function RoomBoardPanel({
   const lockAction = actions.find((action) => action.flow === LOCK);
   // Việc dọn chưa có người làm → nút "Phân công" ở đầu bảng (tối đa 1 việc mở mỗi loại — BR-HK-11).
   const unassigned = role.isManager ? tasks.filter((task) => task.status === 'UNASSIGNED') : [];
+  // Phòng «Chờ kiểm tra»: nút Kiểm tra ngay cạnh tên phòng, mở hộp đạt / không đạt (S-13, BR-HK-06).
+  const pendingInspection = role.isManager && onInspect
+    ? tasks.filter((task) => task.status === 'PENDING_INSPECTION') : [];
 
   return (
     <aside className="board-panel" aria-labelledby="board-panel-title">
@@ -95,13 +102,31 @@ export default function RoomBoardPanel({
             Tầng {room.floor} · {room.roomTypeName ?? 'Chưa rõ loại'} · {room.capacity} người
           </p>
         </div>
-        {unassigned.length > 0 && (
+        {/* Mỗi phòng tối đa 1 việc dọn đang mở (BR-HK-11): Phân công và Kiểm tra không bao giờ cùng hiện —
+            cùng một chỗ, cùng cỡ nút. */}
+        {(unassigned.length > 0 || pendingInspection.length > 0) && (
           <div className="board-panel__head-actions">
             {unassigned.map((task) => (
-              <button key={task.id} type="button" className="btn btn--primary" onClick={() => onAssign(task)}>
+              <button
+                key={task.id}
+                type="button"
+                className="btn btn--primary board-panel__head-action"
+                onClick={() => onAssign(task)}
+              >
                 <span className="material-symbols-outlined" aria-hidden="true">person_add</span>
-                {/* Mỗi phòng tối đa 1 việc dọn đang mở (BR-HK-11), nên chỉ có một nút. */}
                 Phân công
+              </button>
+            ))}
+            {pendingInspection.map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                className="btn btn--primary board-panel__head-action"
+                disabled={busy}
+                onClick={() => onInspect(task)}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">fact_check</span>
+                Kiểm tra
               </button>
             ))}
           </div>

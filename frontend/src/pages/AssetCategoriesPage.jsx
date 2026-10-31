@@ -254,7 +254,10 @@ export default function AssetCategoriesPage() {
             </div>
           )}
 
-          <CategoryMetrics metrics={metrics} onFilterKind={(kind) => changeFilters({ ...filters, kind })} />
+          {/* Thẻ số liệu tổng quan chỉ cho Giám đốc — Manager vào thẳng bảng danh mục. */}
+          {user?.role !== 'MANAGER' && (
+            <CategoryMetrics metrics={metrics} onFilterKind={(kind) => changeFilters({ ...filters, kind })} />
+          )}
 
           <CategoryFilterToolbar
             filters={filters}

@@ -42,6 +42,8 @@ public class ShiftResponse {
     private Long             earlyLeaveMinutes;
     private LocalDateTime    checkInOpensAt;
     private LocalDateTime    checkOutClosesAt;
+    /** Ca có người đã hết giờ — không sửa / gỡ / xóa được nữa (null với ca chưa có người). */
+    private Boolean          ended;
     private UnassignedReason unassignedReason;
     private LocalDateTime    unassignedAt;
     private LocalDateTime    createdAt;
@@ -75,6 +77,7 @@ public class ShiftResponse {
             .earlyLeaveMinutes(attendance == null ? null : attendance.earlyLeaveMinutes())
             .checkInOpensAt(attendance == null ? null : attendance.checkInOpensAt())
             .checkOutClosesAt(attendance == null ? null : attendance.checkOutClosesAt())
+            .ended(attendance == null ? null : attendance.ended())
             .unassignedReason(shift.getUnassignedReason())
             .unassignedAt(shift.getUnassignedAt())
             .createdAt(shift.getCreatedAt())

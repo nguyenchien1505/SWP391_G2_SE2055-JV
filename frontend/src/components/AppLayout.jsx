@@ -153,8 +153,9 @@ const NAV_GROUPS = [
       { label: 'Nhận / trả phòng', to: '/so-do-phong', visible: (user) => isStaff(user) && isReception(user) },
       // Không có quyền Lễ tân vẫn xem được tình trạng phòng, chỉ không có nút thao tác.
       { label: 'Sơ đồ phòng (xem)', to: '/so-do-phong', visible: (user) => isStaff(user) && !isReception(user) },
-      // Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12).
-      { label: 'Khu vực', to: '/khu-vuc', visible: isManager },
+      // Khu vực tạo ở cấp khách sạn, Manager CRUD (BR-ORG-12); Giám đốc chỉ xem cả chuỗi; nhân viên Lễ tân /
+      // Dọn dẹp xem để báo hỏng tài sản khu vực (BR-ASSET-05).
+      { label: 'Khu vực', to: '/khu-vuc', visible: (user) => isManager(user) || isDirector(user) || canReportDamage(user) },
     ],
   },
   {

@@ -14,6 +14,19 @@ import {
 import { hasReceptionist, isReceptionist, personOptionLabel } from '../../pages/scheduling/schedulePeople';
 import { BlockedAlert, DateHelp, ShiftTimeFields, resolveHours, useCloseOnEscape } from './shiftFields';
 
+/** Vì sao ca bị khóa — nói đúng tình trạng chấm công và việc quản lý nên làm tiếp. */
+function lockedMessage(shift, checkedIn) {
+  const frozen = 'không đổi giờ, đổi người hay xóa được nữa';
+  if (checkedIn) {
+    return `Ca đã check-in nên ${frozen} — giờ chấm công nằm ngay trên ca này.`;
+  }
+  if (shift.attendanceStatus === 'ON_LEAVE') {
+    return `Ca đã qua và trùng ngày nghỉ phép đã duyệt — ${frozen}, ca được giữ làm lịch sử nghỉ phép.`;
+  }
+  return `Ca đã kết thúc mà nhân viên chưa vào ca (Vắng) — ${frozen}. `
+    + 'Nhân viên có đi làm thì nhập bù ở màn Chấm công.';
+}
+
 /**
  * Sửa MỘT ca đã có — BR-SCH-02, BR-SCH-04, BR-SCH-24, DM-15.
  *
@@ -36,9 +49,10 @@ export default function EditShiftDialog({
   shift, shifts, people, peopleById, templates, templatesById, onClose, onSaved,
 }) {
   const checkedIn = Boolean(shift.checkInAt);
-  // Chấm công M2: ca hết giờ mà chưa vào là «Vắng» — gỡ / xóa là mất dấu vết, nên khóa như ca đã check-in.
-  const absent = shift.attendanceStatus === 'ABSENT';
-  const locked = checkedIn || absent;
+  // Chấm công M2: ca có người đã hết giờ là dữ liệu chấm công (Vắng, Nghỉ phép…) — backend chặn sửa / gỡ / xóa,
+  // nên khóa như ca đã check-in. `ended` do backend tính theo giờ khách sạn, không tự suy từ tình trạng.
+  const ended = Boolean(shift.staffId) && shift.ended === true;
+  const locked = checkedIn || ended;
   const assignee = shift.staffId ? peopleById.get(shift.staffId) : null;
   const template = shift.sourceTemplateId ? templatesById.get(shift.sourceTemplateId) : null;
 
@@ -154,10 +168,7 @@ export default function EditShiftDialog({
 
         {locked ? (
           <div className="alert alert--info">
-            {checkedIn
-              ? 'Ca đã check-in nên không đổi giờ, đổi người hay xóa được nữa — giờ chấm công nằm ngay trên ca này.'
-              : 'Ca đã kết thúc mà nhân viên chưa vào ca (Vắng) — không đổi giờ, đổi người hay xóa được nữa. '
-                + 'Nhân viên có đi làm thì nhập bù ở màn Chấm công.'}
+            {lockedMessage(shift, checkedIn)}
           </div>
         ) : (
           <>

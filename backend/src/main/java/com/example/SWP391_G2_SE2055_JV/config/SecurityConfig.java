@@ -150,6 +150,9 @@ public class SecurityConfig {
                 // lại của /organization/** (danh mục cấp Tenant, chỉ Giám đốc ghi). Rule
                 // này phải đứng TRƯỚC 2 rule danh mục bên dưới, nếu không Manager sẽ bị
                 // rơi xuống hasAnyRole(ADMIN, DIRECTOR) và nhận 403 khi tạo Khu vực.
+                // Nhân viên chỉ ĐỌC khu vực của khách sạn mình — để báo hỏng tài sản khu vực (BR-ASSET-05).
+                .requestMatchers(HttpMethod.GET, "/organization/areas/**")
+                    .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers("/organization/areas/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
 

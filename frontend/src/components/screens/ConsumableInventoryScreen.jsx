@@ -291,7 +291,8 @@ export const ConsumableInventoryScreen = () => {
         )}
       </div>
 
-      {/* 3 Metric Cards */}
+      {/* 3 Metric Cards — chỉ cho Giám đốc; Manager vào thẳng danh sách vật tư. */}
+      {user?.role !== 'MANAGER' && (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-[#DFE3E8] shadow-xs">
           <div className="flex items-center justify-between">
@@ -320,6 +321,7 @@ export const ConsumableInventoryScreen = () => {
           <div className="text-[11px] text-[#5B6472] mt-0.5 font-medium">Hóa chất làm sạch, túi rác...</div>
         </div>
       </div>
+      )}
 
       {/* Filter and Tab Bar */}
       <div className="bg-white p-4 rounded-2xl border border-[#DFE3E8] shadow-xs space-y-3">

@@ -22,6 +22,11 @@ const STATUS_FACTS = [
  * @param assets  tài sản cố định đang vận hành của khu vực; `null` = đang tải
  * @param reports báo hỏng của tài sản trong khu vực, phiếu đang chờ trước; `null` = đang tải
  * @param onOpenReport bấm một phiếu → hộp thoại xử lý báo hỏng (chỉ Manager)
+ * @param locationName tên khách sạn của khu vực — Giám đốc xem khu vực toàn chuỗi
+ * @param onReportAsset chỉ nhân viên Lễ tân / Dọn dẹp (BR-ASSET-05): mỗi tài sản có nút "Báo hỏng" → hộp
+ *                   thoại báo hỏng (trang cha vẽ hộp thoại)
+ * @param reportNotice câu báo vừa gửi báo hỏng — hiện ngay trên danh sách tài sản, vì trên màn hẹp bảng này
+ *                   đè lên trang nên banner đầu trang bị che
  */
 export default function AreaPanel({
   area,
@@ -33,6 +38,10 @@ export default function AreaPanel({
   onAudit,
   reports = null,
   onOpenReport,
+  locationName = null,
+  onReportAsset,
+  reportNotice = null,
+  onDismissReportNotice,
 }) {
   const count = assets?.length ?? 0;
   const pending = (reports ?? []).filter((report) => report.ticketStatus === 'New').length;
@@ -50,7 +59,10 @@ export default function AreaPanel({
         </span>
         <div className="board-panel__title">
           <h2 id="area-panel-title">{area.name}</h2>
-          <p className="muted">{assets === null ? 'Đang tải tài sản…' : `${count} tài sản cố định`}</p>
+          <p className="muted">
+            {locationName && `${locationName} · `}
+            {assets === null ? 'Đang tải tài sản…' : `${count} tài sản cố định`}
+          </p>
         </div>
         {canManage && (
           <div className="board-panel__head-actions">
@@ -139,12 +151,21 @@ export default function AreaPanel({
 
         <section className="board-panel__section">
           <h3 className="board-panel__heading">Tài sản trong khu vực</h3>
+          {reportNotice && (
+            <div className="alert alert--success" role="status">
+              {reportNotice}
+              <button type="button" className="alert__close" onClick={onDismissReportNotice} aria-label="Đóng">
+                ×
+              </button>
+            </div>
+          )}
           {assets === null ? (
             <p className="muted">Đang tải tài sản…</p>
           ) : (
             <AssetReportList
               assets={assets}
               rowAction={viewReportButton}
+              onReport={onReportAsset}
               emptyText="Khu vực này chưa có tài sản cố định nào."
             />
           )}

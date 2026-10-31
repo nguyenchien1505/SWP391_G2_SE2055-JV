@@ -10,6 +10,8 @@ import AreaPanel from '../AreaPanel';
 import AssetAuditModal from '../AssetAuditModal';
 import { BatchCreateAssetsModal } from '../modals/BatchCreateAssetsModal';
 import { DamageReportModal } from '../modals/DamageReportModal';
+import DamageReportDialog from '../damage-reports/DamageReportDialog';
+import { fetchLocations } from '../../api/locations';
 import { groupReportsBy } from '../damage-reports/ViewReportButton';
 // Bảng chi tiết dùng chung khung `board-panel` / `board-overlay` với sơ đồ phòng.
 import '../../pages/rooms/rooms.css';
@@ -18,11 +20,23 @@ import '../../pages/rooms/rooms.css';
 const WIDE_QUERY = '(min-width: 1200px)';
 
 /**
- * Quản lý khu vực chung của khách sạn (BR-ORG-12). Bấm một khu vực → bảng chi tiết bên cạnh (cùng
- * cấu trúc với sơ đồ phòng): thông tin, tài sản trong khu vực và các thao tác của Manager — thêm
- * tài sản (màn thêm hàng loạt, chọn sẵn khu vực), kiểm kê, sửa tên, xóa.
+ * Khu vực chung của khách sạn (BR-ORG-12). Bấm một khu vực → bảng chi tiết bên cạnh (cùng cấu trúc với sơ đồ
+ * phòng): thông tin, tài sản trong khu vực, và thao tác theo vai trò:
+ *   - Manager: thêm tài sản (màn thêm hàng loạt, chọn sẵn khu vực), kiểm kê, sửa tên, xóa, xử lý báo hỏng;
+ *   - nhân viên Lễ tân / Dọn dẹp: xem khu vực của khách sạn mình và báo hỏng tài sản (BR-ASSET-05);
+ *   - Giám đốc: chỉ xem — khu vực cả chuỗi, kèm tên khách sạn và bộ lọc theo khách sạn.
+ *
+ * @param canReport nhân viên được báo hỏng (có quyền Lễ tân / Dọn dẹp)
  */
-export const AreaManagementScreen = ({ userRole }) => {
+export const AreaManagementScreen = ({ userRole, canReport = false }) => {
+  const isManager = userRole === 'MANAGER';
+  const isDirector = userRole === 'DIRECTOR';
+  // Giám đốc: tên khách sạn của từng khu vực + lọc theo khách sạn. null = chưa tải.
+  const [locations, setLocations] = useState(null);
+  const [locationFilter, setLocationFilter] = useState('');
+  // Nhân viên báo hỏng: tài sản đang mở hộp thoại, và câu báo vừa gửi của khu vực đang xem.
+  const [reportingAsset, setReportingAsset] = useState(null);
+  const [reportNotice, setReportNotice] = useState(null); // { areaId, text }
   const wide = useMediaQuery(WIDE_QUERY);
   const [areas, setAreas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -97,8 +111,26 @@ export const AreaManagementScreen = ({ userRole }) => {
   useEffect(() => {
     loadData();
     loadAssets();
-    loadReports();
+    // Nhân viên không xem phiếu báo hỏng của người khác — chỉ gửi báo hỏng (phiếu của mình ở «Báo hỏng của tôi»).
+    if (isManager || isDirector) {
+      loadReports();
+    } else {
+      setReportsByArea({});
+    }
+    if (isDirector) {
+      fetchLocations({ size: 200 })
+        .then((page) => setLocations(page.content ?? []))
+        .catch(() => setLocations([])); // Thông tin phụ — thiếu thì cột khách sạn để trống.
+    }
   }, []);
+
+  const locationNameOf = (area) => locations?.find((location) => location.id === area.locationId)?.name ?? null;
+
+  /** Gửi báo hỏng xong: bảng chi tiết vẫn mở để báo tiếp tài sản khác (giống sơ đồ phòng). */
+  const finishDamageReport = (report) => {
+    setReportingAsset(null);
+    setReportNotice({ areaId: selectedId, text: `Đã gửi báo hỏng ${report.assetName} (${report.assetCode}) cho quản lý.` });
+  };
 
   const assetsOf = (area) => assetsByArea?.[area.id] ?? [];
 
@@ -205,7 +237,15 @@ export const AreaManagementScreen = ({ userRole }) => {
     },
   ];
 
-  if (userRole === 'MANAGER') {
+  if (isDirector) {
+    columns.splice(1, 0, {
+      header: 'KHÁCH SẠN',
+      width: '180px',
+      accessor: (item) => <span className="text-xs text-[#5B6472]">{locationNameOf(item) ?? '—'}</span>,
+    });
+  }
+
+  if (isManager) {
     columns.push({
       header: 'THAO TÁC',
       width: '96px',
@@ -236,7 +276,13 @@ export const AreaManagementScreen = ({ userRole }) => {
   }
 
   const detailArea = areas.find((area) => area.id === selectedId) ?? null;
-  const modalOpen = isModalOpen || isDeleteModalOpen || Boolean(auditingArea || addingAssetTo || openReportId);
+  const modalOpen = isModalOpen || isDeleteModalOpen
+    || Boolean(auditingArea || addingAssetTo || openReportId || reportingAsset);
+
+  // Câu báo "đã gửi báo hỏng" thuộc về khu vực đang mở — mở khu vực khác hoặc đóng bảng thì bỏ.
+  useEffect(() => {
+    setReportNotice(null);
+  }, [selectedId]);
 
   // Esc đóng bảng chi tiết khi nó đang đè lên trang — trừ lúc có hộp thoại mở (Esc là của hộp thoại).
   useEffect(() => {
@@ -249,17 +295,27 @@ export const AreaManagementScreen = ({ userRole }) => {
   const panelProps = detailArea && {
     area: detailArea,
     assets: assetsByArea === null ? null : assetsOf(detailArea),
-    canManage: userRole === 'MANAGER',
+    canManage: isManager,
     onClose: () => setSelectedId(null),
     onAddAsset: handleAddAsset,
     onAudit: handleOpenAudit,
     reports: reportsByArea === null ? null : reportsByArea[detailArea.id] ?? [],
     onOpenReport: (report) => setOpenReportId(report.id),
+    locationName: isDirector ? locationNameOf(detailArea) : null,
+    onReportAsset: canReport
+      ? (asset) => {
+          setReportNotice(null);
+          setReportingAsset(asset);
+        }
+      : undefined,
+    reportNotice: reportNotice?.areaId === detailArea.id ? reportNotice.text : null,
+    onDismissReportNotice: () => setReportNotice(null),
   };
 
   const filtered = areas.filter((a) => {
     const searchLower = searchTerm.toLowerCase();
-    return (a.name || '').toLowerCase().includes(searchLower);
+    return (a.name || '').toLowerCase().includes(searchLower)
+      && (!locationFilter || a.locationId === locationFilter);
   });
 
   return (
@@ -285,20 +341,24 @@ export const AreaManagementScreen = ({ userRole }) => {
       <div className="text-xs text-[#5B6472] flex items-center gap-1.5">
         <span>Tài Sản & Khu Vực</span>
         <span className="text-[#94A3B8]">&gt;</span>
-        <span className="font-semibold text-[#1C2330]">Quản lý khu vực</span>
+        <span className="font-semibold text-[#1C2330]">{isManager ? 'Quản lý khu vực' : 'Khu vực'}</span>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-[#1C2330] tracking-tight">
-            Quản Lý Khu Vực (Areas)
+            {isManager ? 'Quản Lý Khu Vực (Areas)' : 'Khu Vực (Areas)'}
           </h2>
           <p className="text-xs text-[#5B6472] mt-1">
-            Danh sách các khu vực chung thuộc chi nhánh hiện tại. {userRole !== 'MANAGER' && "(Chỉ Manager mới có quyền Thêm/Sửa/Xóa)"}
+            {isManager && 'Danh sách các khu vực chung thuộc chi nhánh hiện tại.'}
+            {isDirector && 'Khu vực chung của các khách sạn trong chuỗi — chỉ xem. Quản lý từng khách sạn thêm / sửa / xóa khu vực.'}
+            {!isManager && !isDirector && (canReport
+              ? 'Khu vực chung của khách sạn bạn. Chọn một khu vực rồi bấm vào tài sản để báo hỏng.'
+              : 'Khu vực chung của khách sạn bạn — chỉ xem.')}
           </p>
         </div>
 
-        {userRole === 'MANAGER' && (
+        {isManager && (
           <Button
             variant="primary"
             size="md"
@@ -321,6 +381,19 @@ export const AreaManagementScreen = ({ userRole }) => {
             className="w-full pl-9 pr-3 py-1.5 bg-white border border-[#DFE3E8] rounded text-xs text-[#1C2330] outline-none focus:border-[#00375E]"
           />
         </div>
+        {isDirector && locations && locations.length > 1 && (
+          <select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            aria-label="Lọc theo khách sạn"
+            className="py-1.5 px-2 bg-white border border-[#DFE3E8] rounded text-xs text-[#1C2330] outline-none focus:border-[#00375E]"
+          >
+            <option value="">Tất cả khách sạn</option>
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>{location.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {loading ? (
@@ -375,6 +448,14 @@ export const AreaManagementScreen = ({ userRole }) => {
             loadReports();
             loadAssets();
           }}
+        />
+      )}
+
+      {reportingAsset && (
+        <DamageReportDialog
+          asset={reportingAsset}
+          onClose={() => setReportingAsset(null)}
+          onSubmitted={finishDamageReport}
         />
       )}
 
