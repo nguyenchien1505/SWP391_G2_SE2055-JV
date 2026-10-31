@@ -846,6 +846,136 @@
   background: #e7eff8;
   color: var(--accent);
 }
+/* Chấm công M2: Vắng, Đi muộn / Về sớm / Quên kết thúc ca, Nghỉ phép. */
+.tt-pill--absent {
+  background: #fdecea;
+  color: #b3261e;
+}
+.tt-pill--warn {
+  background: #fff3e0;
+  color: #b85300;
+}
+.tt-pill--leave {
+  background: #eef0f3;
+  color: var(--muted);
+}
+/* Màn Chấm công của quản lý. */
+.attendance-table td {
+  vertical-align: middle;
+}
+.attendance-table__late {
+  color: #b85300;
+  font-weight: 600;
+}
+.attendance-edit__times {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 12px;
+}
+.attendance-edit__history-title {
+  margin: 16px 0 8px;
+  font-size: 15px;
+}
+.attendance-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.attendance-events li {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.attendance-events small {
+  display: block;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.attendance-events__agent {
+  font-size: 12px;
+}
+/* Khối «Hôm nay» trên màn hình đầu của Manager (chấm công M2). */
+.today-panel {
+  margin-bottom: 16px;
+}
+.today-panel .panel__head {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.today-panel__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.today-panel__title {
+  margin: 12px 0 6px;
+  font-size: 15px;
+}
+.today-panel__list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.today-panel__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+/* Mạng chấm công (kiểm IP) — hộp thoại của Manager. */
+.att-network__modes {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+.att-network__mode {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.att-network__mode.is-active {
+  border-color: var(--accent);
+}
+.att-network__mode small {
+  display: block;
+  color: var(--muted);
+}
+.att-network__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.att-network__add {
+  display: grid;
+  grid-template-columns: 2fr 1fr auto;
+  gap: 0 8px;
+  align-items: end;
+}
+@media (max-width: 640px) {
+  .att-network__add {
+    grid-template-columns: 1fr;
+  }
+}
+/* Nhãn chấm công trong khối ca của bảng tuần — nhỏ hơn nhãn trên thẻ điện thoại. */
+.cell-block__flag {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
 .tt-rooms {
   display: grid;
   gap: 6px;
@@ -1054,4 +1184,69 @@
   .swap-card__actions .btn {
     flex: 1 1 auto;
   }
+}
+
+/* Chấm công M2: ô Vắng trong bảng tổng kết; chuyên cần tháng của nhân viên ở Lịch cá nhân. */
+.attendance-table__absent {
+  color: #b3261e;
+  font-weight: 700;
+}
+.my-attendance {
+  margin-bottom: 14px;
+}
+
+/* Đơn điều chỉnh công — trang của nhân viên và trang duyệt của quản lý (chấm công M2). */
+.adjustment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.adjustment-list > li {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.adjustment-list > li > .btn {
+  justify-self: start;
+}
+.adjustment__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.adjustment__times {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 6px 0;
+  font-size: 14px;
+}
+.adjustment__times dt {
+  color: var(--muted);
+}
+.adjustment__times dd {
+  margin: 0;
+}
+.adjustment__reason,
+.adjustment__note {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.adjustment__note {
+  font-style: italic;
+}
+.adjustment__review {
+  display: grid;
+  gap: 6px;
+}
+.adjustment__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

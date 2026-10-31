@@ -20,7 +20,8 @@ import java.util.UUID;
  * set {@code staffId = null} kèm {@code unassignedReason}, KHÔNG xóa bản ghi
  * (BR-SCH-24). Kiểm tra trùng ca giới hạn trong phạm vi một Location (BR-SCH-05).
  *
- * <p>DM-15: mốc check-in/check-out nằm ngay trên bảng này, không có bảng AttendanceLog.
+ * <p>DM-15 (sửa M2, chốt 31/10/2026): giờ vào / ra HIỆU LỰC nằm ngay trên bảng này; mỗi lần ghi (tự bấm,
+ * Manager nhập / sửa) có thêm một dòng ở {@link ShiftAttendanceEvent} kèm thiết bị đã dùng.
  */
 @Entity
 @Table(name = "shifts")
@@ -67,7 +68,10 @@ public class Shift extends AuditableEntity {
     @Column(name = "source_template_id", length = 36)
     private UUID sourceTemplateId;
 
-    /** Chỉ ghi nhận timestamp, Milestone 1 không tính đi muộn — BR-DASH-01. */
+    /**
+     * Giờ khách sạn. Khung giờ được vào / ra và tình trạng Vắng / Đi muộn: {@code AttendanceRules} (M2) — chỉ
+     * suy ra khi đọc, không lưu.
+     */
     @Column(name = "check_in_at")
     private LocalDateTime checkInAt;
 

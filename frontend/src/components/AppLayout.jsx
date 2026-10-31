@@ -44,6 +44,9 @@ const isManager = (user) => user?.role === 'MANAGER';
  */
 const hasShifts = (user) => user?.role === 'STAFF';
 
+/** Nhân viên dọn dẹp và lễ tân xem Đổi ca, Đơn xin nghỉ ở nhóm «Đơn từ» thay vì nhóm lịch làm việc. */
+const usesFormsGroup = (user) => isStaff(user) && (isHousekeeper(user) || isReception(user));
+
 /** Manager và Staff thuộc đúng một khách sạn — hiện tên khách sạn trên thanh tiêu đề. */
 const worksAtLocation = (user) => user?.role === 'MANAGER' || user?.role === 'STAFF';
 
@@ -75,6 +78,10 @@ const NAV_GROUPS = [
       // Khách sạn mình phụ trách và nhân viên ở đó — Manager mở thường xuyên nên để lên đầu.
       { label: 'Thông tin khách sạn', to: '/khach-san', visible: isManager },
       { label: 'Nhân viên chi nhánh', to: '/nhan-vien', visible: isManager },
+      // Giờ vào / ra, Vắng, nhập bù có lý do — chấm công M2.
+      { label: 'Chấm công', to: '/cham-cong', visible: isBranchManager },
+      // Chuyên cần theo tháng — chỉ để xem, không tính lương (chấm công M2).
+      { label: 'Tổng kết chuyên cần', to: '/tong-ket-cham-cong', visible: (user) => isManager(user) || isDirector(user) },
     ],
   },
   {
@@ -95,26 +102,47 @@ const NAV_GROUPS = [
     ],
   },
   {
-    title: 'Lịch làm việc & dọn dẹp',
+    // Lễ tân không có việc dọn: nhóm chỉ còn lịch làm việc của mình. Có cả quyền Dọn dẹp thì giữ tên cũ.
+    title: (user) => (isStaff(user) && isReception(user) && !isHousekeeper(user) ? 'Lịch làm việc' : 'Lịch làm việc & dọn dẹp'),
     items: [
       // Schedule Policy và Shift Template — Giám đốc (BR-SCH-01, BR-SCH-22).
       { label: 'Quy định & Mẫu ca', to: '/quy-dinh-ca', visible: isDirector },
       { label: 'Xếp lịch làm việc', to: '/xep-lich', visible: isBranchManager },
-      // Yêu cầu đổi ca đồng nghiệp đã đồng ý — BR-SCH-09 (Milestone 2).
-      { label: 'Duyệt đổi ca', to: '/duyet-doi-ca', visible: isBranchManager },
       // Giám sát vận hành giao việc và kiểm tra phòng thay Quản lý (BR-PERM-07).
       { label: 'Công việc dọn phòng', to: '/don-phong', visible: (user) => isBranchManager(user) || isSupervisor(user) },
       { label: 'Lịch dọn phòng', to: '/lich-don-phong', visible: isBranchManager },
       { label: 'Việc dọn của tôi', to: '/don-phong/cua-toi', visible: (user) => isStaff(user) && isHousekeeper(user) },
       { label: 'Lịch dọn của tôi', to: '/lich-don-phong', visible: (user) => isStaff(user) && isHousekeeper(user) },
-      // Chỉ xem lịch — chấm công (check-in / check-out) để sau.
+      // Lịch tuần + khối «Ca hôm nay» có nút Vào ca / Kết thúc ca (chấm công M2).
       { label: 'Lịch cá nhân', to: '/lich-ca-nhan', visible: hasShifts },
-      // Gửi / trả lời yêu cầu đổi ca với đồng nghiệp — BR-SCH-09..11 (Milestone 2).
-      { label: 'Đổi ca', to: '/doi-ca', visible: hasShifts },
-      // Đơn xin nghỉ của chính mình — nhân viên và quản lý khách sạn (BR-PERM-06, BR-SCH-08).
-      { label: 'Đơn xin nghỉ', to: '/don-nghi', visible: (user) => isStaff(user) || isManager(user) },
-      // Duyệt theo cấp: quản lý duyệt đơn nhân viên, giám đốc duyệt đơn quản lý (BR-SCH-08).
-      { label: 'Duyệt đơn nghỉ', to: '/duyet-don-nghi', visible: (user) => isManager(user) || isDirector(user) },
+      // Gửi / trả lời yêu cầu đổi ca với đồng nghiệp — BR-SCH-09..11 (Milestone 2). Nhân viên dọn dẹp / lễ tân xem ở
+      // nhóm «Đơn từ».
+      { label: 'Đổi ca', to: '/doi-ca', visible: (user) => hasShifts(user) && !usesFormsGroup(user) },
+      // Đơn xin nghỉ của chính mình (BR-PERM-06, BR-SCH-08). Manager, nhân viên dọn dẹp / lễ tân xem ở nhóm «Đơn từ».
+      { label: 'Đơn xin nghỉ', to: '/don-nghi', visible: (user) => isStaff(user) && !usesFormsGroup(user) },
+      // Đơn sửa giờ vào / ra ca khi quên bấm, mất mạng (chấm công M2).
+      { label: 'Điều chỉnh công', to: '/dieu-chinh-cong', visible: (user) => isStaff(user) && !usesFormsGroup(user) },
+      // Giám đốc duyệt đơn của quản lý (BR-SCH-08). Manager duyệt đơn nhân viên ở nhóm «Đơn từ».
+      { label: 'Duyệt đơn nghỉ', to: '/duyet-don-nghi', visible: isDirector },
+    ],
+  },
+  {
+    // Sidebar của Manager, nhân viên dọn dẹp và lễ tân: gom các đơn phải gửi / duyệt vào một chỗ.
+    title: 'Đơn từ',
+    items: [
+      // Nhân viên dọn dẹp / lễ tân: đổi ca với đồng nghiệp — BR-SCH-09..11 (Milestone 2).
+      { label: 'Đổi ca', to: '/doi-ca', visible: (user) => hasShifts(user) && usesFormsGroup(user) },
+      // Nhân viên dọn dẹp / lễ tân: đơn xin nghỉ của chính mình (BR-PERM-06, BR-SCH-08).
+      { label: 'Đơn xin nghỉ', to: '/don-nghi', visible: (user) => isStaff(user) && usesFormsGroup(user) },
+      { label: 'Điều chỉnh công', to: '/dieu-chinh-cong', visible: (user) => isStaff(user) && usesFormsGroup(user) },
+      // Yêu cầu đổi ca đồng nghiệp đã đồng ý — BR-SCH-09 (Milestone 2).
+      { label: 'Duyệt đổi ca', to: '/duyet-doi-ca', visible: isBranchManager },
+      // Đơn xin nghỉ của chính quản lý — giám đốc duyệt (BR-SCH-08).
+      { label: 'Đơn xin nghỉ', to: '/don-nghi', visible: isManager },
+      // Quản lý duyệt đơn của nhân viên khách sạn mình (BR-SCH-08).
+      { label: 'Duyệt đơn nghỉ', to: '/duyet-don-nghi', visible: isManager },
+      // Đơn sửa giờ chấm công của nhân viên khách sạn mình (chấm công M2).
+      { label: 'Duyệt điều chỉnh công', to: '/duyet-dieu-chinh-cong', visible: isManager },
     ],
   },
   {
@@ -180,8 +208,10 @@ export default function AppLayout({ children }) {
 
   // Bỏ cả nhóm khi vai trò này không còn mục nào — không để tiêu đề nhóm trơ trọi.
   // Giám đốc của Tenant mới chưa chọn Dùng thử / Mua gói chỉ thấy mục Gói dịch vụ.
+  // Tiêu đề nhóm có thể đổi theo người xem (nhóm lịch làm việc của lễ tân).
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
+    title: typeof group.title === 'function' ? group.title(user) : group.title,
     items: group.items.filter(
       (item) =>
         (!user?.planRequired || item.to === '/goi-dich-vu') && (!item.visible || item.visible(user)),

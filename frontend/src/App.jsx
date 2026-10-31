@@ -19,6 +19,10 @@ import CleaningSchedulePage from './pages/rooms/CleaningSchedulePage';
 import SchedulePage from './pages/scheduling/SchedulePage';
 import ScheduleRulesPage from './pages/scheduling/ScheduleRulesPage';
 import MySchedulePage from './pages/scheduling/MySchedulePage';
+import AttendancePage from './pages/scheduling/AttendancePage';
+import AttendanceSummaryPage from './pages/scheduling/AttendanceSummaryPage';
+import MyAdjustmentsPage from './pages/scheduling/MyAdjustmentsPage';
+import AdjustmentReviewPage from './pages/scheduling/AdjustmentReviewPage';
 import MyLeavePage from './pages/scheduling/MyLeavePage';
 import LeaveReviewPage from './pages/scheduling/LeaveReviewPage';
 import ShiftSwapsPage from './pages/scheduling/ShiftSwapsPage';
@@ -381,6 +385,11 @@ export default function App() {
       <Route path="/duyet-doi-ca" element={inShell(<RequireBranchManager><SwapApprovalsPage /></RequireBranchManager>)} />
       {/* Hồ sơ cá nhân — BR-PERM-06: chỉ xem; mở từ nút «Hồ sơ» trên thanh tiêu đề. */}
       <Route path="/ho-so" element={inShell(<RequireTenantUser><ProfilePage /></RequireTenantUser>)} />
+      {/* Chấm công M2 — quản lý xem / nhập bù / sửa giờ vào – ra ca. */}
+      <Route path="/cham-cong" element={inShell(<RequireBranchManager><AttendancePage /></RequireBranchManager>)} />
+      <Route path="/tong-ket-cham-cong" element={inShell(<RequireLeaveApprover><AttendanceSummaryPage /></RequireLeaveApprover>)} />
+      <Route path="/dieu-chinh-cong" element={inShell(<RequireStaff><MyAdjustmentsPage /></RequireStaff>)} />
+      <Route path="/duyet-dieu-chinh-cong" element={inShell(<RequireBranchManager><AdjustmentReviewPage /></RequireBranchManager>)} />
       {/* Gói dịch vụ — chỉ Giám đốc (trang tự đưa vai trò khác về trang chủ). */}
       <Route path="/goi-dich-vu" element={inShell(<BillingPage />)} />
       {/* VNPay đưa Giám đốc về đây sau khi thanh toán (?vnp_...). */}

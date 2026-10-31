@@ -36,6 +36,9 @@ export default function EditShiftDialog({
   shift, shifts, people, peopleById, templates, templatesById, onClose, onSaved,
 }) {
   const checkedIn = Boolean(shift.checkInAt);
+  // Chấm công M2: ca hết giờ mà chưa vào là «Vắng» — gỡ / xóa là mất dấu vết, nên khóa như ca đã check-in.
+  const absent = shift.attendanceStatus === 'ABSENT';
+  const locked = checkedIn || absent;
   const assignee = shift.staffId ? peopleById.get(shift.staffId) : null;
   const template = shift.sourceTemplateId ? templatesById.get(shift.sourceTemplateId) : null;
 
@@ -141,7 +144,7 @@ export default function EditShiftDialog({
           )}
         </div>
 
-        {onlyReceptionist && !checkedIn && (
+        {onlyReceptionist && !locked && (
           <div className="alert alert--warn" role="status">
             <b className="alert__title">{assignee.fullName} là lễ tân duy nhất của ca này</b>
             Mỗi ca theo mẫu đã có người phải có ít nhất 1 lễ tân. Giao thêm một lễ tân khác cho ca này trước,
@@ -149,9 +152,12 @@ export default function EditShiftDialog({
           </div>
         )}
 
-        {checkedIn ? (
+        {locked ? (
           <div className="alert alert--info">
-            Ca đã check-in nên không đổi giờ, đổi người hay xóa được nữa — giờ chấm công nằm ngay trên ca này.
+            {checkedIn
+              ? 'Ca đã check-in nên không đổi giờ, đổi người hay xóa được nữa — giờ chấm công nằm ngay trên ca này.'
+              : 'Ca đã kết thúc mà nhân viên chưa vào ca (Vắng) — không đổi giờ, đổi người hay xóa được nữa. '
+                + 'Nhân viên có đi làm thì nhập bù ở màn Chấm công.'}
           </div>
         ) : (
           <>
@@ -230,8 +236,8 @@ export default function EditShiftDialog({
 
         <BlockedAlert message={error} />
 
-        <div className={`modal__actions ${checkedIn ? '' : 'modal__actions--split'}`}>
-          {!checkedIn && (
+        <div className={`modal__actions ${locked ? '' : 'modal__actions--split'}`}>
+          {!locked && (
             <button
               type="button"
               className="btn btn--danger-ghost"

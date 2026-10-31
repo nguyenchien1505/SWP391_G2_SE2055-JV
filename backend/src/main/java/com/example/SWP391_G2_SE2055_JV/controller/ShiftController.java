@@ -1,12 +1,18 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignShiftRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.AttendanceEventResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.CheckInOutRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.ClientInfo;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftBatchRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.ManagerAttendanceRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.ShiftResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateShiftRequest;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
+import com.example.SWP391_G2_SE2055_JV.service.AttendanceService;
 import com.example.SWP391_G2_SE2055_JV.service.ShiftService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -32,7 +38,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ShiftController {
 
-    private final ShiftService shiftService;
+    private final ShiftService      shiftService;
+    private final AttendanceService attendanceService;
 
     /**
      * Staff chỉ nhận về ca của chính mình — lọc ở service.
@@ -106,16 +113,40 @@ public class ShiftController {
         return ResponseEntity.noContent().build();
     }
 
-    /** BR-DASH-01: chỉ ghi timestamp, Milestone 1 không tính đi muộn/về sớm. */
+    /**
+     * Nhân viên vào ca của chính mình — từ 30 phút trước giờ bắt đầu tới hết ca (chấm công M2). Body không bắt
+     * buộc: giao diện cũ không gửi gì vẫn chạy; trường {@code verification} để trống ở M2.
+     */
     @PostMapping("/{id}/check-in")
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER','STAFF')")
-    public ResponseEntity<ShiftResponse> checkIn(@PathVariable UUID id) {
-        return ResponseEntity.ok(shiftService.checkIn(id));
+    public ResponseEntity<ShiftResponse> checkIn(@PathVariable UUID id,
+                                                 @Valid @RequestBody(required = false) CheckInOutRequest request,
+                                                 HttpServletRequest http) {
+        return ResponseEntity.ok(attendanceService.checkIn(id, request, ClientInfo.from(http)));
     }
 
+    /** Kết thúc ca — từ lúc vào ca tới hết ca + 4 giờ. */
     @PostMapping("/{id}/check-out")
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER','STAFF')")
-    public ResponseEntity<ShiftResponse> checkOut(@PathVariable UUID id) {
-        return ResponseEntity.ok(shiftService.checkOut(id));
+    public ResponseEntity<ShiftResponse> checkOut(@PathVariable UUID id,
+                                                  @Valid @RequestBody(required = false) CheckInOutRequest request,
+                                                  HttpServletRequest http) {
+        return ResponseEntity.ok(attendanceService.checkOut(id, request, ClientInfo.from(http)));
+    }
+
+    /** Manager nhập bù / sửa giờ vào – ra ca ở khách sạn mình, bắt buộc lý do. */
+    @PutMapping("/{id}/attendance")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','MANAGER')")
+    public ResponseEntity<ShiftResponse> updateAttendance(@PathVariable UUID id,
+                                                          @Valid @RequestBody ManagerAttendanceRequest request,
+                                                          HttpServletRequest http) {
+        return ResponseEntity.ok(attendanceService.updateAttendance(id, request, ClientInfo.from(http)));
+    }
+
+    /** Mọi lần ghi chấm công của ca (tự bấm, Manager nhập) kèm IP / thiết bị — để đối soát. */
+    @GetMapping("/{id}/attendance-events")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER')")
+    public ResponseEntity<List<AttendanceEventResponse>> getAttendanceEvents(@PathVariable UUID id) {
+        return ResponseEntity.ok(attendanceService.getEvents(id));
     }
 }

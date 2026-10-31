@@ -1,5 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.CheckInOutRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.ClientInfo;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftBatchRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateShiftRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.ShiftResponse;
@@ -7,6 +9,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.exception.ApiError;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ShiftBatchRejectedException;
+import com.example.SWP391_G2_SE2055_JV.service.AttendanceService;
 import com.example.SWP391_G2_SE2055_JV.service.ShiftService;
 import com.example.SWP391_G2_SE2055_JV.support.SecuredWebMvcTest;
 import org.junit.jupiter.api.Nested;
@@ -34,6 +37,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -42,6 +46,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -62,7 +67,8 @@ class ShiftControllerTest {
 
     @Autowired MockMvc mockMvc;
 
-    @MockBean ShiftService shiftService;
+    @MockBean ShiftService      shiftService;
+    @MockBean AttendanceService attendanceService;
 
     // ── Xem lịch ───────────────────────────────────────────────────────────
 
@@ -318,14 +324,75 @@ class ShiftControllerTest {
     @Nested
     class Attendance {
 
+        /** Giao diện cũ không gửi body — vẫn phải chạy (trường xác thực để trống ở M2). */
         @Test
-        void shouldLetStaffCheckIn() throws Exception {
-            when(shiftService.checkIn(SHIFT_ID)).thenReturn(sampleShift());
+        void shouldLetStaffCheckInWithoutBody() throws Exception {
+            when(attendanceService.checkIn(eq(SHIFT_ID), isNull(), any())).thenReturn(sampleShift());
 
             mockMvc.perform(post("/scheduling/shifts/{id}/check-in", SHIFT_ID).with(authorities("ROLE_STAFF")))
                 .andExpect(status().isOk());
 
-            verify(shiftService).checkIn(SHIFT_ID);
+            verify(attendanceService).checkIn(eq(SHIFT_ID), isNull(), any());
+        }
+
+        @Test
+        void shouldPassVerificationAndDeviceToService() throws Exception {
+            when(attendanceService.checkOut(eq(SHIFT_ID), any(), any())).thenReturn(sampleShift());
+
+            mockMvc.perform(post("/scheduling/shifts/{id}/check-out", SHIFT_ID)
+                    .with(authorities("ROLE_STAFF"))
+                    .header("X-Device-Id", "device-123")
+                    .header("User-Agent", "JUnit")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"verification\":null}"))
+                .andExpect(status().isOk());
+
+            ArgumentCaptor<ClientInfo> client = ArgumentCaptor.forClass(ClientInfo.class);
+            ArgumentCaptor<CheckInOutRequest> body = ArgumentCaptor.forClass(CheckInOutRequest.class);
+            verify(attendanceService).checkOut(eq(SHIFT_ID), body.capture(), client.capture());
+            assertThat(body.getValue().getVerification()).isNull();
+            assertThat(client.getValue().deviceId()).isEqualTo("device-123");
+            assertThat(client.getValue().userAgent()).isEqualTo("JUnit");
+            assertThat(client.getValue().ipAddress()).isNotBlank();
+        }
+
+        @Test
+        void shouldLetManagerUpdateAttendance() throws Exception {
+            when(attendanceService.updateAttendance(eq(SHIFT_ID), any(), any())).thenReturn(sampleShift());
+
+            mockMvc.perform(put("/scheduling/shifts/{id}/attendance", SHIFT_ID)
+                    .with(authorities("ROLE_MANAGER"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"checkInAt\":\"2026-10-05T22:05:00\",\"note\":\"Quên bấm vào ca\"}"))
+                .andExpect(status().isOk());
+        }
+
+        @Test
+        void shouldRejectAttendanceUpdateWithoutNote() throws Exception {
+            mockMvc.perform(put("/scheduling/shifts/{id}/attendance", SHIFT_ID)
+                    .with(authorities("ROLE_MANAGER"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"checkInAt\":\"2026-10-05T22:05:00\"}"))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(attendanceService);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_STAFF", "ROLE_DIRECTOR"})
+        void shouldForbidAttendanceUpdateForNonManager(String authorities) throws Exception {
+            mockMvc.perform(put("/scheduling/shifts/{id}/attendance", SHIFT_ID)
+                    .with(authorities(authorities))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"checkInAt\":\"2026-10-05T22:05:00\",\"note\":\"x\"}"))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(attendanceService);
+        }
+
+        @Test
+        void shouldForbidStaffReadingAttendanceEvents() throws Exception {
+            mockMvc.perform(get("/scheduling/shifts/{id}/attendance-events", SHIFT_ID).with(authorities("ROLE_STAFF")))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(attendanceService);
         }
     }
 

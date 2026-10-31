@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.entity;
 
+import com.example.SWP391_G2_SE2055_JV.enums.AttendanceIpMode;
 import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -63,6 +64,15 @@ public class Location extends AuditableEntity {
     @Column(name = "own_shift_templates", nullable = false)
     @lombok.Builder.Default
     private boolean ownShiftTemplates = false;
+
+    /**
+     * Kiểm IP mạng khách sạn khi nhân viên tự vào / ra ca (V15, chấm công M2). Manager chỉnh ở màn Chấm công;
+     * danh sách IP ở {@link LocationAttendanceNetwork}.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "attendance_ip_mode", length = 10, nullable = false)
+    @lombok.Builder.Default
+    private AttendanceIpMode attendanceIpMode = AttendanceIpMode.OFF;
 
     /** BR-ORG-02: chưa có Manager thì Location chưa được vận hành chính thức. */
     public boolean isOperational() {

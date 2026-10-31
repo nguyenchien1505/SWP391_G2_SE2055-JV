@@ -7,7 +7,11 @@ import TimeRangeText from '../../components/scheduling/TimeRangeText';
 import WeekTimetable, { TIMETABLE_QUERY } from '../../components/scheduling/WeekTimetable';
 import { useAuth } from '../../context/AuthContext';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { formatClock, formatDate, todayIso } from '../rooms/format';
+import { formatDate, todayIso } from '../rooms/format';
+import { isInCurrentWorkDay, yesterdayIso } from '../rooms/workDay';
+import MyShiftCard from '../../components/scheduling/MyShiftCard';
+import MyAttendanceSummary from '../../components/scheduling/MyAttendanceSummary';
+import { attendancePills } from './attendance';
 import { buildPersonalShiftBoard, compareShiftStart } from './personalShifts';
 import {
   WEEKDAY_SHORT,
@@ -34,8 +38,12 @@ import './scheduling.css';
  * khách sạn, số giờ và chấm công nếu đã có — bảng 7 cột trên màn hẹp phải kéo ngang mới thấy hết tuần.
  *
  * Ca chưa bắt đầu, chưa check-in có nút «Đổi ca» (BR-SCH-09, BR-SCH-25 — Milestone 2); ca đang nằm
- * trong yêu cầu đổi ca chờ xử lý thì thay bằng nhãn dẫn tới trang Đổi ca (BR-SCH-19). Chấm công
- * (check-in / check-out) để sau (chốt 11/10/2026); xin nghỉ gửi ở màn «Đơn xin nghỉ».
+ * trong yêu cầu đổi ca chờ xử lý thì thay bằng nhãn dẫn tới trang Đổi ca (BR-SCH-19). Xin nghỉ gửi ở màn
+ * «Đơn xin nghỉ».
+ *
+ * Chấm công (M2, chốt 31/10/2026): khối «Ca hôm nay» ở đầu trang có nút Vào ca / Kết thúc ca cho MỌI nhân
+ * viên — trước đây chỉ nhân viên dọn có nút, ở màn Việc dọn của tôi. Mỗi ca trên lịch hiện đi muộn / về sớm,
+ * Vắng, Quên kết thúc ca, Nghỉ phép theo tình trạng backend gửi kèm.
  */
 export default function MySchedulePage() {
   const { user } = useAuth();
@@ -47,6 +55,11 @@ export default function MySchedulePage() {
   const [week, setWeek] = useState(null); // { from, shifts } — ca của tuần tải gần nhất
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Ca thuộc ngày làm hiện tại (kể cả ca đêm từ hôm qua — BR-SCH-03), tải riêng vì có thể nằm ở tuần
+  // trước. null = chưa tải / lỗi — ẩn khối, không chặn xem lịch.
+  const [workDayShifts, setWorkDayShifts] = useState(null);
+  const [attendanceMessage, setAttendanceMessage] = useState(null); // { type, text }
+  const [attendanceVersion, setAttendanceVersion] = useState(0);    // tải lại chuyên cần tháng sau mỗi lần chấm
   // Mẫu ca đang dùng của chi nhánh: mỗi mẫu một hàng, kể cả ca tuần đó mình không làm. Không đổi theo
   // tuần nên tải một lần; lỗi thì như cũ — chỉ hàng của các ca mình có.
   const [templates, setTemplates] = useState(null);
@@ -108,6 +121,27 @@ export default function MySchedulePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadWorkDay = useCallback(async () => {
+    try {
+      const list = await fetchShifts({ from: yesterdayIso(), to: today });
+      setWorkDayShifts(list.filter((shift) => isInCurrentWorkDay(shift)));
+    } catch {
+      setWorkDayShifts(null);
+    }
+  }, [today]);
+
+  useEffect(() => {
+    loadWorkDay();
+  }, [loadWorkDay]);
+
+  /** Vào / kết thúc ca xong (hay lỗi): báo, rồi tải lại cả khối hôm nay lẫn lịch tuần. */
+  function handleAttendanceChanged(message) {
+    setAttendanceMessage(message);
+    setAttendanceVersion((v) => v + 1);
+    loadWorkDay();
+    load();
+  }
 
   // Vừa chuyển tuần mà chưa tải xong thì chưa có gì để hiện — không hiện số liệu tuần cũ dưới nhãn tuần mới.
   const shifts = week?.from === days[0] ? week.shifts : null;
@@ -190,6 +224,17 @@ export default function MySchedulePage() {
           </button>
         </div>
       )}
+      {attendanceMessage && (
+        <div className={`alert alert--${attendanceMessage.type === 'error' ? 'error' : 'success'}`} role="status">
+          {attendanceMessage.text}
+          <button type="button" className="alert__close" onClick={() => setAttendanceMessage(null)} aria-label="Đóng">
+            ×
+          </button>
+        </div>
+      )}
+      {workDayShifts && <MyShiftCard shifts={workDayShifts} today={today} onChanged={handleAttendanceChanged} />}
+      <MyAttendanceSummary version={attendanceVersion} />
+
       {error && <div className="alert alert--error" role="alert">{error}</div>}
       {!ready && !error && <p className="state">Đang tải lịch…</p>}
 
@@ -216,7 +261,6 @@ export default function MySchedulePage() {
                 content: (
                   <ShiftCard
                     shift={shift}
-                    today={today}
                     locationName={user?.locationName}
                     held={heldShiftIds.has(shift.id)}
                     onSwap={setSwapping}
@@ -303,8 +347,8 @@ export default function MySchedulePage() {
  * Thẻ chi tiết một ca trên thời khóa biểu điện thoại: khách sạn, số giờ, chấm công nếu đã có, và nút
  * «Đổi ca» khi ca còn đổi được.
  */
-function ShiftCard({ shift, today, locationName, held, onSwap }) {
-  const pills = attendancePills(shift, today);
+function ShiftCard({ shift, locationName, held, onSwap }) {
+  const pills = attendancePills(shift);
   return (
     <>
       <div className="tt-box">
@@ -338,22 +382,12 @@ function ShiftCard({ shift, today, locationName, held, onSwap }) {
 }
 
 /**
- * Chấm công của ca — chỉ đọc giờ check-in / check-out đã có, không tự suy ra đi muộn / vắng mặt
- * (BR-DASH-01). Ca chưa tới thì ghi «Sắp tới».
- */
-function attendancePills(shift, today) {
-  const pills = [];
-  if (shift.checkInAt) pills.push({ tone: 'in', text: `Đã vào ca ${formatClock(new Date(shift.checkInAt))}` });
-  if (shift.checkOutAt) pills.push({ tone: 'out', text: `Đã ra ca ${formatClock(new Date(shift.checkOutAt))}` });
-  if (pills.length === 0 && shift.shiftDate > today) pills.push({ tone: 'upcoming', text: 'Sắp tới' });
-  return pills;
-}
-
-/**
- * Một ca trong ô: khung giờ, số giờ, cờ qua đêm. Khối chỉ để xem; riêng nút «Đổi ca» (ca còn đổi
- * được) hoặc nhãn «Chờ đổi ca» (ca đang trong yêu cầu chờ xử lý) bấm được.
+ * Một ca trong ô: khung giờ, số giờ, cờ qua đêm, và nhãn chấm công cần chú ý (đi muộn, Vắng…) — giờ vào /
+ * ra đầy đủ nằm ở khối «Ca hôm nay». Khối chỉ để xem; riêng nút «Đổi ca» (ca còn đổi được) hoặc nhãn «Chờ
+ * đổi ca» (ca đang trong yêu cầu chờ xử lý) bấm được.
  */
 function ShiftBlock({ shift, held, onSwap }) {
+  const flags = attendancePills(shift).filter((pill) => !['in', 'out', 'upcoming'].includes(pill.tone));
   return (
     <div className={`cell-block cell-block--static shift-tone--${shiftTone(shift.startTime)}`}>
       <b className="my-shift__time">
@@ -363,6 +397,9 @@ function ShiftBlock({ shift, held, onSwap }) {
         {formatHours(shift.durationHours)}
         {shift.overnight ? ' · qua đêm' : ''}
       </span>
+      {flags.map((pill) => (
+        <span key={pill.text} className={`tt-pill tt-pill--${pill.tone} cell-block__flag`}>{pill.text}</span>
+      ))}
       {held ? (
         <Link className="cell-block__swap is-held" to="/doi-ca">Chờ đổi ca</Link>
       ) : (

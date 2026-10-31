@@ -1,4 +1,5 @@
 import { formatDateTime } from '../../pages/rooms/format';
+import { ATTENDANCE_LABELS } from '../../pages/scheduling/attendance';
 import {
   UNASSIGNED_REASON_LABEL,
   formatHours,
@@ -132,6 +133,9 @@ function ShiftRow({ shift, person, showTime, onEdit }) {
     showTime ? `${timeRange(shift.startTime, shift.endTime)}${shift.overnight ? ' (qua đêm)' : ''}` : null,
     shift.checkInAt ? `Vào ca ${formatDateTime(shift.checkInAt)}` : null,
     shift.checkOutAt ? `ra ca ${formatDateTime(shift.checkOutAt)}` : null,
+    // Chấm công M2: chỉ nêu tình trạng cần chú ý — giờ vào / ra đã có ở trên.
+    ['ABSENT', 'MISSED_CHECK_OUT', 'ON_LEAVE'].includes(shift.attendanceStatus)
+      ? ATTENDANCE_LABELS[shift.attendanceStatus] : null,
     open && shift.unassignedReason ? UNASSIGNED_REASON_LABEL[shift.unassignedReason] : null,
   ].filter(Boolean);
 

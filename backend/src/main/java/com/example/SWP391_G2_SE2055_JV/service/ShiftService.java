@@ -18,6 +18,7 @@ import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftTemplateRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
+import com.example.SWP391_G2_SE2055_JV.service.AttendanceStatusResolver.AttendanceView;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import lombok.RequiredArgsConstructor;
@@ -67,6 +68,8 @@ public class ShiftService {
     // Đổi ca (M2): sửa / gỡ người khỏi ca thì yêu cầu đổi ca đang chờ tự hủy; ca có yêu cầu thì không
     // xóa được. Không vòng bean — ShiftSwapService không dùng ShiftService.
     private final ShiftSwapService         shiftSwapService;
+    // Chấm công M2: mỗi ca trả về kèm tình trạng chấm công suy ra lúc đọc.
+    private final AttendanceStatusResolver attendanceResolver;
 
     /**
      * @param from ngày bắt đầu ca nhỏ nhất (tính cả ngày này), đi cùng {@code to}. Bỏ trống cả
@@ -220,6 +223,9 @@ public class ShiftService {
         if (shift.isCheckedIn()) {
             throw new BusinessException("Không sửa được ca đã check-in — giờ ca sẽ lệch với dữ liệu chấm công.");
         }
+        if (shift.isAssigned()) {
+            assertNotEnded(shift, "sửa được");
+        }
         LocalDate oldDate = shift.getShiftDate();
         LocalTime oldStart = shift.getStartTime();
         LocalTime oldEnd = shift.getEndTime();
@@ -331,6 +337,7 @@ public class ShiftService {
         if (shift.isCheckedIn()) {
             throw new BusinessException("Không gỡ người khỏi ca đã check-in — sẽ mất dữ liệu chấm công của người đó.");
         }
+        assertNotEnded(shift, "gỡ người khỏi");
         // BR-HK-03: không bỏ lại việc dọn trên tên một người đã hết ca hôm đó.
         housekeepingService.assertCanLeaveShiftDay(shift.getStaffId(), shift.getShiftDate(), shift.getId());
         receptionCoverage.assertStillCoveredAfterRemoving(shift);
@@ -356,6 +363,8 @@ public class ShiftService {
         // Khóa ngoại của yêu cầu đổi ca giữ lịch sử — muốn bỏ ca thì gỡ người thay vì xóa.
         shiftSwapService.assertNoSwapRequests(id);
         if (shift.isAssigned()) {
+            // Chỗ trống đã qua thì xóa được: không ai làm nên không có chấm công.
+            assertNotEnded(shift, "xóa được");
             housekeepingService.assertCanLeaveShiftDay(shift.getStaffId(), shift.getShiftDate(), shift.getId());
             receptionCoverage.assertStillCoveredAfterRemoving(shift);
         }
@@ -365,33 +374,7 @@ public class ShiftService {
         log.info("Xóa ca {}", id);
     }
 
-    /** BR-DASH-01: chỉ ghi nhận timestamp, không tự tính đi muộn/về sớm. */
-    @Transactional
-    public ShiftResponse checkIn(UUID id) {
-        Shift shift = getOwnedShift(id);
-        assertIsOwnShift(shift);
-
-        if (shift.isCheckedIn()) {
-            throw new BusinessException("Ca này đã được check-in.");
-        }
-        shift.setCheckInAt(LocalDateTime.now());
-        return toResponse(shiftRepository.save(shift));
-    }
-
-    @Transactional
-    public ShiftResponse checkOut(UUID id) {
-        Shift shift = getOwnedShift(id);
-        assertIsOwnShift(shift);
-
-        if (!shift.isCheckedIn()) {
-            throw new BusinessException("Phải check-in trước khi check-out.");
-        }
-        if (shift.getCheckOutAt() != null) {
-            throw new BusinessException("Ca này đã được check-out.");
-        }
-        shift.setCheckOutAt(LocalDateTime.now());
-        return toResponse(shiftRepository.save(shift));
-    }
+    // Check-in / check-out: AttendanceService (chấm công M2).
 
     // ── Kiểm tra quyền sở hữu ────────────────────────────────────────────────
 
@@ -438,9 +421,14 @@ public class ShiftService {
         return template;
     }
 
-    private void assertIsOwnShift(Shift shift) {
-        if (!SecurityUtils.getCurrentUserId().equals(shift.getStaffId())) {
-            throw new BusinessException("Chỉ người được phân công mới check-in/check-out ca này.");
+    /**
+     * Chấm công M2: ca đã hết giờ là dữ liệu chấm công — kể cả «Vắng», vốn chỉ suy ra được từ ca còn người mà
+     * chưa vào. Sửa / gỡ / xóa nó là xóa dấu vết vắng mặt; Manager sửa giờ vào / ra qua màn Chấm công.
+     */
+    private void assertNotEnded(Shift shift, String action) {
+        String timezone = locationRepository.findById(shift.getLocationId()).map(Location::getTimezone).orElse(null);
+        if (AttendanceRules.hasEnded(shift, ShiftTimeUtils.nowAt(timezone))) {
+            throw new BusinessException("Không " + action + " ca đã kết thúc — ca đã qua là dữ liệu chấm công.");
         }
     }
 
@@ -471,21 +459,25 @@ public class ShiftService {
 
     // ── Dựng response ────────────────────────────────────────────────────────
 
-    /** Ca kèm tên mẫu của nó — một truy vấn cho ca theo mẫu. */
+    /** Ca kèm tên mẫu và tình trạng chấm công của nó — một truy vấn cho ca theo mẫu. */
     private ShiftResponse toResponse(Shift shift) {
         String templateName = shift.getSourceTemplateId() == null ? null
             : shiftTemplateRepository.findById(shift.getSourceTemplateId()).map(ShiftTemplate::getName).orElse(null);
-        return ShiftResponse.fromEntity(shift, templateName);
+        return ShiftResponse.fromEntity(shift, templateName, attendanceResolver.resolve(List.of(shift)).get(shift.getId()));
     }
 
     private Page<ShiftResponse> toResponses(Page<Shift> page) {
         Map<UUID, String> names = templateNames(page.getContent());
-        return page.map(shift -> ShiftResponse.fromEntity(shift, nameOf(names, shift)));
+        Map<UUID, AttendanceView> attendance = attendanceResolver.resolve(page.getContent());
+        return page.map(shift -> ShiftResponse.fromEntity(shift, nameOf(names, shift), attendance.get(shift.getId())));
     }
 
     private List<ShiftResponse> toResponses(List<Shift> shifts) {
         Map<UUID, String> names = templateNames(shifts);
-        return shifts.stream().map(shift -> ShiftResponse.fromEntity(shift, nameOf(names, shift))).toList();
+        Map<UUID, AttendanceView> attendance = attendanceResolver.resolve(shifts);
+        return shifts.stream()
+            .map(shift -> ShiftResponse.fromEntity(shift, nameOf(names, shift), attendance.get(shift.getId())))
+            .toList();
     }
 
     /** Ca tự nhập giờ không có mẫu — không tra (Map.of() không nhận khóa null). */

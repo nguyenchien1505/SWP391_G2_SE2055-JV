@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
 import { claimTask, completeTask, fetchOpenTasks, fetchTasks } from '../../api/housekeeping';
 import { fetchShifts } from '../../api/scheduling';
-import MyShiftCard from '../../components/rooms/MyShiftCard';
+import MyShiftCard from '../../components/scheduling/MyShiftCard';
 import OpenTaskList from '../../components/rooms/OpenTaskList';
 import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import ReturnTaskModal from '../../components/rooms/ReturnTaskModal';
@@ -183,7 +183,15 @@ export default function MyTasksPage() {
       )}
       {loading && <p className="state">Đang tải dữ liệu…</p>}
 
-      {shifts && <MyShiftCard shifts={shifts} today={today} onChanged={handleShiftChanged} />}
+      {shifts && (
+        <MyShiftCard
+          shifts={shifts}
+          today={today}
+          onChanged={handleShiftChanged}
+          emptyText="Hôm nay bạn không có ca — việc dọn chỉ được giao vào ngày bạn có ca."
+          checkOutNote="Kết thúc ca thì bạn không tự nhận thêm việc dọn được nữa. Việc đang dọn dở vẫn nằm ở «Cần làm»."
+        />
+      )}
 
       <section className="panel">
         <div className="panel__head">

@@ -232,8 +232,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PATCH, "/scheduling/leave-requests/*/approve",
                         "/scheduling/leave-requests/*/reject", "/scheduling/leave-requests/*/revoke")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER)
-                // Mọi người lao động đều xin nghỉ / đổi ca / check-in-out được (BR-PERM-06).
-                .requestMatchers("/scheduling/leave-requests/**", "/scheduling/shift-swap-requests/**")
+                // Mọi người lao động đều xin nghỉ / đổi ca / check-in-out / gửi đơn điều chỉnh công được (BR-PERM-06,
+                // chấm công M2).
+                .requestMatchers("/scheduling/leave-requests/**", "/scheduling/shift-swap-requests/**",
+                        "/scheduling/attendance-adjustments/**")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)
                 .requestMatchers(HttpMethod.POST, "/scheduling/shifts/*/check-in", "/scheduling/shifts/*/check-out")
                     .hasAnyRole(ADMIN, DIRECTOR, MANAGER, STAFF)

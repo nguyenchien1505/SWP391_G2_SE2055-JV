@@ -81,6 +81,22 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, UUID
                                        @Param("to") LocalDate to);
 
     /**
+     * Như {@link #findOverlapping} cho NHIỀU người, một truy vấn — chấm công hiện «Nghỉ phép» thay vì «Vắng»
+     * cho cả một trang ca. Không gọi với danh sách rỗng.
+     */
+    @Query("""
+        select r from LeaveRequest r
+        where r.requesterId in :requesterIds
+          and r.status = :status
+          and r.fromDate <= :to
+          and r.toDate >= :from
+        """)
+    List<LeaveRequest> findOverlappingForRequesters(@Param("requesterIds") Collection<UUID> requesterIds,
+                                                    @Param("status") LeaveRequestStatus status,
+                                                    @Param("from") LocalDate from,
+                                                    @Param("to") LocalDate to);
+
+    /**
      * Đơn {@code leaveType} của một người bắt đầu trong [from, to] — cộng ngày phép năm đã dùng / đang chờ
      * của một năm. Đơn phép năm không kéo qua hai năm nên lọc theo ngày bắt đầu là đủ.
      */

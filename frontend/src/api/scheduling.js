@@ -1,4 +1,5 @@
 import { api } from './client';
+import { getDeviceId } from './deviceId';
 
 // ── Quy định xếp ca — BR-SCH-01, DM-18: mỗi Tenant đúng MỘT bản, sửa đè ─────────
 
@@ -139,19 +140,101 @@ export async function deleteShift(id) {
 }
 
 /**
- * POST /scheduling/shifts/{id}/check-in — nhân viên vào ca của CHÍNH mình (chỉ ghi giờ — BR-DASH-01).
- * Không gửi body: trường xác thực có mặt của chấm công M2 (BR-ATT-03) để trống. Khung giờ được vào ca
- * do backend kiểm; câu lỗi hiện nguyên văn. Thêm cho màn "Việc của tôi" — tự nhận việc dọn đòi đã vào ca.
+ * POST /scheduling/shifts/{id}/check-in — nhân viên vào ca của CHÍNH mình, từ 30 phút trước giờ bắt đầu tới
+ * hết ca (chấm công M2). `verification` là trường xác thực (BR-ATT-03) — để trống ở M2, sau này gửi mã QR.
+ * Kèm mã thiết bị để quản lý đối soát; khung giờ do backend kiểm, câu lỗi hiện nguyên văn.
  */
-export async function checkInShift(id) {
-  const { data } = await api.post(`/scheduling/shifts/${id}/check-in`);
+export async function checkInShift(id, verification = null) {
+  const { data } = await api.post(`/scheduling/shifts/${id}/check-in`, { verification }, attendanceHeaders());
   return data;
 }
 
-/** POST /scheduling/shifts/{id}/check-out — kết thúc ca của chính mình; phải vào ca trước. */
-export async function checkOutShift(id) {
-  const { data } = await api.post(`/scheduling/shifts/${id}/check-out`);
+/** POST /scheduling/shifts/{id}/check-out — kết thúc ca của chính mình, tới hết ca + 4 giờ; phải vào ca trước. */
+export async function checkOutShift(id, verification = null) {
+  const { data } = await api.post(`/scheduling/shifts/${id}/check-out`, { verification }, attendanceHeaders());
   return data;
+}
+
+/**
+ * GET /scheduling/attendance — bảng chấm công khách sạn của quản lý trong [from, to] (tối đa 31 ngày): mỗi
+ * dòng `{ shift, staffName, checkInMethod, checkOutMethod }`, sớm nhất trước.
+ */
+export async function fetchAttendance({ from, to }) {
+  const { data } = await api.get('/scheduling/attendance', { params: { from, to } });
+  return data;
+}
+
+/**
+ * PUT /scheduling/shifts/{id}/attendance — quản lý nhập bù / sửa giờ vào – ra ca, bắt buộc lý do. Giờ bỏ
+ * trống là giữ nguyên giờ đang có. Giờ dạng "YYYY-MM-DDTHH:mm", giờ khách sạn.
+ */
+export async function updateAttendance(id, { checkInAt, checkOutAt, note }) {
+  const { data } = await api.put(`/scheduling/shifts/${id}/attendance`,
+    { checkInAt: checkInAt || null, checkOutAt: checkOutAt || null, note }, attendanceHeaders());
+  return data;
+}
+
+/** GET /scheduling/shifts/{id}/attendance-events — mọi lần ghi chấm công của ca, cũ nhất trước. */
+export async function fetchAttendanceEvents(id) {
+  const { data } = await api.get(`/scheduling/shifts/${id}/attendance-events`);
+  return data;
+}
+
+/**
+ * GET /scheduling/attendance/today — khối «Hôm nay» của quản lý: `{ now, rows, receptionGaps,
+ * actionsWithoutShift }` (ca của ngày làm hiện tại, ca đang không có lễ tân trong ca, thao tác của lễ tân lúc
+ * chưa vào ca).
+ */
+export async function fetchTodayAttendance() {
+  const { data } = await api.get('/scheduling/attendance/today');
+  return data;
+}
+
+/**
+ * GET /scheduling/attendance/summary — chuyên cần tháng của từng nhân viên một khách sạn (chỉ để xem, không tính
+ * lương). `month` dạng "YYYY-MM"; Giám đốc truyền `locationId`, Manager luôn là khách sạn của mình.
+ */
+export async function fetchAttendanceSummary({ month, locationId } = {}) {
+  const { data } = await api.get('/scheduling/attendance/summary', { params: { month, locationId } });
+  return data;
+}
+
+/** GET /scheduling/attendance/summary/me — chuyên cần tháng của chính nhân viên đang đăng nhập. */
+export async function fetchMyAttendanceSummary(month) {
+  const { data } = await api.get('/scheduling/attendance/summary/me', { params: { month } });
+  return data;
+}
+
+// ── Mạng chấm công (kiểm IP) — Manager khai IP khách sạn mình ────────────────
+// Mọi lệnh trả lại cả cài đặt: `{ mode, networks: [{ id, cidr, label }], currentIp, currentIpAllowed }`.
+
+/** GET /scheduling/attendance/network — kèm IP của chính người đang xem (để «Thêm IP mạng hiện tại»). */
+export async function fetchAttendanceNetwork() {
+  const { data } = await api.get('/scheduling/attendance/network');
+  return data;
+}
+
+/** PUT /scheduling/attendance/network/mode — `OFF` | `WARN` | `ENFORCE`; bật phải có ít nhất một IP. */
+export async function setAttendanceIpMode(mode) {
+  const { data } = await api.put('/scheduling/attendance/network/mode', { mode });
+  return data;
+}
+
+/** POST /scheduling/attendance/network/ips — một IP hoặc dải IP (IPv4 / IPv6), backend chuẩn hóa. */
+export async function addAttendanceNetwork({ cidr, label }) {
+  const { data } = await api.post('/scheduling/attendance/network/ips', { cidr, label: label || null });
+  return data;
+}
+
+/** DELETE /scheduling/attendance/network/ips/{id} — không xóa được IP cuối cùng khi đang bật kiểm. */
+export async function removeAttendanceNetwork(id) {
+  const { data } = await api.delete(`/scheduling/attendance/network/ips/${id}`);
+  return data;
+}
+
+/** Chỉ gắn mã thiết bị vào lệnh chấm công — gắn cho mọi request thì GET nào cũng phải preflight CORS. */
+function attendanceHeaders() {
+  return { headers: { 'X-Device-Id': getDeviceId() } };
 }
 
 // ── Đổi ca giữa hai nhân viên — BR-SCH-08..12, 18, 19, 25 (Milestone 2) ──────────

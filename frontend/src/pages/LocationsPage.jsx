@@ -13,6 +13,7 @@ import LocationForm from '../components/LocationForm';
 import FormModal from '../components/FormModal';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
+import TodayAttendancePanel from '../components/scheduling/TodayAttendancePanel';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { formatDate, todayIso } from './rooms/format';
 
@@ -162,6 +163,9 @@ export default function LocationsPage() {
           </button>
         )}
       </div>
+
+      {/* Chấm công M2: trang đầu của quản lý chi nhánh có ngay tình hình ca hôm nay. */}
+      {user?.role === 'MANAGER' && <TodayAttendancePanel />}
 
       <div className="stat-grid">
         <StatCard

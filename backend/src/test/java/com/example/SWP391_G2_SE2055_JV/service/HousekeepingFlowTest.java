@@ -711,10 +711,11 @@ class HousekeepingFlowTest {
         return roomService.getHistory(room.getId(), PageRequest.of(0, 20)).getContent();
     }
 
+    /** Ca trọn ngày: chạy test lúc nào trong ngày ca cũng chưa kết thúc (ca đã qua không gỡ / xóa được — chấm công M2). */
     private Shift persistShiftToday(User staff) {
         return persist(Shift.builder().tenantId(tenantId).locationId(hanoi).staffId(staff.getId())
-            .shiftDate(today).startTime(LocalTime.of(8, 0)).endTime(LocalTime.of(16, 0))
-            .durationHours(new BigDecimal("8.00")).build());
+            .shiftDate(today).startTime(LocalTime.of(0, 0)).endTime(LocalTime.of(23, 59))
+            .durationHours(new BigDecimal("23.98")).build());
     }
 
     private Room persistRoom(UUID roomTypeId, String number, RoomStatus status) {

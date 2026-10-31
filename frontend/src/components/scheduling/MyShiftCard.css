@@ -1,0 +1,47 @@
+/* ── Ca hôm nay + nút Vào ca / Kết thúc ca (chấm công M2) ──────────────────
+ * Dùng ở Lịch cá nhân và Việc dọn của tôi. Bọc trong .my-shift: scheduling.css cũng có .my-shift__time
+ * (giờ ca cỡ nhỏ trong ô bảng tuần). */
+.my-shift {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.my-shift .my-shift__label {
+  font-weight: 700;
+}
+.my-shift .my-shift__time {
+  font-size: 18px;
+  font-weight: 700;
+  white-space: normal;
+}
+.my-shift .my-shift__time small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.my-shift .my-shift__none,
+.my-shift .my-shift__hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+.my-shift .my-shift__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.my-shift .my-shift__action {
+  min-height: 48px;
+}
+@media (max-width: 860px) {
+  .my-shift .my-shift__item,
+  .my-shift .my-shift__action {
+    width: 100%;
+  }
+}

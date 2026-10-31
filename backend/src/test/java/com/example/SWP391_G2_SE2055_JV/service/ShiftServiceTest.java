@@ -23,6 +23,7 @@ import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftTemplateRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
 import com.example.SWP391_G2_SE2055_JV.support.TestAuth;
+import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -38,9 +39,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -76,7 +79,9 @@ class ShiftServiceTest {
     private static final UUID SHIFT_ID          = UUID.randomUUID();
     private static final UUID TEMPLATE_ID       = UUID.randomUUID();
 
-    private static final LocalDate MONDAY = LocalDate.of(2026, 10, 5);
+    // Thứ Hai TƯƠNG LAI: ca đã kết thúc là dữ liệu chấm công, không sửa / gỡ / xóa được (chấm công M2).
+    private static final LocalDate MONDAY =
+        ShiftTimeUtils.todayInHanoi().with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(1);
     private static final LocalDate SUNDAY = MONDAY.plusDays(6);
 
     @Mock ShiftRepository         shiftRepository;
@@ -87,6 +92,7 @@ class ShiftServiceTest {
     @Mock HousekeepingService     housekeepingService;
     @Mock ReceptionCoverageRule   receptionCoverage;
     @Mock ShiftSwapService        shiftSwapService;
+    @Mock AttendanceStatusResolver attendanceResolver;
 
     @InjectMocks ShiftService service;
 
@@ -777,6 +783,20 @@ class ShiftServiceTest {
             verify(shiftRepository, never()).save(any());
         }
 
+        /** Chấm công M2: ca đã qua mà chưa vào là «Vắng» — gỡ người là xóa dấu vết vắng mặt. */
+        @Test
+        void shouldRejectUnassigningEndedShift() {
+            Shift shift = assignedShift();
+            shift.setShiftDate(ShiftTimeUtils.todayInHanoi().minusDays(3));
+            givenOwnedShift(shift);
+
+            assertThatThrownBy(() -> service.unassignStaff(SHIFT_ID, UnassignedReason.MANAGER_MANUAL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("đã kết thúc");
+            assertThat(shift.getStaffId()).isEqualTo(STAFF_ID);
+            verify(shiftRepository, never()).save(any());
+        }
+
         @Test
         void shouldRejectUnassigningEmptyShift() {
             givenOwnedShift(unassignedShift());
@@ -843,6 +863,30 @@ class ShiftServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("check-in");
             verify(shiftRepository, never()).delete(any());
+        }
+
+        @Test
+        void shouldRejectDeletingEndedAssignedShift() {
+            Shift shift = assignedShift();
+            shift.setShiftDate(ShiftTimeUtils.todayInHanoi().minusDays(3));
+            givenOwnedShift(shift);
+
+            assertThatThrownBy(() -> service.deleteShift(SHIFT_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("đã kết thúc");
+            verify(shiftRepository, never()).delete(any());
+        }
+
+        /** Chỗ trống đã qua không có chấm công — xóa được. */
+        @Test
+        void shouldDeleteEndedEmptySlot() {
+            Shift shift = unassignedShift();
+            shift.setShiftDate(ShiftTimeUtils.todayInHanoi().minusDays(3));
+            givenOwnedShift(shift);
+
+            service.deleteShift(SHIFT_ID);
+
+            verify(shiftRepository).delete(shift);
         }
 
         @Test

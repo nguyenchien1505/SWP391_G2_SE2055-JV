@@ -23,6 +23,8 @@ import RoomForm from '../../components/rooms/RoomForm';
 import RoomListView from '../../components/rooms/RoomListView';
 import RoomNoteModal from '../../components/rooms/RoomNoteModal';
 import RoomStatusFilter from '../../components/rooms/RoomStatusFilter';
+import MyShiftCard from '../../components/scheduling/MyShiftCard';
+import { useWorkDayShifts } from '../../hooks/useWorkDayShifts';
 import { formatClock } from './format';
 import { DELETE_ROOM_WARNING, LOCK, roomActionsFor, statusChangedMessage } from './roomActions';
 import {
@@ -70,6 +72,9 @@ export default function RoomBoardPage() {
   const isManager = user?.role === 'MANAGER';
   const isReception = user?.role === 'STAFF' && hasPermission(user, 'RECEPTION');
   const role = useMemo(() => ({ isDirector, isManager, isReception }), [isDirector, isManager, isReception]);
+  const isStaff = user?.role === 'STAFF';
+  // Chấm công M2: khối «Ca hôm nay» cho nhân viên (Sơ đồ phòng là trang đầu của lễ tân).
+  const { shifts: workDayShifts, reload: reloadWorkDay, today: workDayToday } = useWorkDayShifts(isStaff);
   // Nhân viên có quyền Lễ tân hoặc Dọn dẹp — BR-ASSET-05.
   const canReport = canReportDamage(user);
 
@@ -94,6 +99,12 @@ export default function RoomBoardPage() {
   const { state: navigationState, pathname } = useLocation();
   const navigate = useNavigate();
   const [banner, setBanner] = useState(navigationState?.banner ?? null); // { type, text }
+
+  /** Vào / kết thúc ca xong (hay lỗi): báo bằng banner chung của trang, tải lại khối ca. */
+  function handleShiftChanged(message) {
+    setBanner(message);
+    reloadWorkDay();
+  }
 
   // Kiểu xem nằm trên URL để quay lại từ trang chi tiết vẫn đúng dạng đang xem.
   const view = searchParams.get('view') === 'list' && (isDirector || isManager) ? 'list' : 'grid';
@@ -449,6 +460,19 @@ export default function RoomBoardPage() {
           </div>
         )}
       </div>
+
+      {/* Chấm công M2: trang đầu của lễ tân — vào ca ngay tại đây. Chưa vào ca vẫn thao tác được (chốt
+          01/11/2026), nhưng quản lý thấy thao tác đó ở khối «Hôm nay». */}
+      {isStaff && workDayShifts && (
+        <>
+          {isReception && !workDayShifts.some((shift) => shift.attendanceStatus === 'WORKING') && (
+            <div className="alert alert--warn" role="status">
+              Bạn chưa vào ca. Vẫn nhận / trả phòng được, nhưng thao tác lúc chưa vào ca sẽ hiện cho quản lý.
+            </div>
+          )}
+          <MyShiftCard shifts={workDayShifts} today={workDayToday} onChanged={handleShiftChanged} />
+        </>
+      )}
 
       {banner && (
         <div
