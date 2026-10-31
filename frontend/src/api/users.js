@@ -67,6 +67,12 @@ export async function deleteUserPermanently(id) {
   await api.delete(`/users/${id}/permanent`);
 }
 
+/** Hồ sơ của chính người đang đăng nhập, kèm tên vị trí, phòng ban, khách sạn — BR-PERM-06. */
+export async function fetchMyProfile() {
+  const { data } = await api.get('/users/me');
+  return data;
+}
+
 /** Cấp lại mật khẩu tạm — response có `tempPassword`, hiển thị đúng một lần. */
 export async function resetUserPassword(id) {
   const { data } = await api.post(`/users/${id}/reset-password`);

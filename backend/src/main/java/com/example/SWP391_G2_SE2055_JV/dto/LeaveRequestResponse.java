@@ -42,15 +42,23 @@ public class LeaveRequestResponse {
     private UUID               approverId;
     private String             approverName;
     private LocalDateTime      decidedAt;
+    /** Người duyệt hủy phần ngày chưa tới — BR-SCH-16 bản sửa 28/10/2026; null nếu đơn không bị hủy kiểu này. */
+    private UUID               revokedById;
+    private String             revokedByName;
+    private LocalDateTime      revokedAt;
+    private String             revokeReason;
+    /** Ngày kết thúc ban đầu khi đơn bị rút ngắn; null nếu không. */
+    private LocalDate          originalToDate;
     private LocalDateTime      createdAt;
 
     /**
      * @param requester    hồ sơ người gửi; null nếu không còn tra được
      * @param positionName vị trí của người gửi
      * @param approver     người duyệt / từ chối; null khi đơn chưa có quyết định
+     * @param revoker      người hủy phần ngày chưa tới; null nếu không có
      */
     public static LeaveRequestResponse fromEntity(LeaveRequest leave, User requester, String positionName,
-                                                  String locationName, User approver) {
+                                                  String locationName, User approver, User revoker) {
         return LeaveRequestResponse.builder()
             .id(leave.getId())
             .leaveType(leave.getLeaveType())
@@ -69,6 +77,11 @@ public class LeaveRequestResponse {
             .approverId(leave.getApproverId())
             .approverName(approver == null ? null : approver.getFullName())
             .decidedAt(leave.getDecidedAt())
+            .revokedById(leave.getRevokedBy())
+            .revokedByName(revoker == null ? null : revoker.getFullName())
+            .revokedAt(leave.getRevokedAt())
+            .revokeReason(leave.getRevokeReason())
+            .originalToDate(leave.getOriginalToDate())
             .createdAt(leave.getCreatedAt())
             .build();
     }

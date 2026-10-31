@@ -136,17 +136,13 @@ export default function LoginPage() {
                 <span>
                   Mật khẩu <b className="req">*</b>
                 </span>
-                <button
-                  type="button"
+                {/* Nhân viên gửi yêu cầu cho Quản lý khách sạn; mang theo email đã gõ để khỏi gõ lại. */}
+                <Link
+                  to={email.trim() ? `/quen-mat-khau?email=${encodeURIComponent(email.trim())}` : '/quen-mat-khau'}
                   className="link-button"
-                  onClick={() =>
-                    setHint(
-                      'Hệ thống chưa có chức năng tự đặt lại mật khẩu. Liên hệ Quản lý hoặc Giám đốc để được cấp mật khẩu tạm.',
-                    )
-                  }
                 >
                   Quên mật khẩu?
-                </button>
+                </Link>
               </span>
               <span className="field__control">
                 <span className="field__icon" aria-hidden="true">

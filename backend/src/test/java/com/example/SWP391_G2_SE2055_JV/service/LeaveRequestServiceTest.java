@@ -494,6 +494,109 @@ class LeaveRequestServiceTest {
         }
     }
 
+    // ── Hủy phần ngày chưa tới — BR-SCH-16 bản sửa 28/10/2026 ───────────────
+
+    @Nested
+    class Revoke {
+
+        /** Chưa tới ngày nghỉ: hủy cả đơn, vẫn giữ người duyệt; ca đã gỡ lúc duyệt không tự gán lại. */
+        @Test
+        void shouldCancelWholeLeaveThatHasNotStarted() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(approved(leave(staff, LeaveType.ANNUAL, today.plusDays(5), today.plusDays(6))));
+
+            LeaveRequestResponse response = service.revokeLeaveRequest(leave.getId(), "  Khách đoàn đến sớm, cần người  ");
+
+            assertThat(response.getStatus()).isEqualTo(LeaveRequestStatus.CANCELLED);
+            assertThat(leave.getApproverId()).isEqualTo(manager.getId());
+            assertThat(leave.getRevokedBy()).isEqualTo(manager.getId());
+            assertThat(leave.getRevokedAt()).isNotNull();
+            assertThat(leave.getRevokeReason()).isEqualTo("Khách đoàn đến sớm, cần người");
+            assertThat(leave.getOriginalToDate()).isNull();
+            assertThat(leave.getToDate()).isEqualTo(today.plusDays(6));
+            assertThat(response.getRevokedByName()).isEqualTo("Trần Quản Lý");
+            verifyNoInteractions(shiftRepository);
+        }
+
+        /** Đang nghỉ dở: rút ngắn tới hết hôm nay — hôm nay coi như đã tới (BR-SCH-17); đơn vẫn đã duyệt. */
+        @Test
+        void shouldShortenOngoingLeaveToToday() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(approved(leave(staff, LeaveType.UNPAID, today.minusDays(1), today.plusDays(3))));
+
+            LeaveRequestResponse response = service.revokeLeaveRequest(leave.getId(), "Xin đi làm lại sớm");
+
+            assertThat(response.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
+            assertThat(response.getToDate()).isEqualTo(today);
+            assertThat(response.getOriginalToDate()).isEqualTo(today.plusDays(3));
+            assertThat(response.getDays()).isEqualTo(2);
+        }
+
+        @Test
+        void shouldRejectWhenNoFutureDayLeft() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(approved(leave(staff, LeaveType.ANNUAL, today.minusDays(2), today)));
+
+            assertThatThrownBy(() -> service.revokeLeaveRequest(leave.getId(), "Đi làm lại"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("không còn ngày nghỉ nào chưa tới");
+            assertThat(leave.getRevokedBy()).isNull();
+        }
+
+        /** Đơn đang chờ thì người duyệt từ chối, không "hủy". */
+        @Test
+        void shouldRejectRevokingPendingRequest() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(leave(staff, LeaveType.ANNUAL, today.plusDays(5), today.plusDays(6)));
+
+            assertThatThrownBy(() -> service.revokeLeaveRequest(leave.getId(), "Không cần"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Chỉ hủy được đơn đã duyệt");
+            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.PENDING);
+        }
+
+        @Test
+        void shouldRequireReason() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(approved(leave(staff, LeaveType.ANNUAL, today.plusDays(5), today.plusDays(6))));
+
+            assertThatThrownBy(() -> service.revokeLeaveRequest(leave.getId(), "   "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("lý do");
+            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
+        }
+
+        /** Cùng phạm vi với duyệt (BR-SCH-08): Giám đốc không đụng đơn của Staff — 404. */
+        @Test
+        void directorCannotRevokeStaffLeave() {
+            loginAs(director);
+            LeaveRequest leave = stubLeave(approved(leave(staff, LeaveType.ANNUAL, today.plusDays(5), today.plusDays(6))));
+
+            assertThatThrownBy(() -> service.revokeLeaveRequest(leave.getId(), "Đi làm lại"))
+                .isInstanceOf(ResourceNotFoundException.class);
+            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
+        }
+
+        @Test
+        void directorRevokesManagerLeave() {
+            loginAs(director);
+            LeaveRequest leave = stubLeave(approved(leave(manager, LeaveType.ANNUAL, today.plusDays(5), today.plusDays(6))));
+
+            assertThat(service.revokeLeaveRequest(leave.getId(), "Chi nhánh cần quản lý tuần này").getStatus())
+                .isEqualTo(LeaveRequestStatus.CANCELLED);
+            assertThat(leave.getRevokedBy()).isEqualTo(director.getId());
+        }
+
+        /** Đơn đã duyệt: người duyệt là cấp trên của người gửi, duyệt cách đây một tuần. */
+        private LeaveRequest approved(LeaveRequest leave) {
+            User requester = leave.getRequesterId().equals(manager.getId()) ? manager : staff;
+            leave.setStatus(LeaveRequestStatus.APPROVED);
+            leave.setApproverId(requester == manager ? director.getId() : manager.getId());
+            leave.setDecidedAt(today.minusDays(7).atTime(9, 0));
+            return leave;
+        }
+    }
+
     // ── Dữ liệu mẫu ─────────────────────────────────────────────────────────
 
     /** Ngày bắt đầu phép năm hợp lệ bất kể hôm nay: đủ báo trước, và hai ngày liền sau vẫn cùng năm. */

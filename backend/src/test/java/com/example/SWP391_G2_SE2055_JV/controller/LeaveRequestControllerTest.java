@@ -224,6 +224,31 @@ class LeaveRequestControllerTest {
             mockMvc.perform(get("/scheduling/leave-requests/{id}/approval-preview", LEAVE_ID)
                     .with(authorities(authorities)))
                 .andExpect(status().isForbidden());
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/revoke", LEAVE_ID).with(authorities(authorities))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"reason\": \"Đi làm lại sớm\"}"))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(leaveRequestService);
+        }
+
+        /** BR-SCH-16 bản sửa 28/10/2026: người duyệt hủy phần ngày chưa tới của đơn đã duyệt. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_MANAGER", "ROLE_DIRECTOR"})
+        void shouldLetReviewersRevokeRemainingDays(String authorities) throws Exception {
+            when(leaveRequestService.revokeLeaveRequest(LEAVE_ID, "Đi làm lại sớm"))
+                .thenReturn(sample(LeaveRequestStatus.CANCELLED));
+
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/revoke", LEAVE_ID).with(authorities(authorities))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"reason\": \"Đi làm lại sớm\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldRequireReasonToRevoke() throws Exception {
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/revoke", LEAVE_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"reason\": \"  \"}"))
+                .andExpect(status().isUnprocessableEntity());
             verifyNoInteractions(leaveRequestService);
         }
 

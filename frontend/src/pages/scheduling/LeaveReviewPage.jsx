@@ -4,8 +4,10 @@ import { fetchLeaveReviewQueue, rejectLeaveRequest } from '../../api/leaveReques
 import ConfirmDialog from '../../components/ConfirmDialog';
 import LeaveApprovalDialog from '../../components/scheduling/LeaveApprovalDialog';
 import LeaveTicket from '../../components/scheduling/LeaveTicket';
+import RevokeLeaveDialog from '../../components/scheduling/RevokeLeaveDialog';
 import { useAuth } from '../../context/AuthContext';
-import { formatLeaveRange } from './leaveLabels';
+import { todayIso } from '../rooms/format';
+import { daysInclusive, formatLeaveRange } from './leaveLabels';
 import '../rooms/rooms.css';
 import './leave.css';
 
@@ -24,11 +26,13 @@ const TABS = [
  * đơn của các quản lý. Giám sát vận hành không duyệt (BR-PERM-07) nên không vào được màn này.
  *
  * "Duyệt" mở hộp thoại xem trước các ca sẽ bị gỡ và cảnh báo mất lễ tân (BR-SCH-29) rồi mới xác nhận; "Từ chối"
- * chỉ cần xác nhận — lịch làm việc không đổi.
+ * chỉ cần xác nhận — lịch làm việc không đổi. Đơn đã duyệt còn ngày chưa tới thì người duyệt hủy được phần đó, kèm
+ * lý do (BR-SCH-16 sửa 28/10/2026).
  */
 export default function LeaveReviewPage() {
   const { user } = useAuth();
   const isDirector = user?.role === 'DIRECTOR';
+  const today = todayIso();
 
   const [status, setStatus] = useState('PENDING');
   const [items, setItems] = useState([]);
@@ -39,6 +43,7 @@ export default function LeaveReviewPage() {
   const [loadError, setLoadError] = useState('');
   const [approving, setApproving] = useState(null); // đơn đang mở hộp thoại duyệt
   const [rejecting, setRejecting] = useState(null); // đơn đang chờ xác nhận từ chối
+  const [revoking, setRevoking] = useState(null); // đơn đã duyệt đang mở hộp thoại hủy phần còn lại
   const [banner, setBanner] = useState(null); // { type, text }
 
   const load = useCallback(async (nextPage) => {
@@ -91,12 +96,32 @@ export default function LeaveReviewPage() {
     }
   }
 
+  /** Số ngày vừa hủy đọc từ chính kết quả backend: hủy cả đơn, hoặc phần sau ngày kết thúc mới. */
+  function finishRevoke(updated) {
+    setRevoking(null);
+    const cancelled = updated.status === 'CANCELLED'
+      ? updated.days
+      : daysInclusive(updated.toDate, updated.originalToDate) - 1;
+    const parts = [`Đã hủy ${cancelled} ngày nghỉ chưa tới của ${updated.requesterName}.`];
+    if (updated.leaveType === 'ANNUAL') parts.push(`Quỹ phép năm hoàn lại ${cancelled} ngày.`);
+    if (!isDirector) parts.push('Các ca đã gỡ lúc duyệt vẫn để trống — xếp lại ở «Xếp lịch làm việc» nếu cần.');
+    setBanner({ type: 'success', text: parts.join(' ') });
+    load(0);
+  }
+
   function actionsFor(leave) {
-    if (leave.status !== 'PENDING') return [];
-    return [
-      { key: 'approve', label: 'Duyệt…', onClick: () => setApproving(leave) },
-      { key: 'reject', label: 'Từ chối', tone: 'ghost', onClick: () => setRejecting(leave) },
-    ];
+    if (leave.status === 'PENDING') {
+      return [
+        { key: 'approve', label: 'Duyệt…', onClick: () => setApproving(leave) },
+        { key: 'reject', label: 'Từ chối', tone: 'ghost', onClick: () => setRejecting(leave) },
+      ];
+    }
+    // BR-SCH-16 sửa 28/10/2026: đơn đã duyệt còn ngày chưa tới thì người duyệt hủy được phần đó.
+    if (leave.status === 'APPROVED' && leave.toDate > today) {
+      const label = leave.fromDate > today ? 'Hủy đơn…' : 'Hủy phần còn lại…';
+      return [{ key: 'revoke', label, tone: 'ghost', onClick: () => setRevoking(leave) }];
+    }
+    return [];
   }
 
   return (
@@ -176,6 +201,10 @@ export default function LeaveReviewPage() {
 
       {approving && (
         <LeaveApprovalDialog leave={approving} onClose={() => setApproving(null)} onApproved={finishApprove} />
+      )}
+
+      {revoking && (
+        <RevokeLeaveDialog leave={revoking} onClose={() => setRevoking(null)} onRevoked={finishRevoke} />
       )}
 
       {rejecting && (

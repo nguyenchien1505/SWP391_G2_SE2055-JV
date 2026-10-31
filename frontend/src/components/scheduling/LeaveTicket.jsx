@@ -1,5 +1,5 @@
 import { formatDateTime } from '../../pages/rooms/format';
-import { formatLeaveRange, leaveStatusMeta, leaveTypeMeta } from '../../pages/scheduling/leaveLabels';
+import { formatLeaveRange, leaveStatusMeta, leaveTypeMeta, revokeSummary } from '../../pages/scheduling/leaveLabels';
 
 /**
  * Một đơn xin nghỉ dạng thẻ — dùng ở cả màn "Đơn xin nghỉ của tôi" lẫn màn "Duyệt đơn nghỉ".
@@ -13,6 +13,7 @@ export default function LeaveTicket({ leave, showRequester = false, showLocation
   const status = leaveStatusMeta(leave.status);
   const range = `${formatLeaveRange(leave.fromDate, leave.toDate)} · ${leave.days} ngày`;
   const requester = [leave.requesterName ?? 'Không rõ', leave.positionName].filter(Boolean).join(' · ');
+  const revoked = revokeSummary(leave);
 
   return (
     <li className="leave-ticket">
@@ -21,6 +22,7 @@ export default function LeaveTicket({ leave, showRequester = false, showLocation
         <span className="leave-ticket__badges">
           <span className={`badge badge--${type.tone}`}>{type.label}</span>
           <span className={`badge badge--${status.tone}`}>{status.label}</span>
+          {leave.originalToDate && <span className="badge badge--grey">Rút ngắn</span>}
         </span>
       </div>
       {showRequester && <span className="leave-ticket__when">{range}</span>}
@@ -31,7 +33,13 @@ export default function LeaveTicket({ leave, showRequester = false, showLocation
       </span>
       {leave.decidedAt && (
         <span className="leave-ticket__meta">
-          {status.label} bởi {leave.approverName ?? '—'} lúc {formatDateTime(leave.decidedAt)}
+          {/* Đơn bị hủy sau khi duyệt vẫn giữ lần duyệt — dòng dưới mới là lần hủy. */}
+          {revoked ? 'Đã duyệt' : status.label} bởi {leave.approverName ?? '—'} lúc {formatDateTime(leave.decidedAt)}
+        </span>
+      )}
+      {revoked && (
+        <span className="leave-ticket__revoke">
+          {revoked} — {leave.revokedByName ?? '—'}, {formatDateTime(leave.revokedAt)}: {leave.revokeReason}
         </span>
       )}
       {actions.length > 0 && (

@@ -1,6 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.CreateUserRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.MyProfileResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.TempPasswordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.TerminateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.TerminationResponse;
@@ -41,6 +42,17 @@ public class UserController {
             @RequestParam(required = false) Role role,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(userService.getUsers(role, pageable));
+    }
+
+    /**
+     * Hồ sơ của chính mình — mọi người làm việc trong Tenant (BR-PERM-06 "xem hồ sơ cá nhân"). Rule URL
+     * {@code GET /users/me/**} trong SecurityConfig đã mở cho người đã đăng nhập; Admin Platform không thuộc
+     * Tenant nào nên không có hồ sơ ở đây.
+     */
+    @GetMapping("/me")
+    @PreAuthorize("hasAnyRole('DIRECTOR','MANAGER','STAFF')")
+    public ResponseEntity<MyProfileResponse> getMyProfile() {
+        return ResponseEntity.ok(userService.getMyProfile());
     }
 
     @GetMapping("/{id}")
