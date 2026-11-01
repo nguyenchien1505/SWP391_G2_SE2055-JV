@@ -2,12 +2,14 @@ package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.LeaveRequest;
+import com.example.SWP391_G2_SE2055_JV.entity.SchedulePolicy;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.repository.LeaveRequestRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
@@ -35,8 +38,18 @@ class LeaveQuotaTest {
     private static final LocalDate DEC_31 = LocalDate.of(2026, 12, 31);
 
     @Mock LeaveRequestRepository leaveRequestRepository;
+    @Mock SchedulePolicyService  policyService;
 
     @InjectMocks LeaveQuota quota;
+
+    /** Bản mặc định BR-SCH-20: 12 ngày phép/năm, phép năm báo trước 3 ngày. */
+    private SchedulePolicy policy;
+
+    @BeforeEach
+    void setUp() {
+        policy = SchedulePolicy.builder().tenantId(TENANT_ID).build();
+        lenient().when(policyService.getOrCreate(TENANT_ID)).thenReturn(policy);
+    }
 
     @Nested
     class FullMonthsWorked {
@@ -105,6 +118,23 @@ class LeaveQuotaTest {
             assertThat(balance.getEntitledDays()).isZero();
             assertThat(balance.getRemainingDays()).isZero();
             assertThat(balance.getStartWorkDate()).isNull();
+        }
+
+        /** BR-SCH-27, BR-SCH-07 bản sửa: Giám đốc đặt 15 ngày/năm, báo trước 5 ngày — 8 tháng đủ được 10 ngày. */
+        @Test
+        void shouldUseDaysPerYearAndNoticeConfiguredInPolicy() {
+            policy.setAnnualLeaveDaysPerYear(15);
+            policy.setAnnualLeaveNoticeDays(5);
+
+            LeaveBalanceResponse balance = quota.balanceOf(person(LocalDate.of(2026, 2, 1)), 2026,
+                LocalDate.of(2026, 10, 26));
+
+            assertThat(balance.getDaysPerYear()).isEqualTo(15);
+            assertThat(balance.getEntitledDays()).isEqualTo(10);
+            assertThat(balance.getRemainingDays()).isEqualTo(10);
+            assertThat(balance.getNoticeDays()).isEqualTo(5);
+            assertThat(balance.getEarliestAnnualStart()).isEqualTo(LocalDate.of(2026, 10, 31));
+            assertThat(quota.noticeDays(TENANT_ID)).isEqualTo(5);
         }
 
         /** Còn lại không bao giờ âm, kể cả khi dữ liệu cũ đã dùng quá quỹ. */

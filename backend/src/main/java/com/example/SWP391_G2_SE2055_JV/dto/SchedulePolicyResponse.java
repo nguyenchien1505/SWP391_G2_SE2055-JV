@@ -19,6 +19,9 @@ public class SchedulePolicyResponse {
     private BigDecimal    minRestHoursBetweenShifts;
     private int           minDaysOffPerWeek;
     private int           swapResponseTimeoutHours;
+    private int           annualLeaveDaysPerYear;
+    private int           annualLeaveNoticeDays;
+    private int           lateEarlyThresholdMinutes;
     private LocalDateTime updatedAt;
 
     public static SchedulePolicyResponse fromEntity(SchedulePolicy policy) {
@@ -30,6 +33,9 @@ public class SchedulePolicyResponse {
             .minRestHoursBetweenShifts(policy.getMinRestHoursBetweenShifts())
             .minDaysOffPerWeek(policy.getMinDaysOffPerWeek())
             .swapResponseTimeoutHours(policy.getSwapResponseTimeoutHours())
+            .annualLeaveDaysPerYear(policy.getAnnualLeaveDaysPerYear())
+            .annualLeaveNoticeDays(policy.getAnnualLeaveNoticeDays())
+            .lateEarlyThresholdMinutes(policy.getLateEarlyThresholdMinutes())
             .updatedAt(policy.getUpdatedAt())
             .build();
     }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import {
   copyCommonTemplates,
@@ -16,16 +17,29 @@ import SchedulePolicyForm from '../../components/scheduling/SchedulePolicyForm';
 import ShiftTemplateForm from '../../components/scheduling/ShiftTemplateForm';
 import { useTenantLocations } from '../rooms/useRoomLookups';
 import { formatHours, shiftTone, timeRange } from './scheduleFormat';
+import '../rooms/rooms.css';
 import './scheduling.css';
 
 /** Ô lọc bộ mẫu: mọi bộ, bộ chung, hoặc bộ riêng của một chi nhánh. */
 const ALL_SETS = '';
 const COMMON = 'COMMON';
 
+/** Hai tab của trang; tab nhớ trên URL (?tab=mau-ca) để tải lại hay gửi link vẫn mở đúng tab. */
+const POLICY_TAB = 'quy-dinh';
+const TEMPLATES_TAB = 'mau-ca';
+const TABS = [
+  { key: POLICY_TAB, label: 'Quy định chung' },
+  { key: TEMPLATES_TAB, label: 'Mẫu ca' },
+];
+
 /**
- * Quy định xếp ca & Mẫu ca — design.md màn 14 + 15; BR-SCH-01, BR-SCH-02, BR-SCH-04, BR-SCH-20,
+ * Quy định chung & Mẫu ca — design.md màn 14 + 15; BR-SCH-01, BR-SCH-02, BR-SCH-04, BR-SCH-20,
  * BR-SCH-22, BR-PERM-02. Chỉ Giám đốc (route bọc RequireDirector); Manager đọc quy định ngay trên
  * bảng xếp lịch.
+ *
+ * Hai tab trên cùng một trang (một mục menu): «Quy định chung» (xếp ca, đổi ca, phép năm, chấm công —
+ * đặt một lần, ít sửa) và «Mẫu ca» (mẫu ca và bộ mẫu của từng chi nhánh). Cả hai tab luôn nằm trong
+ * trang, chỉ ẩn tab không xem, nên chuyển tab không mất số đang nhập dở và không tải lại dữ liệu.
  *
  * Mẫu ca ngừng dùng thì tắt (BR-SCH-22). Chỉ mẫu đã tắt mà chưa ca nào dùng mới xóa hẳn được (chốt
  * 09/10/2026) — ca đã xếp vẫn trỏ vào mẫu để tra lịch sử, nên mẫu đã dùng chỉ tắt.
@@ -48,6 +62,8 @@ export default function ScheduleRulesPage() {
   const [filterSet, setFilterSet] = useState(ALL_SETS);
   const [switching, setSwitching] = useState(null); // { location, own } — đang hỏi xác nhận đổi bộ
   const [busyLocation, setBusyLocation] = useState(null); // id chi nhánh đang đổi bộ / sao chép
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') === TEMPLATES_TAB ? TEMPLATES_TAB : POLICY_TAB;
 
   const locations = useTenantLocations(true);
   // Bộ đang dùng vừa đổi ở trang này — danh sách chi nhánh của hook không tự tải lại.
@@ -55,6 +71,12 @@ export default function ScheduleRulesPage() {
   const usesOwnSet = (location) => ownOverrides[location.id] ?? Boolean(location.ownShiftTemplates);
   const locationById = (id) => (locations ?? []).find((l) => l.id === id);
   const locationName = (id) => locationById(id)?.name ?? 'Chi nhánh đã xóa';
+
+  /** Thông báo của tab này không hiện sang tab kia. */
+  function switchTab(next) {
+    setBanner(null);
+    setSearchParams(next === TEMPLATES_TAB ? { tab: TEMPLATES_TAB } : {}, { replace: true });
+  }
 
   const loadTemplates = useCallback(async () => {
     setTemplates(await fetchShiftTemplates({ includeInactive: true }));
@@ -68,7 +90,7 @@ export default function ScheduleRulesPage() {
         setPolicy(loadedPolicy);
         setTemplates(loadedTemplates);
       })
-      .catch((err) => !cancelled && setLoadError(readErrorMessage(err, 'Không tải được quy định xếp ca.')))
+      .catch((err) => !cancelled && setLoadError(readErrorMessage(err, 'Không tải được quy định và mẫu ca.')))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -192,25 +214,26 @@ export default function ScheduleRulesPage() {
       <div className="page__head">
         <div>
           <p className="breadcrumb">Quản trị & hệ thống › Quy định & Mẫu ca</p>
-          <h1>Quy định xếp ca & Mẫu ca</h1>
+          <h1>Quy định chung & Mẫu ca</h1>
           <p className="muted">
-            Một bộ quy định cho mọi khách sạn trong chuỗi. Mỗi chi nhánh dùng đúng một bộ mẫu ca: bộ chung
-            của chuỗi, hoặc bộ riêng của chi nhánh đó.
+            Một bộ quy định cho mọi khách sạn trong chuỗi; mỗi chi nhánh dùng đúng một bộ mẫu ca.
           </p>
         </div>
-        <div className="page__actions">
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={() => {
-              setBanner(null);
-              setEditing({ locationId: null });
-            }}
-            disabled={loading || Boolean(loadError)}
-          >
-            + Thêm mẫu ca
-          </button>
-        </div>
+        {tab === TEMPLATES_TAB && (
+          <div className="page__actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => {
+                setBanner(null);
+                setEditing({ locationId: null });
+              }}
+              disabled={loading || Boolean(loadError)}
+            >
+              + Thêm mẫu ca
+            </button>
+          </div>
+        )}
       </div>
 
       {banner && (
@@ -224,9 +247,43 @@ export default function ScheduleRulesPage() {
       {loadError && <div className="alert alert--error" role="alert">{loadError}</div>}
 
       {!loadError && (
-        <div className="split">
+        <div className="room-tabs" role="tablist" aria-label="Quy định chung và mẫu ca">
+          {TABS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              id={`rules-tab-${item.key}`}
+              aria-selected={tab === item.key}
+              aria-controls={`rules-panel-${item.key}`}
+              className={`room-tab ${tab === item.key ? 'is-active' : ''}`}
+              onClick={() => switchTab(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!loadError && (
+        <div role="tabpanel" id="rules-panel-quy-dinh" aria-labelledby="rules-tab-quy-dinh" hidden={tab !== POLICY_TAB}>
+          <SchedulePolicyForm
+            policy={policy}
+            onSaved={(updated) => {
+              setPolicy(updated);
+              setBanner({
+                type: 'success',
+                text: 'Đã lưu quy định. Luật xếp ca áp cho ca xếp từ bây giờ; quỹ phép và ngưỡng chấm công dùng số mới ngay.',
+              });
+            }}
+          />
+        </div>
+      )}
+
+      {!loadError && (
+        <div role="tabpanel" id="rules-panel-mau-ca" aria-labelledby="rules-tab-mau-ca" hidden={tab !== TEMPLATES_TAB}>
           <section className="panel">
-            <div className="panel__head">
+            <div className="panel__head panel__head--wrap">
               <h2>
                 Mẫu ca làm việc <span className="chip">{activeCount} đang dùng</span>
               </h2>
@@ -372,105 +429,97 @@ export default function ScheduleRulesPage() {
             </div>
           </section>
 
-          <SchedulePolicyForm
-            policy={policy}
-            onSaved={(updated) => {
-              setPolicy(updated);
-              setBanner({ type: 'success', text: 'Đã lưu quy định xếp ca. Quy định mới áp cho mọi ca xếp từ bây giờ.' });
-            }}
-          />
-        </div>
-      )}
-
-      {!loadError && (locations?.length ?? 0) > 0 && (
-        <section className="panel location-sets" aria-labelledby="location-sets-title">
-          <div className="panel__head">
-            <h2 id="location-sets-title">Bộ mẫu ca của từng chi nhánh</h2>
-          </div>
-          <p className="muted location-sets__intro">
-            Mặc định chi nhánh dùng bộ chung. Muốn chi nhánh có bộ ca của riêng mình: thêm mẫu vào bộ riêng
-            (hoặc sao chép bộ chung rồi sửa), sau đó bấm «Chuyển sang bộ riêng». Quản lý chi nhánh chỉ thấy bộ
-            đang dùng; ca đã xếp giữ nguyên khi đổi bộ.
-          </p>
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Chi nhánh</th>
-                  <th>Đang dùng</th>
-                  <th>Bộ riêng</th>
-                  <th aria-label="Thao tác" />
-                </tr>
-              </thead>
-              <tbody>
-                {locations.map((location) => {
-                  const own = usesOwnSet(location);
-                  const ownCount = ownActiveCount(location.id);
-                  const busy = busyLocation === location.id;
-                  return (
-                    <tr key={location.id}>
-                      <td><b>{location.name}</b></td>
-                      <td>
-                        <span className={`badge ${own ? 'badge--orange' : 'badge--blue'}`}>
-                          {own ? 'Bộ riêng' : 'Bộ chung'}
-                        </span>
-                      </td>
-                      <td>
-                        {ownCount > 0 ? `${ownCount} mẫu đang dùng` : <span className="muted">Chưa có mẫu</span>}
-                        {ownCount > 0 && (
-                          <button type="button" className="link-button location-sets__view" onClick={() => setFilterSet(location.id)}>
-                            Xem
-                          </button>
-                        )}
-                      </td>
-                      <td className="cell-actions">
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={busy}
-                          onClick={() => {
-                            setBanner(null);
-                            setEditing({ locationId: location.id });
-                          }}
-                        >
-                          + Thêm mẫu riêng
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={busy}
-                          onClick={() => handleCopy(location)}
-                        >
-                          Sao chép mẫu chung
-                        </button>
-                        {own ? (
-                          <button
-                            type="button"
-                            className="btn btn--ghost btn--sm"
-                            disabled={busy}
-                            onClick={() => setSwitching({ location, own: false })}
-                          >
-                            Quay về bộ chung
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn btn--primary btn--sm"
-                            disabled={busy || ownCount === 0}
-                            title={ownCount === 0 ? 'Bộ riêng chưa có mẫu nào đang dùng' : undefined}
-                            onClick={() => setSwitching({ location, own: true })}
-                          >
-                            Chuyển sang bộ riêng
-                          </button>
-                        )}
-                      </td>
+          {(locations?.length ?? 0) > 0 && (
+            <section className="panel location-sets" aria-labelledby="location-sets-title">
+              <div className="panel__head">
+                <h2 id="location-sets-title">Bộ mẫu ca của từng chi nhánh</h2>
+              </div>
+              <p className="muted location-sets__intro">
+                Mặc định chi nhánh dùng bộ chung. Muốn chi nhánh có bộ ca của riêng mình: thêm mẫu vào bộ riêng
+                (hoặc sao chép bộ chung rồi sửa), sau đó bấm «Chuyển sang bộ riêng». Quản lý chi nhánh chỉ thấy bộ
+                đang dùng; ca đã xếp giữ nguyên khi đổi bộ.
+              </p>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Chi nhánh</th>
+                      <th>Đang dùng</th>
+                      <th>Bộ riêng</th>
+                      <th aria-label="Thao tác" />
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                  </thead>
+                  <tbody>
+                    {locations.map((location) => {
+                      const own = usesOwnSet(location);
+                      const ownCount = ownActiveCount(location.id);
+                      const busy = busyLocation === location.id;
+                      return (
+                        <tr key={location.id}>
+                          <td><b>{location.name}</b></td>
+                          <td>
+                            <span className={`badge ${own ? 'badge--orange' : 'badge--blue'}`}>
+                              {own ? 'Bộ riêng' : 'Bộ chung'}
+                            </span>
+                          </td>
+                          <td>
+                            {ownCount > 0 ? `${ownCount} mẫu đang dùng` : <span className="muted">Chưa có mẫu</span>}
+                            {ownCount > 0 && (
+                              <button type="button" className="link-button location-sets__view" onClick={() => setFilterSet(location.id)}>
+                                Xem
+                              </button>
+                            )}
+                          </td>
+                          <td className="cell-actions">
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              disabled={busy}
+                              onClick={() => {
+                                setBanner(null);
+                                setEditing({ locationId: location.id });
+                              }}
+                            >
+                              + Thêm mẫu riêng
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              disabled={busy}
+                              onClick={() => handleCopy(location)}
+                            >
+                              Sao chép mẫu chung
+                            </button>
+                            {own ? (
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                disabled={busy}
+                                onClick={() => setSwitching({ location, own: false })}
+                              >
+                                Quay về bộ chung
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn--primary btn--sm"
+                                disabled={busy || ownCount === 0}
+                                title={ownCount === 0 ? 'Bộ riêng chưa có mẫu nào đang dùng' : undefined}
+                                onClick={() => setSwitching({ location, own: true })}
+                              >
+                                Chuyển sang bộ riêng
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </div>
       )}
 
       {editing && (

@@ -26,34 +26,28 @@ import java.util.UUID;
  *       Quỹ chỉ thật sự bị trừ khi đơn được duyệt.</li>
  * </ul>
  *
- * <p>Số ngày phép một năm và số ngày phải báo trước do Giám đốc cấu hình trong Schedule Policy — phần việc
- * của Lâm (BR M2 mục 191; Schedule Policy chỉ Lâm sửa). Chừng nào Policy chưa có hai trường đó, lớp này trả
- * mặc định của BR: 12 ngày và 3 ngày. Mọi nơi khác đọc qua {@link #daysPerYear} / {@link #noticeDays}, nên
- * khi có trường chỉ cần sửa hai hàm này.
+ * <p>Số ngày phép một năm và số ngày phải báo trước do Giám đốc cấu hình trong Schedule Policy (V19, mặc định
+ * 12 ngày và 3 ngày). Mọi nơi khác đọc qua {@link #daysPerYear} / {@link #noticeDays}. Giám đốc đổi số ngày
+ * phép thì quỹ của mọi người tính lại theo số mới, vì quỹ không lưu số dư mà cộng lại mỗi lần xem.
  */
 @Component
 @RequiredArgsConstructor
 public class LeaveQuota {
 
-    /** BR-SCH-27: mặc định 12 ngày phép một năm. */
-    static final int DEFAULT_DAYS_PER_YEAR = 12;
-
-    /** BR-SCH-07 bản sửa: phép năm mặc định phải gửi trước ít nhất 3 ngày. */
-    static final int DEFAULT_NOTICE_DAYS = 3;
-
     private static final Set<LeaveRequestStatus> APPROVED = EnumSet.of(LeaveRequestStatus.APPROVED);
     private static final Set<LeaveRequestStatus> PENDING  = EnumSet.of(LeaveRequestStatus.PENDING);
 
     private final LeaveRequestRepository leaveRequestRepository;
+    private final SchedulePolicyService  policyService;
 
     /** Số ngày phép một năm của Tenant — BR-SCH-27. */
     public int daysPerYear(UUID tenantId) {
-        return DEFAULT_DAYS_PER_YEAR;
+        return policyService.getOrCreate(tenantId).getAnnualLeaveDaysPerYear();
     }
 
     /** Phép năm phải gửi trước ít nhất bao nhiêu ngày — BR-SCH-07 bản sửa. */
     public int noticeDays(UUID tenantId) {
-        return DEFAULT_NOTICE_DAYS;
+        return policyService.getOrCreate(tenantId).getAnnualLeaveNoticeDays();
     }
 
     /** Quỹ phép năm {@code year} của {@code person}, tích lũy tới ngày {@code asOf} (thường là hôm nay). */
