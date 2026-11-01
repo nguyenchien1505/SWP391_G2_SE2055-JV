@@ -2,9 +2,11 @@ package com.example.SWP391_G2_SE2055_JV.repository;
 
 import com.example.SWP391_G2_SE2055_JV.entity.Invoice;
 import com.example.SWP391_G2_SE2055_JV.enums.InvoiceStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.InvoiceType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -26,4 +28,14 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 
     /** Hóa đơn còn chờ, phát hành trước mốc {@code before} — đầu vào của job đối soát. */
     List<Invoice> findByStatusAndIssuedAtBefore(InvoiceStatus status, LocalDateTime before);
+
+    /**
+     * Hóa đơn của một Tenant theo trạng thái và loại — dùng cho số lượng kỳ tới: hóa đơn mua gói / gia
+     * hạn đang chờ (chặn tạo mới), gia hạn đã trả trước mà kỳ chưa bắt đầu, mua thêm phủ sang kỳ đó.
+     */
+    List<Invoice> findByTenantIdAndStatusAndInvoiceType(UUID tenantId, InvoiceStatus status, InvoiceType invoiceType);
+
+    /** Hóa đơn theo trạng thái + loại có kỳ bắt đầu trong khoảng — đầu vào của job đổi kỳ gia hạn trước. */
+    List<Invoice> findByStatusAndInvoiceTypeAndPeriodStartBetween(
+        InvoiceStatus status, InvoiceType invoiceType, LocalDate from, LocalDate to);
 }

@@ -30,9 +30,25 @@ public class BillingOverviewResponse {
     /** Ngày đầu tiên CHƯA được trả tiền (đã trả đến hôm trước) — chỉ có khi đã trả phí (BR-SAAS-05). */
     private LocalDate nextBillingDate;
 
+    /**
+     * Ngày bắt đầu kỳ nếu gia hạn hôm nay: ngày đến hạn, cộng bù số ngày bị khóa nếu đang bị khóa vì
+     * thanh toán lỗi. {@code null} khi còn dùng thử. FE hiển thị kỳ tới theo trường này.
+     */
+    private LocalDate nextPeriodStart;
+
     private int quotaLocation;
     private int quotaUser;
     private int quotaRoom;
+
+    /**
+     * Kỳ đã gia hạn trước gần nhất mà chưa bắt đầu: ngày bắt đầu và số lượng sẽ có hiệu lực từ ngày đó
+     * (số chọn lúc gia hạn, cộng phần mua thêm đã trả phủ sang kỳ đó). {@code null} nếu không có. Cũng là
+     * số "giữ nguyên" mặc định khi gia hạn tiếp.
+     */
+    private LocalDate plannedFrom;
+    private Integer   plannedQuotaLocation;
+    private Integer   plannedQuotaUser;
+    private Integer   plannedQuotaRoom;
 
     /** Đơn giá đã chốt của gói (snapshot — BR-SAAS-05). */
     private Long pricePerLocation;

@@ -1,5 +1,6 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.entity.Invoice;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
 import com.example.SWP391_G2_SE2055_JV.enums.FixedAssetStatus;
@@ -16,6 +17,7 @@ import com.example.SWP391_G2_SE2055_JV.repository.TenantUsageRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.OptionalInt;
 import java.util.UUID;
 
 /**
@@ -42,6 +44,7 @@ public class RoomValidator {
     private final TenantUsageRepository      tenantUsageRepository;
     private final HousekeepingTaskRepository taskRepository;
     private final FixedAssetRepository       fixedAssetRepository;
+    private final TenantUsageService         tenantUsageService;
 
     /**
      * Khách sạn nhận phòng mới phải thuộc Tenant của người tạo. Khóa ngoại chỉ đảm bảo Location
@@ -99,12 +102,23 @@ public class RoomValidator {
      *
      * <p>Tenant chưa có Subscription thì không chặn — cùng cách xử lý với
      * {@link TenantUsageService}: thiếu gói dịch vụ là dữ liệu chưa đủ, không phải vi phạm.
+     *
+     * <p>Gói được đọc kèm khóa ghi để các request tạo phòng cùng lúc của một Tenant đi lần lượt qua
+     * bước "đếm rồi lưu" — xem {@link SubscriptionRepository#findForUpdateByTenantId}. Nơi gọi phải
+     * đang trong transaction ({@code RoomService.createRoom}) để khóa giữ tới khi lưu phòng xong.
      */
     public void assertRoomQuotaAvailable(UUID tenantId) {
-        subscriptionRepository.findByTenantId(tenantId).ifPresent(subscription -> {
+        subscriptionRepository.findForUpdateByTenantId(tenantId).ifPresent(subscription -> {
             if (tenantUsageRepository.countRooms(tenantId) >= subscription.getQuotaRoom()) {
                 throw new BusinessException("Đã dùng hết hạn mức " + subscription.getQuotaRoom()
                     + " phòng của gói dịch vụ. Hãy nâng gói trước khi tạo thêm phòng.");
+            }
+            // Gói đang chờ thanh toán / đã gia hạn trước cho kỳ tới ít phòng hơn: không tạo vượt số đó.
+            OptionalInt pending = tenantUsageService.pendingPurchaseLimit(tenantId, Invoice::getQuotaRoomSnapshot);
+            if (pending.isPresent() && tenantUsageRepository.countRooms(tenantId) >= pending.getAsInt()) {
+                throw new BusinessException(String.format(
+                    "Gói đang chờ thanh toán hoặc đã gia hạn trước cho kỳ tới chỉ có %d phòng nên chưa tạo thêm "
+                        + "được. Nếu đang có giao dịch chờ, hãy hoàn tất hoặc hủy giao dịch đó.", pending.getAsInt()));
             }
         });
     }

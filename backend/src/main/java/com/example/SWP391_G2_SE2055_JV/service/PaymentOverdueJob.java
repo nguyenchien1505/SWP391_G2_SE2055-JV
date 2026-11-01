@@ -24,4 +24,15 @@ public class PaymentOverdueJob {
         int changed = billingService.applyOverdueRules();
         log.info("Job quá hạn thanh toán: đã đổi trạng thái {} Tenant", changed);
     }
+
+    /**
+     * Kỳ đã gia hạn trước tới ngày bắt đầu: áp số lượng chọn lúc gia hạn — logic ở
+     * {@link BillingService#applyStartedRenewals()}. Mặc định 00:05 giờ Hà Nội; đổi bằng
+     * {@code app.renewal-start.cron}.
+     */
+    @Scheduled(cron = "${app.renewal-start.cron:0 5 0 * * *}", zone = "Asia/Ho_Chi_Minh")
+    public void applyStartedRenewals() {
+        int changed = billingService.applyStartedRenewals();
+        log.info("Job đổi kỳ gia hạn trước: đã áp {} gói", changed);
+    }
 }

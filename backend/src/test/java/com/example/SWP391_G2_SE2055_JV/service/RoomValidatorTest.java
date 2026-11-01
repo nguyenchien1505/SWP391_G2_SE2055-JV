@@ -1,6 +1,7 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
+import com.example.SWP391_G2_SE2055_JV.entity.Invoice;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
@@ -29,11 +30,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
+import java.util.function.ToIntFunction;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -61,6 +65,7 @@ class RoomValidatorTest {
     @Mock TenantUsageRepository      tenantUsageRepository;
     @Mock HousekeepingTaskRepository taskRepository;
     @Mock FixedAssetRepository       fixedAssetRepository;
+    @Mock TenantUsageService         tenantUsageService;
 
     @InjectMocks RoomValidator validator;
 
@@ -219,14 +224,61 @@ class RoomValidatorTest {
         /** Tenant chưa có gói dịch vụ thì không chặn — giống cách TenantUsageService xử lý. */
         @Test
         void shouldAllowCreateWhenTenantHasNoSubscription() {
-            when(subscriptionRepository.findByTenantId(TENANT_ID)).thenReturn(Optional.empty());
+            when(subscriptionRepository.findForUpdateByTenantId(TENANT_ID)).thenReturn(Optional.empty());
 
             assertThatCode(() -> validator.assertRoomQuotaAvailable(TENANT_ID)).doesNotThrowAnyException();
             verifyNoInteractions(tenantUsageRepository);
         }
 
+        /**
+         * Lỗi 2: đang chờ thanh toán mua gói 10 phòng thì không tạo thêm theo hạn mức dùng thử (50).
+         * Hóa đơn giả có số khách sạn / nhân viên / phòng khác nhau để chắc chắn lấy đúng cột phòng.
+         */
+        @Test
+        void shouldRejectWhenPendingPurchaseLimitReached() {
+            stubQuota(50);
+            when(tenantUsageRepository.countRooms(TENANT_ID)).thenReturn(10L);
+            stubPendingPurchase(1, 2, 10);
+
+            assertThatThrownBy(() -> validator.assertRoomQuotaAvailable(TENANT_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("10 phòng")
+                .hasMessageContaining("chờ thanh toán");
+        }
+
+        @Test
+        void shouldPassWhenPendingPurchaseStillHasRoom() {
+            stubQuota(50);
+            when(tenantUsageRepository.countRooms(TENANT_ID)).thenReturn(10L);
+            stubPendingPurchase(1, 2, 30);
+
+            assertThatCode(() -> validator.assertRoomQuotaAvailable(TENANT_ID)).doesNotThrowAnyException();
+        }
+
+        /** Không có giao dịch mua gói đang chờ thì chỉ theo quota của gói như trước. */
+        @Test
+        void shouldOnlyUseSubscriptionQuotaWhenNoPendingPurchase() {
+            stubQuota(50);
+            when(tenantUsageRepository.countRooms(TENANT_ID)).thenReturn(49L);
+            when(tenantUsageService.pendingPurchaseLimit(eq(TENANT_ID), any())).thenReturn(OptionalInt.empty());
+
+            assertThatCode(() -> validator.assertRoomQuotaAvailable(TENANT_ID)).doesNotThrowAnyException();
+        }
+
+        /** Áp đúng hàm chọn cột mà validator truyền vào lên một hóa đơn giả. */
+        @SuppressWarnings("unchecked")
+        private void stubPendingPurchase(int quotaLocation, int quotaUser, int quotaRoom) {
+            Invoice pending = Invoice.builder()
+                .quotaLocationSnapshot(quotaLocation)
+                .quotaUserSnapshot(quotaUser)
+                .quotaRoomSnapshot(quotaRoom)
+                .build();
+            when(tenantUsageService.pendingPurchaseLimit(eq(TENANT_ID), any()))
+                .thenAnswer(inv -> OptionalInt.of(((ToIntFunction<Invoice>) inv.getArgument(1)).applyAsInt(pending)));
+        }
+
         private void stubQuota(int quotaRoom) {
-            when(subscriptionRepository.findByTenantId(TENANT_ID))
+            when(subscriptionRepository.findForUpdateByTenantId(TENANT_ID))
                 .thenReturn(Optional.of(Subscription.builder().tenantId(TENANT_ID).quotaRoom(quotaRoom).build()));
         }
     }
