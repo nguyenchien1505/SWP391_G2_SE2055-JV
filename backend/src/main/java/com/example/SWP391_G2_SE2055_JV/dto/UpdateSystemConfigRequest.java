@@ -13,8 +13,12 @@ import lombok.Data;
  * <p>Dùng {@code Integer} (kiểu bọc) thay vì {@code int} để {@code @NotNull} phát hiện được
  * trường bị thiếu. Với {@code int}, trường thiếu sẽ âm thầm thành 0 và lọt qua kiểm tra.
  *
- * <p>Giới hạn trên (365 / 90 ngày) là chốt chặn chống nhập nhầm do team đề xuất; DB chỉ
+ * <p>Giới hạn trên (365 / 10 ngày) là chốt chặn chống nhập nhầm do team đề xuất; DB chỉ
  * CHECK {@code trial_days > 0} và {@code grace_period_days >= 0}.
+ *
+ * <p>Ân hạn tối đa 10 ngày, phải ngắn hơn một kỳ 30 ngày: gia hạn khi đang quá hạn tính kỳ mới từ
+ * ngày đến hạn cũ, nên nếu ân hạn dài hơn một kỳ thì kỳ vừa trả có thể đã trôi qua hết và Tenant
+ * lại quá hạn ngay sau khi gia hạn.
  */
 @Data
 public class UpdateSystemConfigRequest {
@@ -28,6 +32,6 @@ public class UpdateSystemConfigRequest {
     /** Số ngày Payment overdue trước khi khóa Tenant — BR-SAAS-10. */
     @NotNull(message = "Số ngày ân hạn là bắt buộc")
     @Min(value = 0, message = "Số ngày ân hạn không được âm")
-    @Max(value = 90, message = "Số ngày ân hạn tối đa 90")
+    @Max(value = 10, message = "Số ngày ân hạn tối đa 10")
     private Integer gracePeriodDays;
 }

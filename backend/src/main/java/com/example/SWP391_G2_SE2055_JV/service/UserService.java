@@ -8,6 +8,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.TerminationResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateUserRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.UserResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.Department;
+import com.example.SWP391_G2_SE2055_JV.entity.Invoice;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
@@ -43,6 +44,7 @@ import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 
@@ -69,6 +71,7 @@ public class UserService {
     private final LocationRepository locationRepository;
     private final ShiftRepository    shiftRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final TenantUsageService     tenantUsageService;
     private final HousekeepingService housekeepingService;
     // Chi nhánh "Đang vận hành" từ ngày quản lý bắt đầu làm (chốt 06/10/2026).
     private final LocationActivationService locationActivation;
@@ -660,6 +663,14 @@ public class UserService {
             throw new BusinessException(String.format(
                 "Đã dùng hết %d/%d suất nhân viên của gói dịch vụ. Liên hệ Giám đốc nâng cấp gói để thêm nhân viên.",
                 used, subscription.getQuotaUser()));
+        }
+        // Gói đang chờ thanh toán / đã gia hạn trước cho kỳ tới ít nhân viên hơn: không tạo vượt số đó.
+        OptionalInt pending = tenantUsageService.pendingPurchaseLimit(tenantId, Invoice::getQuotaUserSnapshot);
+        if (pending.isPresent() && used >= pending.getAsInt()) {
+            throw new BusinessException(String.format(
+                "Gói đang chờ thanh toán hoặc đã gia hạn trước cho kỳ tới chỉ có %d nhân viên nên chưa tạo thêm "
+                    + "được. Nếu đang có giao dịch chờ, hãy liên hệ Giám đốc hoàn tất hoặc hủy giao dịch đó.",
+                pending.getAsInt()));
         }
     }
 

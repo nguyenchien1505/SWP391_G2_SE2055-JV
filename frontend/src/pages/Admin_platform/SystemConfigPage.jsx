@@ -104,13 +104,13 @@ export default function SystemConfigPage() {
 
           <label className="field" htmlFor="gracePeriodDays">
             <span className="field__label">
-              Số ngày ân hạn khi quá hạn thanh toán (0–90) <b className="req">*</b>
+              Số ngày ân hạn khi quá hạn thanh toán (0–10) <b className="req">*</b>
             </span>
             <input
               id="gracePeriodDays"
               type="number"
               min="0"
-              max="90"
+              max="10"
               value={gracePeriodDays}
               onChange={(e) => setGracePeriodDays(e.target.value)}
               disabled={!config}

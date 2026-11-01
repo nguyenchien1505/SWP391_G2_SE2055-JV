@@ -30,9 +30,12 @@ export async function upgradePlan({ quotaLocation, quotaUser, quotaRoom }) {
   return data;
 }
 
-/** Gia hạn 1 kỳ 30 ngày theo quota hiện tại — trả { paymentUrl } hoặc { message, activated }. */
-export async function renewPlan() {
-  const { data } = await api.post('/billing/renew');
+/**
+ * Gia hạn 1 kỳ 30 ngày — trả { paymentUrl } hoặc { message, activated }. `quota` là số lượng cho kỳ tới
+ * (tăng / giảm); bỏ trống là giữ nguyên.
+ */
+export async function renewPlan(quota) {
+  const { data } = await api.post('/billing/renew', quota);
   return data;
 }
 

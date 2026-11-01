@@ -33,14 +33,17 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Gói dịch vụ của Giám đốc — BR-SAAS-02..10, BR-SAAS-15. Thanh toán qua VNPay.
  *
  * <pre>
  *   Mua gói lần đầu  dùng thử → trả phí; chọn số lượng; kỳ 30 ngày tính từ ngày thanh toán
- *   Gia hạn          1 kỳ theo quota hiện tại; nối tiếp ngày đến hạn (bị khóa thì tính từ hôm nay)
+ *   Gia hạn          1 kỳ, giữ nguyên / tăng / giảm số lượng cho kỳ đó; nối tiếp ngày đến hạn (bị khóa thì
+ *                    cộng bù số ngày bị khóa); số lượng mới có hiệu lực từ ngày kỳ mới bắt đầu
  *   Mua thêm quota   chỉ tăng; trả chênh lệch cho số ngày còn lại tới ngày đến hạn
  * </pre>
  *
@@ -87,8 +90,16 @@ public class BillingService {
         Long trialDaysLeft = sub.isTrial() && sub.getTrialEndsAt() != null
             ? Math.max(0, ChronoUnit.DAYS.between(today, sub.getTrialEndsAt()))
             : null;
+        // Kỳ đã gia hạn trước gần nhất (chưa bắt đầu) — số lượng sẽ có hiệu lực từ ngày đó.
+        List<Invoice> prepaid = sub.isTrial() ? List.of() : tenantUsageService.paidRenewalsNotStarted(sub);
+        Invoice lastPrepaid = prepaid.isEmpty() ? null : prepaid.get(prepaid.size() - 1);
+        int[] planned = lastPrepaid == null ? null : plannedQuota(lastPrepaid);
 
         return BillingOverviewResponse.builder()
+            .plannedFrom(lastPrepaid == null ? null : lastPrepaid.getPeriodStart())
+            .plannedQuotaLocation(planned == null ? null : planned[0])
+            .plannedQuotaUser(planned == null ? null : planned[1])
+            .plannedQuotaRoom(planned == null ? null : planned[2])
             .tenantName(tenant.getName())
             .status(tenant.getStatus())
             .suspendReason(tenant.getSuspendReason())
@@ -96,6 +107,7 @@ public class BillingService {
             .trialEndsAt(sub.getTrialEndsAt())
             .trialDaysLeft(trialDaysLeft)
             .nextBillingDate(sub.getNextBillingDate())
+            .nextPeriodStart(sub.isTrial() || sub.getNextBillingDate() == null ? null : renewalStart(tenant, sub, today))
             .quotaLocation(sub.getQuotaLocation())
             .quotaUser(sub.getQuotaUser())
             .quotaRoom(sub.getQuotaRoom())
@@ -193,14 +205,28 @@ public class BillingService {
         return createPayment(ctx, InvoiceType.PERIODIC, null, null, ql, qu, qr, amount, clientIp, "Thanh toan goi dich vu");
     }
 
-    /**
-     * Gia hạn 1 kỳ 30 ngày theo quota hiện tại và đơn giá đã chốt. Chỉ khi còn ≤ {@value #MAX_PREPAY_DAYS}
-     * ngày tới hạn. Kỳ mới nối tiếp ngày đến hạn — thời gian quá hạn trong ân hạn vẫn được dùng nên vẫn
-     * tính tiền; riêng khi đã bị khóa vì thanh toán lỗi thì kỳ tính từ hôm nay (thời gian bị khóa không
-     * dùng được).
-     */
+    /** Gia hạn giữ nguyên số lượng — xem {@link #renew(PurchaseRequest, String)}. */
     @Transactional
     public PaymentUrlResponse renew(String clientIp) {
+        return renew(null, clientIp);
+    }
+
+    /**
+     * Gia hạn 1 kỳ 30 ngày theo đơn giá đã chốt, kèm chọn số lượng cho kỳ đó. Chỉ khi còn ≤
+     * {@value #MAX_PREPAY_DAYS} ngày tới hạn. Kỳ mới nối tiếp ngày đến hạn — thời gian quá hạn trong ân
+     * hạn vẫn được dùng nên vẫn tính tiền; đã bị khóa vì thanh toán lỗi thì cộng bù số ngày bị khóa
+     * (thời gian bị khóa không dùng được) — xem {@link #renewalStart}.
+     *
+     * <p>Số lượng ({@code request}; {@code null} = giữ nguyên) được tăng hoặc giảm, nhưng chỉ có hiệu
+     * lực TỪ KỲ MỚI — kỳ đang dùng không bị giảm. "Giữ nguyên" là số lượng của kỳ liền trước: kỳ đã gia
+     * hạn trước gần nhất nếu có, ngược lại gói hiện tại. Giảm thì không được thấp hơn số đang dùng.
+     * <pre>
+     *   kỳ mới đã bắt đầu (đúng hạn / quá hạn / bị khóa)  → số lượng mới có hiệu lực ngay khi trả xong
+     *   gia hạn trước                                     → có hiệu lực đúng ngày kỳ mới bắt đầu (job đổi kỳ)
+     * </pre>
+     */
+    @Transactional
+    public PaymentUrlResponse renew(PurchaseRequest request, String clientIp) {
         Locked ctx = lockCurrentTenant();
         Subscription sub = ctx.sub();
         if (sub.isTrial() || sub.getNextBillingDate() == null) {
@@ -219,9 +245,22 @@ public class BillingService {
             throw new BusinessException(String.format(
                 "Chỉ gia hạn được khi còn tối đa %d ngày tới ngày đến hạn (%s).", MAX_PREPAY_DAYS, due));
         }
-        LocalDate start = ctx.isSuspendedFor(SuspendReason.PAYMENT_FAILED) ? ctx.today() : due;
+        LocalDate start = renewalStart(ctx.tenant(), sub, ctx.today());
+
+        int[] keep = plannedQuotaBefore(sub);
+        int ql = request == null ? keep[0] : request.getQuotaLocation();
+        int qu = request == null ? keep[1] : request.getQuotaUser();
+        int qr = request == null ? keep[2] : request.getQuotaRoom();
+        // Chỉ kiểm tra loại bị GIẢM: giữ nguyên / tăng thì như gia hạn trước đây (kể cả gói đang vượt quota).
+        if (ql < keep[0] || qu < keep[1] || qr < keep[2]) {
+            TenantUsageResponse usage = tenantUsageService.getUsage(ctx.tenant().getId());
+            if (ql < keep[0]) assertNotBelowUsage("khách sạn", ql, usage.getLocations().getUsed());
+            if (qu < keep[1]) assertNotBelowUsage("nhân viên", qu, usage.getStaff().getUsed());
+            if (qr < keep[2]) assertNotBelowUsage("phòng", qr, usage.getRooms().getUsed());
+        }
+        long amount = ql * sub.getPricePerLocation() + qu * sub.getPricePerUser() + qr * sub.getPricePerRoom();
         return createPayment(ctx, InvoiceType.PERIODIC, start, start.plusDays(CYCLE_DAYS - 1),
-            sub.getQuotaLocation(), sub.getQuotaUser(), sub.getQuotaRoom(), periodFee(sub), clientIp, "Gia han goi dich vu");
+            ql, qu, qr, amount, clientIp, "Gia han goi dich vu");
     }
 
     /**
@@ -249,6 +288,15 @@ public class BillingService {
         long daysLeft = ChronoUnit.DAYS.between(ctx.today(), sub.getNextBillingDate());
         if (daysLeft <= 0) {
             throw new BusinessException("Gói đã đến hạn. Vui lòng gia hạn trước khi mua thêm quota.");
+        }
+        // Đã gia hạn trước kỳ tới với số lượng KHÁC gói hiện tại (đổi gói từ kỳ tới): mua thêm tính tiền tới
+        // ngày đến hạn, tức cả phần kỳ tới, theo gói hiện tại — không khớp số lượng đã chọn cho kỳ tới.
+        for (Invoice prepaid : tenantUsageService.paidRenewalsNotStarted(sub)) {
+            if (!sameQuota(plannedQuota(prepaid), sub)) {
+                throw new BusinessException(String.format(
+                    "Bạn đã gia hạn trước cho kỳ bắt đầu %s với số lượng khác gói hiện tại, "
+                        + "nên chưa mua thêm quota được tới ngày đó.", prepaid.getPeriodStart()));
+            }
         }
         int ql = request.getQuotaLocation(), qu = request.getQuotaUser(), qr = request.getQuotaRoom();
         if (ql < sub.getQuotaLocation() || qu < sub.getQuotaUser() || qr < sub.getQuotaRoom()) {
@@ -495,19 +543,31 @@ public class BillingService {
         sub.setNextBillingDate(today.plusDays(CYCLE_DAYS));
         subscriptionRepository.save(sub);
 
+        warnIfOverQuota(sub, invoice);
+
         reactivateTenant(sub.getTenantId(), SuspendReason.TRIAL_EXPIRED);   // kể cả đang bị khóa vì hết dùng thử
         log.info("Tenant {} mua gói thành công: hóa đơn {}, đến {}", sub.getTenantId(), invoice.getId(), sub.getNextBillingDate());
     }
 
-    /** Ngày đến hạn = hết kỳ vừa trả + 1. Tenant đang quá hạn / bị khóa do thanh toán lỗi về ACTIVE. */
+    /**
+     * Ngày đến hạn = hết kỳ vừa trả + 1. Tenant đang quá hạn / bị khóa do thanh toán lỗi về ACTIVE.
+     *
+     * <p>Kỳ vừa trả đã bắt đầu (đúng hạn / trễ / bị khóa) thì là kỳ hiện tại: số lượng chọn lúc gia hạn
+     * có hiệu lực ngay. Trả trước thì giữ kỳ và số lượng đang chạy — {@link #applyStartedRenewals} áp khi
+     * tới ngày. Gia hạn giữ nguyên số lượng thì số trên hóa đơn bằng gói hiện tại nên không đổi gì.
+     */
     private void applyRenewal(Invoice invoice, Subscription sub) {
         markPaid(invoice);
-        // Kỳ vừa trả đã bắt đầu (đúng hạn / trễ / bị khóa) thì là kỳ hiện tại; trả trước thì giữ kỳ đang chạy.
-        if (!invoice.getPeriodStart().isAfter(ShiftTimeUtils.todayInHanoi())) {
+        boolean started = !invoice.getPeriodStart().isAfter(ShiftTimeUtils.todayInHanoi());
+        if (started) {
             sub.setCurrentPeriodStart(invoice.getPeriodStart());
+            applyQuota(plannedQuota(invoice), sub);
         }
         sub.setNextBillingDate(invoice.getPeriodEnd().plusDays(1));
         subscriptionRepository.save(sub);
+        if (started) {
+            warnIfOverQuota(sub, invoice);
+        }
 
         reactivateTenant(sub.getTenantId(), SuspendReason.PAYMENT_FAILED);
         log.info("Tenant {} gia hạn thành công: hóa đơn {}, đã trả đến {}", sub.getTenantId(), invoice.getId(), invoice.getPeriodEnd());
@@ -520,6 +580,51 @@ public class BillingService {
         subscriptionRepository.save(sub);
         log.info("Tenant {} mua thêm quota thành công: hóa đơn {}, quota mới {}/{}/{}",
             sub.getTenantId(), invoice.getId(), sub.getQuotaLocation(), sub.getQuotaUser(), sub.getQuotaRoom());
+    }
+
+    // ── Đổi kỳ đã gia hạn trước (job) ───────────────────────────────────────
+
+    /**
+     * Kỳ đã gia hạn trước tới ngày bắt đầu: áp số lượng chọn lúc gia hạn (cộng phần mua thêm đã trả phủ
+     * sang kỳ đó — {@link TenantUsageService#plannedQuota}) và chuyển {@code current_period_start}.
+     * <pre>
+     *   hóa đơn gia hạn đã trả, kỳ bắt đầu ≤ hôm nay, kỳ bắt đầu > current_period_start  → áp kỳ đó
+     * </pre>
+     * Lỡ ngày (máy chủ tắt) thì lần chạy sau vẫn áp; chạy lại nhiều lần không sao. Có nhiều kỳ đã tới
+     * ngày thì áp kỳ mới nhất.
+     *
+     * @return số gói đã đổi kỳ
+     */
+    @Transactional
+    public int applyStartedRenewals() {
+        LocalDate today = ShiftTimeUtils.todayInHanoi();
+        Set<UUID> tenantIds = invoiceRepository.findByStatusAndInvoiceTypeAndPeriodStartBetween(
+                InvoiceStatus.PAID, InvoiceType.PERIODIC, today.minusDays(2L * CYCLE_DAYS), today).stream()
+            .map(Invoice::getTenantId)
+            .collect(Collectors.toSet());
+
+        int changed = 0;
+        for (UUID tenantId : tenantIds) {
+            Subscription sub = subscriptionRepository.findForUpdateByTenantId(tenantId).orElse(null);
+            if (sub == null || sub.isTrial()) {
+                continue;
+            }
+            Invoice started = tenantUsageService.paidRenewalsNotStarted(sub).stream()
+                .filter(i -> !i.getPeriodStart().isAfter(today))
+                .reduce((older, newer) -> newer)
+                .orElse(null);
+            if (started == null) {
+                continue;
+            }
+            sub.setCurrentPeriodStart(started.getPeriodStart());
+            applyQuota(plannedQuota(started), sub);
+            subscriptionRepository.save(sub);
+            warnIfOverQuota(sub, started);
+            changed++;
+            log.info("Tenant {} sang kỳ đã gia hạn trước {}: quota {}/{}/{} (hóa đơn {})", tenantId,
+                started.getPeriodStart(), sub.getQuotaLocation(), sub.getQuotaUser(), sub.getQuotaRoom(), started.getId());
+        }
+        return changed;
     }
 
     // ── Quá hạn thanh toán (job) ────────────────────────────────────────────
@@ -624,6 +729,30 @@ public class BillingService {
             vnpayService.buildPaymentUrl(txnRef, amount, orderLabel + " " + txnRef, clientIp, ctx.now()));
     }
 
+    /**
+     * Ngày bắt đầu kỳ gia hạn = ngày đến hạn + số ngày bị khóa vì thanh toán lỗi. Dùng chung cho
+     * {@link #renew} và màn xem gói để hai nơi luôn ra cùng một ngày.
+     * <pre>
+     *   chưa bị khóa (ACTIVE / quá hạn)   → ngày đến hạn          ngày ân hạn vẫn dùng được nên vẫn tính tiền
+     *   bị khóa (PAYMENT_FAILED)          → ngày đến hạn + số ngày bị khóa (hôm nay − ngày bị khóa)
+     *   bị khóa nhưng thiếu mốc khóa      → hôm nay               dữ liệu lệch: không tính dư tiền của khách
+     * </pre>
+     * Trước đây khi bị khóa kỳ tính từ hôm nay, nên để bị khóa rồi mới trả là dùng miễn phí cả ân hạn.
+     */
+    static LocalDate renewalStart(Tenant tenant, Subscription sub, LocalDate today) {
+        LocalDate due = sub.getNextBillingDate();
+        boolean lockedForPayment = tenant.getStatus() == TenantStatus.SUSPENDED
+            && tenant.getSuspendReason() == SuspendReason.PAYMENT_FAILED;
+        if (!lockedForPayment) {
+            return due;
+        }
+        if (tenant.getSuspendedAt() == null) {
+            return today;
+        }
+        long lockedDays = Math.max(0, ChronoUnit.DAYS.between(tenant.getSuspendedAt().toLocalDate(), today));
+        return due.plusDays(lockedDays);
+    }
+
     /** Phí 1 kỳ theo QUOTA đã mua (không theo số đang dùng) và đơn giá đã chốt — BR-SAAS-05. */
     private static long periodFee(Subscription sub) {
         return sub.getQuotaLocation() * sub.getPricePerLocation()
@@ -633,6 +762,54 @@ public class BillingService {
 
     private static boolean isFirstPurchase(Invoice invoice) {
         return invoice.getInvoiceType() == InvoiceType.PERIODIC && invoice.getPeriodStart() == null;
+    }
+
+    /** Số lượng (khách sạn, nhân viên, phòng) có hiệu lực khi kỳ của hóa đơn gia hạn bắt đầu. */
+    private int[] plannedQuota(Invoice renewal) {
+        return new int[] {
+            tenantUsageService.plannedQuota(renewal, Invoice::getQuotaLocationSnapshot),
+            tenantUsageService.plannedQuota(renewal, Invoice::getQuotaUserSnapshot),
+            tenantUsageService.plannedQuota(renewal, Invoice::getQuotaRoomSnapshot),
+        };
+    }
+
+    /**
+     * Số lượng của kỳ liền trước kỳ gia hạn tiếp theo — "giữ nguyên" khi gia hạn: kỳ đã gia hạn trước
+     * gần nhất nếu có, ngược lại gói hiện tại.
+     */
+    private int[] plannedQuotaBefore(Subscription sub) {
+        List<Invoice> prepaid = tenantUsageService.paidRenewalsNotStarted(sub);
+        return prepaid.isEmpty()
+            ? new int[] {sub.getQuotaLocation(), sub.getQuotaUser(), sub.getQuotaRoom()}
+            : plannedQuota(prepaid.get(prepaid.size() - 1));
+    }
+
+    private static boolean sameQuota(int[] quota, Subscription sub) {
+        return quota[0] == sub.getQuotaLocation() && quota[1] == sub.getQuotaUser() && quota[2] == sub.getQuotaRoom();
+    }
+
+    private static void applyQuota(int[] quota, Subscription sub) {
+        sub.setQuotaLocation(quota[0]);
+        sub.setQuotaUser(quota[1]);
+        sub.setQuotaRoom(quota[2]);
+    }
+
+    /**
+     * Lưới an toàn sau khi đổi quota: bình thường không xảy ra vì tạo mới đã bị chặn theo gói đang mua
+     * / kỳ tới trong lúc chờ (TenantUsageService#pendingPurchaseLimit). Tiền đã thu nên vẫn áp gói, chỉ
+     * ghi cảnh báo.
+     */
+    private void warnIfOverQuota(Subscription sub, Invoice invoice) {
+        TenantUsageResponse usage = tenantUsageService.getUsage(sub.getTenantId());
+        if (usage.getLocations().getUsed() > sub.getQuotaLocation()
+                || usage.getStaff().getUsed() > sub.getQuotaUser()
+                || usage.getRooms().getUsed() > sub.getQuotaRoom()) {
+            log.warn("Tenant {} đang dùng vượt quota sau khi áp hóa đơn {}: khách sạn {}/{}, nhân viên {}/{}, phòng {}/{}",
+                sub.getTenantId(), invoice.getId(),
+                usage.getLocations().getUsed(), sub.getQuotaLocation(),
+                usage.getStaff().getUsed(), sub.getQuotaUser(),
+                usage.getRooms().getUsed(), sub.getQuotaRoom());
+        }
     }
 
     private static void copyQuota(Invoice invoice, Subscription sub) {

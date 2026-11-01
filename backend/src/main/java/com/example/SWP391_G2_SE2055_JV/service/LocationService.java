@@ -4,6 +4,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.CreateLocationRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.LocationResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateLocationContactRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.UpdateLocationRequest;
+import com.example.SWP391_G2_SE2055_JV.entity.Invoice;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Subscription;
 import com.example.SWP391_G2_SE2055_JV.enums.LocationStatus;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -51,6 +53,7 @@ public class LocationService {
     private final UserRepository     userRepository;
     private final AreaRepository     areaRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final TenantUsageService     tenantUsageService;
 
     /**
      * BR-ORG-04: "Tổng số phòng" là derived field nên phải đếm khi trả về. Đếm gộp một lần
@@ -225,6 +228,13 @@ public class LocationService {
             throw new BusinessException(String.format(
                 "Đã dùng hết %d/%d Location của gói dịch vụ. Nâng cấp gói để thêm Location.",
                 used, subscription.getQuotaLocation()));
+        }
+        // Gói đang chờ thanh toán / đã gia hạn trước cho kỳ tới ít khách sạn hơn: không tạo vượt số đó.
+        OptionalInt pending = tenantUsageService.pendingPurchaseLimit(tenantId, Invoice::getQuotaLocationSnapshot);
+        if (pending.isPresent() && used >= pending.getAsInt()) {
+            throw new BusinessException(String.format(
+                "Gói đang chờ thanh toán hoặc đã gia hạn trước cho kỳ tới chỉ có %d khách sạn nên chưa tạo thêm "
+                    + "được. Nếu đang có giao dịch chờ, hãy hoàn tất hoặc hủy giao dịch đó.", pending.getAsInt()));
         }
     }
 
