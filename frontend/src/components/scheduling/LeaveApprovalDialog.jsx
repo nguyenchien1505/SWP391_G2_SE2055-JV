@@ -4,12 +4,14 @@ import { approveLeaveRequest, fetchLeaveApprovalPreview } from '../../api/leaveR
 import { formatDate } from '../../pages/rooms/format';
 import { formatLeaveRange, leaveTypeMeta } from '../../pages/scheduling/leaveLabels';
 import { timeRange } from '../../pages/scheduling/scheduleFormat';
+import LeaveAttachments from './LeaveAttachments';
 
 /**
  * Duyệt đơn nghỉ — xem hệ quả TRƯỚC rồi mới xác nhận (BR-SCH-07, BR-SCH-17, BR-SCH-29, BR-SCH-31):
  * <ul>
- *   <li>ca từ ngày mai trong khoảng nghỉ sẽ bị gỡ người;</li>
- *   <li>ca của chính hôm nay (và ca đã check-in) giữ nguyên — quản lý tự gỡ tay nếu cần;</li>
+ *   <li>mọi ca từ hôm nay trong khoảng nghỉ sẽ bị gỡ người — kể cả ca hôm nay (BR-SCH-17 sửa 01/11/2026); mất hết
+ *       ca hôm nay thì việc dọn hôm nay của người đó cũng gỡ theo (BR-HK-07);</li>
+ *   <li>ca đã check-in giữ nguyên — gỡ là mất dữ liệu chấm công;</li>
  *   <li>ca sẽ mất lễ tân duy nhất: mỗi ca phải có lễ tân, nên chọn lễ tân thay cho TỪNG ca thì mới duyệt được
  *       (BR-SCH-29 sửa 31/10/2026). Danh sách chỉ có người backend đã kiểm là xếp được;</li>
  *   <li>phép năm: quỹ của người gửi, bị trừ khi duyệt.</li>
@@ -72,6 +74,7 @@ export default function LeaveApprovalDialog({ leave, onClose, onApproved }) {
               {leave.days} ngày
             </b>
             {leave.reason}
+            <LeaveAttachments leave={leave} />
           </div>
 
           {!preview && !error && <p className="state">Đang tính các ca bị ảnh hưởng…</p>}
@@ -88,13 +91,20 @@ export default function LeaveApprovalDialog({ leave, onClose, onApproved }) {
 
               <h3>Ca sẽ gỡ khỏi lịch ({preview.releasedShifts.length})</h3>
               {preview.releasedShifts.length === 0 ? (
-                <p className="muted">Không có ca nào từ ngày mai trong khoảng nghỉ — lịch làm việc không đổi.</p>
+                <p className="muted">Không có ca nào từ hôm nay trong khoảng nghỉ — lịch làm việc không đổi.</p>
               ) : (
                 <ul className="leave-impact">
                   {preview.releasedShifts.map((shift) => (
                     <ShiftLine key={shift.shiftId} shift={shift} />
                   ))}
                 </ul>
+              )}
+
+              {preview.releasedCleaningTasks > 0 && (
+                <div className="alert alert--info" role="note">
+                  {leave.requesterName ?? 'Người này'} đang dọn {preview.releasedCleaningTasks} phòng hôm nay — duyệt xong
+                  sẽ rút khỏi các việc đó; việc không còn ai dọn quay về hàng chờ, phòng về «Chờ dọn».
+                </div>
               )}
 
               {preview.keptShifts.length > 0 && (

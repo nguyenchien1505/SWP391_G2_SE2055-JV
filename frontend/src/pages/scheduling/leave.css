@@ -70,6 +70,121 @@
   margin-top: 4px;
 }
 
+/* Ảnh minh chứng kèm lý do nghỉ (chốt 01/11/2026): hàng ảnh nhỏ, bấm để xem lớn. */
+.leave-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 2px;
+}
+.leave-attachment {
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: #f5f7fa;
+  overflow: hidden;
+  cursor: zoom-in;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+.leave-attachment:disabled {
+  cursor: default;
+}
+.leave-attachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.leave-attachment:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Xem ảnh lớn — gắn vào <body>, đè lên cả hộp thoại duyệt / từ chối (z-index 50). */
+.leave-viewer {
+  z-index: 60;
+}
+.leave-viewer__frame {
+  margin: 0;
+  max-width: min(960px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fff;
+  border-radius: var(--radius-card);
+  padding: 12px;
+}
+.leave-viewer__frame img {
+  max-width: 100%;
+  max-height: calc(100vh - 120px);
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+.leave-viewer__frame figcaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* Form gửi đơn: ảnh đã chọn, chờ gửi cùng đơn. */
+.leave-form__thumbs {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.leave-form__thumbs li {
+  position: relative;
+  width: 84px;
+  height: 84px;
+}
+.leave-form__thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.leave-form__remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--danger);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.leave-form__pick {
+  display: inline-flex;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.leave-form__images .field__help {
+  display: block;
+}
+.leave-form__pick.is-disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 /* Từ chối — cùng màu với badge báo hỏng, khai lại ở đây để màn này không phụ thuộc CSS của màn khác. */
 .badge--red {
   background: #fdecea;

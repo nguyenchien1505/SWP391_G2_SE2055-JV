@@ -18,14 +18,20 @@ public class LeaveApprovalResponse {
 
     private LeaveRequestResponse request;
 
-    /** Ca từ ngày mai trở đi trong khoảng nghỉ, chưa check-in — gỡ người với lý do LEAVE_APPROVED (BR-SCH-07). */
+    /**
+     * Ca từ hôm nay trở đi trong khoảng nghỉ, chưa check-in — gỡ người với lý do LEAVE_APPROVED (BR-SCH-07; BR-SCH-17
+     * sửa 01/11/2026: ca của chính hôm nay cũng gỡ).
+     */
     private List<ShiftImpact> releasedShifts;
 
-    /**
-     * Ca trong khoảng nghỉ KHÔNG tự gỡ: ca của chính hôm nay (BR-SCH-17 — Manager gỡ tay nếu cần) hoặc ca đã
-     * check-in (gỡ là mất dữ liệu chấm công).
-     */
+    /** Ca trong khoảng nghỉ KHÔNG tự gỡ: ca đã check-in — gỡ là mất dữ liệu chấm công. */
     private List<ShiftImpact> keptShifts;
+
+    /**
+     * Số việc dọn đang làm hôm nay mà người nghỉ bị rút khỏi nhóm (BR-HK-07) — người đó mất hết ca hôm nay. Bản xem
+     * trước: sẽ gỡ; kết quả duyệt: đã gỡ. Việc hết người thì về hàng chờ và phòng về «Chờ dọn».
+     */
+    private int releasedCleaningTasks;
 
     /**
      * Ca theo mẫu sẽ mất lễ tân duy nhất khi gỡ người gửi. BR-SCH-29 sửa (chốt 31/10/2026): mỗi ca theo mẫu phải có

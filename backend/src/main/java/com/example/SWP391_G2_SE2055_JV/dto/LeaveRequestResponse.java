@@ -10,6 +10,7 @@ import lombok.Data;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -51,6 +52,8 @@ public class LeaveRequestResponse {
     private String             revokeReason;
     /** Ngày kết thúc ban đầu khi đơn bị rút ngắn; null nếu không. */
     private LocalDate          originalToDate;
+    /** Ảnh minh chứng kèm lý do nghỉ (chốt 01/11/2026), không kèm dữ liệu ảnh; rỗng nếu không có. */
+    private List<LeaveAttachmentInfo> attachments;
     private LocalDateTime      createdAt;
 
     /**
@@ -58,9 +61,11 @@ public class LeaveRequestResponse {
      * @param positionName vị trí của người gửi
      * @param approver     người duyệt / từ chối; null khi đơn chưa có quyết định
      * @param revoker      người hủy phần ngày chưa tới; null nếu không có
+     * @param attachments  ảnh đính kèm của đơn này
      */
     public static LeaveRequestResponse fromEntity(LeaveRequest leave, User requester, String positionName,
-                                                  String locationName, User approver, User revoker) {
+                                                  String locationName, User approver, User revoker,
+                                                  List<LeaveAttachmentInfo> attachments) {
         return LeaveRequestResponse.builder()
             .id(leave.getId())
             .leaveType(leave.getLeaveType())
@@ -85,6 +90,7 @@ public class LeaveRequestResponse {
             .revokedAt(leave.getRevokedAt())
             .revokeReason(leave.getRevokeReason())
             .originalToDate(leave.getOriginalToDate())
+            .attachments(attachments)
             .createdAt(leave.getCreatedAt())
             .build();
     }

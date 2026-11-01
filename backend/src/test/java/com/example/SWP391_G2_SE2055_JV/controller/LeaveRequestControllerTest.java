@@ -1,6 +1,8 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest.ReceptionReplacement;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentFile;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentUpload;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Replacement;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.ShiftImpact;
@@ -20,7 +22,9 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
@@ -33,6 +37,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -40,8 +45,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -335,6 +343,58 @@ class LeaveRequestControllerTest {
 
             mockMvc.perform(get("/scheduling/leave-requests/{id}/approval-preview", LEAVE_ID))
                 .andExpect(status().isNotFound());
+        }
+    }
+
+    // ── Ảnh minh chứng — chốt 01/11/2026 ────────────────────────────────────
+
+    @Nested
+    class Attachments {
+
+        private final MockMultipartFile image =
+            new MockMultipartFile("files", "giay-kham.png", "image/png", new byte[]{1, 2, 3});
+
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_STAFF", "ROLE_MANAGER"})
+        @SuppressWarnings("unchecked")
+        void shouldPassUploadedImagesToService(String authorities) throws Exception {
+            when(leaveRequestService.addAttachments(eq(LEAVE_ID), any())).thenReturn(sample(LeaveRequestStatus.PENDING));
+
+            mockMvc.perform(multipart("/scheduling/leave-requests/{id}/attachments", LEAVE_ID).file(image)
+                    .with(authorities(authorities)))
+                .andExpect(status().isOk());
+
+            ArgumentCaptor<List<LeaveAttachmentUpload>> sent = ArgumentCaptor.forClass(List.class);
+            verify(leaveRequestService).addAttachments(eq(LEAVE_ID), sent.capture());
+            assertThat(sent.getValue()).singleElement().satisfies(upload -> {
+                assertThat(upload.fileName()).isEqualTo("giay-kham.png");
+                assertThat(upload.data()).containsExactly(1, 2, 3);
+            });
+        }
+
+        /** Giám đốc không gửi đơn nghỉ (không có cấp trên duyệt) nên cũng không đính kèm ảnh. */
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldNotLetDirectorUpload() throws Exception {
+            mockMvc.perform(multipart("/scheduling/leave-requests/{id}/attachments", LEAVE_ID).file(image))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(leaveRequestService);
+        }
+
+        /** Người gửi và người duyệt xem ảnh; service lo phạm vi. Ảnh hiện ngay trên trang, không tải về. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_STAFF", "ROLE_MANAGER", "ROLE_DIRECTOR"})
+        void shouldServeImageInline(String authorities) throws Exception {
+            UUID imageId = UUID.randomUUID();
+            when(leaveRequestService.getAttachment(LEAVE_ID, imageId))
+                .thenReturn(new LeaveAttachmentFile("giấy khám.png", "image/png", new byte[]{9, 8}));
+
+            mockMvc.perform(get("/scheduling/leave-requests/{id}/attachments/{imageId}", LEAVE_ID, imageId)
+                    .with(authorities(authorities)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_PNG))
+                .andExpect(content().bytes(new byte[]{9, 8}))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, startsWith("inline")));
         }
     }
 

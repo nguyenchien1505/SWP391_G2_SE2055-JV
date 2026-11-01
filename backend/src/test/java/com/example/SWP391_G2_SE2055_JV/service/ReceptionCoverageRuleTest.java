@@ -215,7 +215,7 @@ class ReceptionCoverageRuleTest {
         }
     }
 
-    // ── Duyệt đơn nghỉ: chỉ cảnh báo, không chặn — BR-SCH-29 ────────────────
+    // ── Duyệt đơn nghỉ: ca nào mất lễ tân duy nhất — BR-SCH-29 sửa 31/10/2026 ─
 
     @Nested
     class LosesOnlyReceptionist {
@@ -265,6 +265,50 @@ class ReceptionCoverageRuleTest {
             assertThat(rule.losesOnlyReceptionist(free)).isFalse();
             assertThat(rule.losesOnlyReceptionist(slot(null))).isFalse();
             verifyNoInteractions(shiftRepository, userRepository);
+        }
+    }
+
+    // ── Lễ tân duy nhất của ca không nhận việc dọn — chốt 01/11/2026 ────────
+
+    @Nested
+    class SoleReceptionShift {
+
+        /** Người kiêm Lễ tân + Dọn dẹp mà là lễ tân duy nhất của ca thì phải trực quầy. */
+        @Test
+        void shouldNameShiftWhereStaffIsOnlyReceptionist() {
+            List<Shift> crew = givenCrew(multiRole, cleaner);
+            givenShiftsOf(multiRole, crew.get(0));
+
+            assertThat(rule.soleReceptionShift(multiRole, LOCATION_ID, DAY)).contains("Ca sáng ngày 05/10/2026");
+        }
+
+        @Test
+        void shouldBeEmptyWhenAnotherReceptionistIsOnShift() {
+            List<Shift> crew = givenCrew(multiRole, receptionist, cleaner);
+            givenShiftsOf(multiRole, crew.get(0));
+
+            assertThat(rule.soleReceptionShift(multiRole, LOCATION_ID, DAY)).isEmpty();
+        }
+
+        @Test
+        void shouldSkipStaffWithoutReceptionPermission() {
+            assertThat(rule.soleReceptionShift(cleaner, LOCATION_ID, DAY)).isEmpty();
+            verifyNoInteractions(shiftRepository);
+        }
+
+        /** Ca tự nhập giờ không bắt buộc có lễ tân — cùng phạm vi với luật "mỗi ca phải có lễ tân". */
+        @Test
+        void shouldIgnoreShiftWithoutTemplate() {
+            Shift free = slot(multiRole);
+            free.setSourceTemplateId(null);
+            givenShiftsOf(multiRole, free);
+
+            assertThat(rule.soleReceptionShift(multiRole, LOCATION_ID, DAY)).isEmpty();
+        }
+
+        private void givenShiftsOf(User person, Shift... shifts) {
+            when(shiftRepository.findByStaffIdAndShiftDateBetweenOrderByShiftDateAscStartTimeAsc(person.getId(), DAY, DAY))
+                .thenReturn(List.of(shifts));
         }
     }
 

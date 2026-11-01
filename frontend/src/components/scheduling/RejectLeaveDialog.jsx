@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
 import { rejectLeaveRequest } from '../../api/leaveRequests';
 import { formatLeaveRange, leaveTypeMeta } from '../../pages/scheduling/leaveLabels';
+import LeaveAttachments from './LeaveAttachments';
 
 /** Khớp @Size(max = 500) của RejectLeaveRequestRequest. */
 const REASON_MAX = 500;
@@ -55,6 +56,7 @@ export default function RejectLeaveDialog({ leave, onClose, onRejected }) {
               {type.label} · {formatLeaveRange(leave.fromDate, leave.toDate)} ({leave.days} ngày)
             </p>
             <p>Lý do xin nghỉ: {leave.reason}</p>
+            <LeaveAttachments leave={leave} />
             <p className="muted">Lịch làm việc giữ nguyên.</p>
           </div>
 

@@ -2,6 +2,8 @@ package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest.ReceptionReplacement;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateLeaveRequestRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentInfo;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentUpload;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Candidate;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Replacement;
@@ -113,9 +115,40 @@ class LeaveRequestFlowTest {
         TestAuth.logout();
     }
 
-    /** BR-SCH-17: duyệt đơn từ hôm nay → gỡ ca ngày mai (LEAVE_APPROVED), ca hôm nay giữ nguyên. */
+    /**
+     * BR-SCH-17 sửa 01/11/2026: duyệt đơn từ hôm nay → gỡ cả ca hôm nay lẫn ca ngày mai (LEAVE_APPROVED) — ca hôm nay
+     * chưa check-in không còn giữ lại cho Manager gỡ tay.
+     */
     @Test
-    void shouldReleaseTomorrowsShiftAndKeepTodaysOnApproval() {
+    void shouldReleaseTodaysAndTomorrowsShiftsOnApproval() {
+        loginAs(cleaner);
+        LeaveRequestResponse sent = leaveRequestService.createLeaveRequest(unpaid(today, tomorrow));
+        loginAs(manager);
+
+        LeaveApprovalResponse result = leaveRequestService.approveLeaveRequest(sent.getId(), List.of());
+        flushAndClear();
+
+        for (Shift shift : List.of(cleanerToday, cleanerTomorrow)) {
+            Shift released = em.find(Shift.class, shift.getId());
+            assertThat(released.getStaffId()).isNull();
+            assertThat(released.getUnassignedReason()).isEqualTo(UnassignedReason.LEAVE_APPROVED);
+        }
+        LeaveRequest stored = em.find(LeaveRequest.class, sent.getId());
+        assertThat(stored.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
+        assertThat(stored.getApproverId()).isEqualTo(manager.getId());
+        assertThat(stored.getDecidedAt()).isNotNull();
+        assertThat(result.getReleasedShifts()).hasSize(2);
+        assertThat(result.getKeptShifts()).isEmpty();
+        // Hoa không phải lễ tân: ca chiều mai vẫn còn lễ tân Lan, không cần ai thay.
+        assertThat(result.getReplacements()).isEmpty();
+    }
+
+    /** Ca hôm nay đã check-in: người đó đang làm — giữ ca để không mất dữ liệu chấm công, chỉ gỡ ca ngày mai. */
+    @Test
+    void shouldKeepCheckedInShiftOnApproval() {
+        Shift working = em.find(Shift.class, cleanerToday.getId());
+        working.setCheckInAt(today.atTime(14, 5));
+        flushAndClear();
         loginAs(cleaner);
         LeaveRequestResponse sent = leaveRequestService.createLeaveRequest(unpaid(today, tomorrow));
         loginAs(manager);
@@ -124,17 +157,33 @@ class LeaveRequestFlowTest {
         flushAndClear();
 
         assertThat(em.find(Shift.class, cleanerToday.getId()).getStaffId()).isEqualTo(cleaner.getId());
-        Shift released = em.find(Shift.class, cleanerTomorrow.getId());
-        assertThat(released.getStaffId()).isNull();
-        assertThat(released.getUnassignedReason()).isEqualTo(UnassignedReason.LEAVE_APPROVED);
-        LeaveRequest stored = em.find(LeaveRequest.class, sent.getId());
-        assertThat(stored.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
-        assertThat(stored.getApproverId()).isEqualTo(manager.getId());
-        assertThat(stored.getDecidedAt()).isNotNull();
-        assertThat(result.getReleasedShifts()).hasSize(1);
-        assertThat(result.getKeptShifts()).hasSize(1);
-        // Hoa không phải lễ tân: ca chiều mai vẫn còn lễ tân Lan, không cần ai thay.
-        assertThat(result.getReplacements()).isEmpty();
+        assertThat(em.find(Shift.class, cleanerTomorrow.getId()).getStaffId()).isNull();
+        assertThat(result.getKeptShifts()).extracting(LeaveApprovalResponse.ShiftImpact::shiftId)
+            .containsExactly(cleanerToday.getId());
+    }
+
+    /** Ảnh minh chứng lưu vào MEDIUMBLOB và đọc lại nguyên vẹn; danh sách đơn chỉ mang thông tin ảnh. */
+    @Test
+    void shouldStoreAttachmentAndShowItToReviewer() {
+        byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0x10, 'J', 'F', 'I', 'F', 0, 1};
+        loginAs(cleaner);
+        UUID sent = leaveRequestService.createLeaveRequest(unpaid(tomorrow, tomorrow)).getId();
+        LeaveRequestResponse withImage = leaveRequestService.addAttachments(sent,
+            List.of(new LeaveAttachmentUpload("giay-kham.jpg", jpeg)));
+        flushAndClear();
+
+        assertThat(withImage.getAttachments()).singleElement().satisfies(info -> {
+            assertThat(info.fileName()).isEqualTo("giay-kham.jpg");
+            assertThat(info.contentType()).isEqualTo("image/jpeg");
+            assertThat(info.sizeBytes()).isEqualTo(jpeg.length);
+        });
+        UUID imageId = withImage.getAttachments().get(0).id();
+
+        loginAs(manager);
+        assertThat(leaveRequestService.getReviewQueue(LeaveRequestStatus.PENDING, PageRequest.of(0, 20)).getContent())
+            .singleElement()
+            .satisfies(leave -> assertThat(leave.getAttachments()).extracting(LeaveAttachmentInfo::id).containsExactly(imageId));
+        assertThat(leaveRequestService.getAttachment(sent, imageId).data()).isEqualTo(jpeg);
     }
 
     /**

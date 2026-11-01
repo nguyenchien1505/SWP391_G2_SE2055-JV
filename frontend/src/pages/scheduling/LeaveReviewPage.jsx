@@ -79,8 +79,11 @@ export default function LeaveReviewPage() {
         `${fullName} (${shift.templateName ?? 'Ca giờ khác'} ${formatDate(shift.shiftDate)})`);
       parts.push(`Lễ tân thay: ${names.join(', ')}.`);
     }
+    if (result.releasedCleaningTasks > 0) {
+      parts.push(`Gỡ khỏi ${result.releasedCleaningTasks} việc dọn hôm nay — việc không còn ai dọn đã về hàng chờ.`);
+    }
     if (result.keptShifts.length > 0) {
-      parts.push(`${result.keptShifts.length} ca giữ nguyên (ca hôm nay hoặc đã check-in) — gỡ tay ở Xếp lịch làm việc nếu cần.`);
+      parts.push(`${result.keptShifts.length} ca giữ nguyên vì người này đã vào ca (check-in).`);
     }
     setBanner({ type: 'success', text: parts.join(' ') });
     load(0);
@@ -132,7 +135,7 @@ export default function LeaveReviewPage() {
           <p className="muted">
             {isDirector
               ? 'Đơn nghỉ của các quản lý khách sạn trong chuỗi.'
-              : `Đơn nghỉ của nhân viên ${user?.locationName ?? 'khách sạn'}. Duyệt đơn sẽ tự gỡ người khỏi các ca từ ngày mai trong khoảng nghỉ.`}
+              : `Đơn nghỉ của nhân viên ${user?.locationName ?? 'khách sạn'}. Duyệt đơn sẽ tự gỡ người khỏi các ca từ hôm nay trong khoảng nghỉ (trừ ca đã vào làm) và khỏi việc dọn hôm nay.`}
           </p>
         </div>
       </div>

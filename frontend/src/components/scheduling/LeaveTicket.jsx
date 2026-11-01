@@ -1,5 +1,6 @@
 import { formatDateTime } from '../../pages/rooms/format';
 import { formatLeaveRange, leaveStatusMeta, leaveTypeMeta, revokeSummary } from '../../pages/scheduling/leaveLabels';
+import LeaveAttachments from './LeaveAttachments';
 
 /**
  * Một đơn xin nghỉ dạng thẻ — dùng ở cả màn "Đơn xin nghỉ của tôi" lẫn màn "Duyệt đơn nghỉ".
@@ -27,6 +28,7 @@ export default function LeaveTicket({ leave, showRequester = false, showLocation
       </div>
       {showRequester && <span className="leave-ticket__when">{range}</span>}
       <p className="leave-ticket__reason">{leave.reason}</p>
+      <LeaveAttachments leave={leave} />
       <span className="leave-ticket__meta">
         Gửi lúc {formatDateTime(leave.createdAt)}
         {showLocation && leave.locationName ? ` · ${leave.locationName}` : ''}

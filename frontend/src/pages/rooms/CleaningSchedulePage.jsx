@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
-import { fetchTasks } from '../../api/housekeeping';
+import { fetchAssignableStaff, fetchTasks } from '../../api/housekeeping';
 import { fetchShiftTemplates, fetchShifts } from '../../api/scheduling';
 import { fetchStaffDirectory } from '../../api/users';
+import AssignToStaffModal from '../../components/rooms/AssignToStaffModal';
 import CleaningStatusBadge, { cleaningTone } from '../../components/rooms/CleaningStatusBadge';
 import MyCleaningShiftBoard from '../../components/rooms/MyCleaningShiftBoard';
 import { TIMETABLE_QUERY } from '../../components/scheduling/WeekTimetable';
@@ -12,7 +13,7 @@ import PreviousInspectionModal from '../../components/rooms/PreviousInspectionMo
 import RoomStatusBadge from '../../components/rooms/RoomStatusBadge';
 import TaskStatusBadge from '../../components/rooms/TaskStatusBadge';
 import { formatDate, formatShortDateTime, todayIso } from './format';
-import { initials } from './cleaningBoard';
+import { compareQueue, initials } from './cleaningBoard';
 import { compareNatural, taskRoomLabel, taskSourceLabel, teamNames } from './roomLabels';
 import {
   WEEKDAY_SHORT,
@@ -42,8 +43,12 @@ const PAGE_SIZE = 500;
  *   12/10/2026), cột là ngày; ca có lịch thì hiện khối của ca đó, có việc thì khối phòng, bấm khối để xem
  *   chi tiết ({@link MyCleaningShiftBoard}). Backend chỉ trả việc có mình trong nhóm và ca của mình.
  *
- * Trạng thái cạnh phòng xem {@link CleaningStatusBadge}. Chỉ xem: giao việc, thêm / gỡ người, kiểm tra
- * phòng làm ở màn «Công việc dọn phòng».
+ * Trạng thái cạnh phòng xem {@link CleaningStatusBadge}.
+ *
+ * Quản lý giao phòng ngay trên lịch (chốt 01/11/2026): ô HÔM NAY của người có ca có nút «+ Giao phòng», mở cùng hộp
+ * thoại giao nhiều việc với bảng theo nhân viên. Chỉ hôm nay — giao là phòng sang «Đang dọn» ngay (Q5). Ai giao được
+ * và vì sao không (lễ tân duy nhất của ca phải trực quầy) do backend trả qua `assignable-staff`. Thêm / gỡ người,
+ * kiểm tra phòng vẫn làm ở màn «Công việc dọn phòng».
  */
 export default function CleaningSchedulePage() {
   const { user } = useAuth();
@@ -63,6 +68,10 @@ export default function CleaningSchedulePage() {
   const [error, setError] = useState('');
   const [opened, setOpened] = useState(null);       // { task, person } — đang xem chi tiết
   const [previousOf, setPreviousOf] = useState(null);
+  const [assignContext, setAssignContext] = useState(null); // { byId: Map người giao được hôm nay, queue }
+  const [assigningPerson, setAssigningPerson] = useState(null); // { person, tasks } — đang mở hộp giao phòng
+  const [banner, setBanner] = useState(null);       // { type, text } — kết quả giao phòng
+  const weekHasToday = days.includes(today);
 
   useEffect(() => {
     if (!isManager) return undefined;
@@ -112,6 +121,67 @@ export default function CleaningSchedulePage() {
     load();
   }, [load]);
 
+  /**
+   * Quản lý, tuần có hôm nay: ai giao được NGAY (kèm lý do nếu không) và hàng chờ. Lỗi thì chỉ là không hiện nút
+   * giao — lịch vẫn xem được.
+   */
+  const loadAssignContext = useCallback(async () => {
+    if (!isManager || !weekHasToday) {
+      setAssignContext(null);
+      return;
+    }
+    try {
+      const [people, unassigned] = await Promise.all([
+        fetchAssignableStaff(today, { ongoingOnly: true }),
+        fetchTasks({ status: 'UNASSIGNED', size: PAGE_SIZE, locationWide: true }),
+      ]);
+      setAssignContext({
+        byId: new Map((people ?? []).map((person) => [person.id, person])),
+        queue: [...(unassigned.content ?? [])].sort(compareQueue),
+      });
+    } catch {
+      setAssignContext(null);
+    }
+  }, [isManager, weekHasToday, today]);
+
+  useEffect(() => {
+    loadAssignContext();
+  }, [loadAssignContext]);
+
+  /** Nút giao phòng trong ô (người, hôm nay); {@code null} = không hiện nút. */
+  function assignFor(person, day, cell) {
+    const candidate = day === today ? assignContext?.byId.get(person.id) : null;
+    if (!candidate || cell.shifts.length === 0) return null;
+    return {
+      blockedReason: candidate.blockedReason,
+      queueEmpty: assignContext.queue.length === 0,
+      onClick: () => setAssigningPerson({
+        person: {
+          id: person.id,
+          fullName: person.fullName,
+          shiftLabel: cell.shifts.map((shift) => timeRange(shift.startTime, shift.endTime)).join(' · '),
+        },
+        tasks: assignContext.queue,
+      }),
+    };
+  }
+
+  /** Giao xong: báo cả phần giao được lẫn phần không, rồi tải lại lịch và hàng chờ. */
+  function finishAssign({ assigned, failed }) {
+    const name = assigningPerson.person.fullName;
+    setAssigningPerson(null);
+    const rooms = (tasks) => tasks.map(taskRoomLabel).join(', ');
+    setBanner(failed.length === 0
+      ? { type: 'success', text: `Đã giao ${assigned.length} phòng cho ${name}: ${rooms(assigned)}.` }
+      : {
+        type: 'error',
+        text: (assigned.length > 0 ? `Đã giao phòng ${rooms(assigned)} cho ${name}. ` : '')
+          + `Không giao được: ${failed.map(({ task, message }) => `phòng ${taskRoomLabel(task)} — ${message}`).join('; ')}`,
+      });
+    load();
+    loadAssignContext();
+  }
+
   /** Hàng của bảng theo người (Quản lý): mọi người dọn phòng của khách sạn. */
   const people = useMemo(() => {
     if (!isManager) return [];
@@ -157,7 +227,7 @@ export default function CleaningSchedulePage() {
           <h1>{isManager ? 'Lịch dọn phòng theo nhân viên' : 'Lịch dọn của tôi'}</h1>
           <p className="muted">
             {isManager
-              ? 'Mỗi ô là ca làm và các phòng dọn trong ngày. Bấm vào một phòng để xem chi tiết và người dọn cùng.'
+              ? 'Mỗi ô là ca làm và các phòng dọn trong ngày. Bấm vào một phòng để xem chi tiết và người dọn cùng; ô hôm nay của người có ca có nút «+ Giao phòng» để giao việc ngay.'
               : phone
                 ? 'Mỗi mục là một ca của bạn kèm các phòng dọn, xếp theo ngày — bấm «Xem chi tiết» để biết người dọn cùng.'
                 : 'Hàng là các ca của khách sạn, cột là ngày. Ca bạn làm hiện khối của ca đó; có việc dọn thì khối liệt kê phòng — bấm vào để xem chi tiết và người dọn cùng.'}
@@ -201,6 +271,14 @@ export default function CleaningSchedulePage() {
         )}
       </div>
 
+      {banner && (
+        <div className={`alert alert--${banner.type}`} role="status">
+          {banner.text}
+          <button type="button" className="alert__close" onClick={() => setBanner(null)} aria-label="Đóng">
+            ×
+          </button>
+        </div>
+      )}
       {error && <div className="alert alert--error" role="alert">{error}</div>}
       {loading && !week && <p className="state">Đang tải lịch dọn…</p>}
       {week && !isManager && templates === null && <p className="state">Đang tải lịch dọn…</p>}
@@ -258,15 +336,19 @@ export default function CleaningSchedulePage() {
                       </span>
                     </span>
                   </th>
-                  {days.map((day) => (
-                    <DayCell
-                      key={day}
-                      day={day}
-                      today={today}
-                      cell={cellOf(person.id, day)}
-                      onOpen={(task) => setOpened({ task, person })}
-                    />
-                  ))}
+                  {days.map((day) => {
+                    const cell = cellOf(person.id, day);
+                    return (
+                      <DayCell
+                        key={day}
+                        day={day}
+                        today={today}
+                        cell={cell}
+                        assign={assignFor(person, day, cell)}
+                        onOpen={(task) => setOpened({ task, person })}
+                      />
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -287,17 +369,46 @@ export default function CleaningSchedulePage() {
         />
       )}
       {previousOf && <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />}
+      {assigningPerson && (
+        <AssignToStaffModal
+          person={assigningPerson.person}
+          date={today}
+          today={today}
+          tasks={assigningPerson.tasks}
+          onClose={() => setAssigningPerson(null)}
+          onDone={finishAssign}
+        />
+      )}
     </div>
   );
 }
 
-/** Một ô (người, ngày): giờ ca, rồi từng phòng "301 - Deluxe" kèm trạng thái. */
-function DayCell({ day, today, cell, onOpen }) {
+/**
+ * Một ô (người, ngày): giờ ca, rồi từng phòng "301 - Deluxe" kèm trạng thái.
+ *
+ * @param assign nút «+ Giao phòng» cho ô hôm nay: `{ blockedReason, queueEmpty, onClick }`; null = không có nút
+ */
+function DayCell({ day, today, cell, assign, onOpen }) {
   const { shifts, tasks } = cell;
   return (
     <td className={dayClass(day, today)}>
       {shifts.length > 0 && (
         <p className="clean-cell__shift">Ca {shifts.map((s) => timeRange(s.startTime, s.endTime)).join(' · ')}</p>
+      )}
+      {assign && (
+        <div className="clean-cell__assign">
+          <button
+            type="button"
+            className="btn btn--primary btn--sm"
+            disabled={Boolean(assign.blockedReason) || assign.queueEmpty}
+            title={assign.blockedReason
+              ?? (assign.queueEmpty ? 'Hàng chờ không còn phòng nào' : 'Giao phòng trong hàng chờ cho người này')}
+            onClick={assign.onClick}
+          >
+            + Giao phòng
+          </button>
+          {assign.blockedReason && <small className="clean-cell__desk">Trực quầy lễ tân</small>}
+        </div>
       )}
       {tasks.map((task) => {
         const overdue = Boolean(task.overdue);   // BR-HK-04 — cờ do backend tính (ca qua đêm)

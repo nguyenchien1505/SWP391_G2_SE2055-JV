@@ -14,6 +14,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -138,6 +139,18 @@ public class GlobalExceptionHandler {
         log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
         return buildResponse(HttpStatus.CONFLICT,
             "Dữ liệu bị trùng hoặc đang được tham chiếu bởi dữ liệu khác",
+            request.getRequestURI(), null);
+    }
+
+    /**
+     * Tệp tải lên vượt giới hạn multipart ({@code spring.servlet.multipart.*}) — hiện chỉ có ảnh minh chứng đơn nghỉ
+     * (chốt 01/11/2026). Lỗi của client, không được rơi xuống 500.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleMaxUploadSize(MaxUploadSizeExceededException ex,
+                                                        HttpServletRequest request) {
+        log.warn("Upload too large: {}", ex.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, "Ảnh quá lớn — mỗi ảnh tối đa 5 MB.",
             request.getRequestURI(), null);
     }
 

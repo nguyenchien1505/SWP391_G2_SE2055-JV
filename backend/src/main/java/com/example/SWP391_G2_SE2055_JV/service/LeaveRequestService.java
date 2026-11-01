@@ -2,6 +2,9 @@ package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest.ReceptionReplacement;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateLeaveRequestRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentFile;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentInfo;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentUpload;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Candidate;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.ReceptionGap;
@@ -10,6 +13,7 @@ import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.ShiftImpact;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveRequestResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.LeaveRequest;
+import com.example.SWP391_G2_SE2055_JV.entity.LeaveRequestAttachment;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
@@ -22,12 +26,14 @@ import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.LeaveRequestAttachmentRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LeaveRequestRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftTemplateRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.UserRepository;
+import com.example.SWP391_G2_SE2055_JV.utils.ImageFileUtils;
 import com.example.SWP391_G2_SE2055_JV.utils.SecurityUtils;
 import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import lombok.RequiredArgsConstructor;
@@ -68,17 +74,17 @@ import java.util.stream.Stream;
  *   <li>Hai loại nghỉ: phép năm — trừ quỹ ({@link LeaveQuota}), gửi trước tối thiểu số ngày báo trước — và
  *       không lương, gửi được cả cho hôm nay. Không gửi cho ngày đã qua; một người không có hai đơn còn hiệu
  *       lực trùng ngày.</li>
- *   <li>Duyệt đơn: gỡ người khỏi các ca từ NGÀY MAI trở đi trong khoảng nghỉ, lý do LEAVE_APPROVED; ca của chính
- *       hôm nay giữ nguyên để Manager tự quyết (BR-SCH-17). Ca theo mẫu sẽ mất lễ tân duy nhất thì người duyệt
- *       phải chọn lễ tân thay cho từng ca mới duyệt được (BR-SCH-29 sửa, chốt 31/10/2026 — trước đó chỉ cảnh
- *       báo).</li>
+ *   <li>Duyệt đơn: gỡ người khỏi MỌI ca chưa check-in từ HÔM NAY trở đi trong khoảng nghỉ, lý do LEAVE_APPROVED
+ *       (BR-SCH-17 sửa 01/11/2026 — trước đó ca của chính hôm nay giữ lại cho Manager gỡ tay); ca đã check-in giữ
+ *       để không mất dữ liệu chấm công. Ca theo mẫu sẽ mất lễ tân duy nhất thì người duyệt phải chọn lễ tân thay
+ *       cho từng ca mới duyệt được (BR-SCH-29 sửa, chốt 31/10/2026 — trước đó chỉ cảnh báo).</li>
  *   <li>Từ chối đơn: bắt buộc lý do, người gửi đọc được vì sao đơn không được duyệt (chốt 31/10/2026).</li>
  *   <li>Đơn đã duyệt: người gửi không tự hủy; người duyệt hủy được phần ngày chưa tới, bắt buộc lý do, quỹ phép
  *       tự hoàn (BR-SCH-16 bản sửa 28/10/2026).</li>
  * </ul>
  *
- * <p>Việc dọn phòng của người nghỉ (BR-HK-07) không phải gỡ ở đây: việc dọn chỉ giao được cho HÔM NAY
- * ({@code HousekeepingService}, Q5) còn duyệt nghỉ chỉ gỡ từ ngày mai, nên trong khoảng gỡ không có việc dọn nào.
+ * <p>Việc dọn phòng của người nghỉ (BR-HK-07): việc dọn chỉ giao được cho HÔM NAY ({@code HousekeepingService},
+ * Q5), nên khi duyệt chỉ có thể còn việc của hôm nay — người nghỉ mất hết ca hôm nay thì rút khỏi các nhóm dọn đó.
  */
 @Slf4j
 @Service
@@ -93,6 +99,10 @@ public class LeaveRequestService {
 
     private static final Set<LeaveRequestStatus> APPROVED_ONLY = EnumSet.of(LeaveRequestStatus.APPROVED);
 
+    /** Ảnh minh chứng: mỗi đơn tối đa 3 ảnh, mỗi ảnh tối đa 5 MB — khớp CHECK của V14 và giới hạn multipart. */
+    static final int MAX_ATTACHMENTS = 3;
+    static final int MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
     private final LeaveRequestRepository  leaveRequestRepository;
     private final UserRepository          userRepository;
     private final PositionRepository      positionRepository;
@@ -103,6 +113,10 @@ public class LeaveRequestService {
     private final LeaveQuota              leaveQuota;
     // Lễ tân thay phải qua đủ Schedule Policy như khi xếp ca tay (BR-SCH-02).
     private final SchedulePolicyValidator policyValidator;
+    // BR-HK-07: người nghỉ mất ca hôm nay thì rút khỏi nhóm dọn hôm nay. Không vòng bean — HousekeepingService
+    // không dùng LeaveRequestService.
+    private final HousekeepingService     housekeepingService;
+    private final LeaveRequestAttachmentRepository attachmentRepository;
 
     // ── Người gửi ───────────────────────────────────────────────────────────
 
@@ -173,6 +187,69 @@ public class LeaveRequestService {
         return toResponse(leaveRequestRepository.save(leave));
     }
 
+    /**
+     * Người gửi đính kèm ảnh minh chứng cho lý do nghỉ khi đơn còn chờ duyệt (chốt 01/11/2026, thay BR-SCH-30).
+     * Mỗi đơn tối đa {@value #MAX_ATTACHMENTS} ảnh; kiểu ảnh đọc từ chính nội dung tệp — JPEG, PNG, WebP, GIF.
+     */
+    @Transactional
+    public LeaveRequestResponse addAttachments(UUID id, List<LeaveAttachmentUpload> files) {
+        LeaveRequest leave = getOwnedRequest(id);
+        if (!leave.getRequesterId().equals(SecurityUtils.getCurrentUserId())) {
+            throw new ResourceNotFoundException("LeaveRequest", "id", id);
+        }
+        if (!leave.isPending()) {
+            throw new BusinessException("Chỉ đính kèm ảnh khi đơn còn chờ duyệt.");
+        }
+        if (files == null || files.isEmpty()) {
+            throw new BusinessException("Chọn ít nhất một ảnh để đính kèm.");
+        }
+        long existing = attachmentRepository.countByLeaveRequestId(id);
+        if (existing + files.size() > MAX_ATTACHMENTS) {
+            throw new BusinessException(String.format("Mỗi đơn đính kèm tối đa %d ảnh — đơn này còn thêm được %d ảnh.",
+                MAX_ATTACHMENTS, Math.max(0, MAX_ATTACHMENTS - existing)));
+        }
+
+        List<LeaveRequestAttachment> attachments = new ArrayList<>();
+        for (LeaveAttachmentUpload file : files) {
+            String name = ImageFileUtils.displayName(file.fileName());
+            byte[] data = file.data();
+            if (data == null || data.length == 0) {
+                throw new BusinessException("Ảnh «" + name + "» rỗng.");
+            }
+            if (data.length > MAX_ATTACHMENT_BYTES) {
+                throw new BusinessException("Ảnh «" + name + "» lớn hơn 5 MB.");
+            }
+            String type = ImageFileUtils.imageTypeOf(data);
+            if (type == null) {
+                throw new BusinessException("«" + name + "» không phải ảnh JPG, PNG, WebP hoặc GIF.");
+            }
+            attachments.add(LeaveRequestAttachment.builder()
+                .tenantId(leave.getTenantId())
+                .leaveRequestId(id)
+                .fileName(name)
+                .contentType(type)
+                .sizeBytes(data.length)
+                .data(data)
+                .build());
+        }
+        attachmentRepository.saveAll(attachments);
+        log.info("Đính kèm {} ảnh vào đơn nghỉ {}", attachments.size(), id);
+        return toResponse(leave);
+    }
+
+    /** Một ảnh đính kèm — người gửi đơn, hoặc người duyệt theo cấp (BR-SCH-08). Ngoài phạm vi trả 404 như đơn. */
+    @Transactional(readOnly = true)
+    public LeaveAttachmentFile getAttachment(UUID id, UUID attachmentId) {
+        LeaveRequest leave = getOwnedRequest(id);
+        if (!leave.getRequesterId().equals(SecurityUtils.getCurrentUserId())) {
+            requesterInReviewScope(leave);
+        }
+        LeaveRequestAttachment attachment = attachmentRepository
+            .findByIdAndLeaveRequestIdAndTenantId(attachmentId, id, leave.getTenantId())
+            .orElseThrow(() -> new ResourceNotFoundException("LeaveRequestAttachment", "id", attachmentId));
+        return new LeaveAttachmentFile(attachment.getFileName(), attachment.getContentType(), attachment.getData());
+    }
+
     // ── Người duyệt ─────────────────────────────────────────────────────────
 
     /**
@@ -191,7 +268,8 @@ public class LeaveRequestService {
 
     /**
      * Xem trước khi duyệt: những ca sẽ bị gỡ, ca giữ nguyên, ca sẽ mất lễ tân duy nhất kèm các lễ tân xếp thay được
-     * (BR-SCH-29 sửa) và quỹ phép năm của người gửi — để người duyệt quyết định khi đã biết hệ quả.
+     * (BR-SCH-29 sửa), số việc dọn hôm nay sẽ gỡ theo (BR-HK-07) và quỹ phép năm của người gửi — để người duyệt
+     * quyết định khi đã biết hệ quả.
      */
     @Transactional(readOnly = true)
     public LeaveApprovalResponse previewApproval(UUID id) {
@@ -199,7 +277,10 @@ public class LeaveRequestService {
         User requester = requesterInReviewScope(leave);
         LocalDate today = todayAt(leave.getLocationId(), leave.getTenantId());
         Impact impact = impactOn(leave, requester, today);
-        return toApprovalResponse(leave, impact, receptionGapsOf(impact, requester), List.of(),
+        int cleaningTasks = losesTodaysShifts(leave, impact, today)
+            ? housekeepingService.countTasksOfDay(requester.getId(), today)
+            : 0;
+        return toApprovalResponse(leave, impact, receptionGapsOf(impact, requester), List.of(), cleaningTasks,
             balanceIfAnnual(leave, requester, today));
     }
 
@@ -208,7 +289,7 @@ public class LeaveRequestService {
      * lúc này.
      *
      * @param replacements lễ tân thay cho từng ca sẽ mất lễ tân duy nhất — bắt buộc đủ, nếu không thì không duyệt
-     * @return các ca đã gỡ / giữ, lễ tân đã xếp thay và quỹ phép sau khi duyệt
+     * @return các ca đã gỡ / giữ, lễ tân đã xếp thay, số việc dọn hôm nay đã gỡ và quỹ phép sau khi duyệt
      */
     @Transactional
     public LeaveApprovalResponse approveLeaveRequest(UUID id, List<ReceptionReplacement> replacements) {
@@ -229,15 +310,20 @@ public class LeaveRequestService {
         LocalDateTime now = nowAt(leave.getLocationId(), leave.getTenantId());
         release(impact.released(), now);
         List<Replacement> assigned = assignReplacements(impact, chosen, requester);
+        // BR-HK-07 — sau khi gỡ ca, để "còn ca hôm nay không" đọc đúng lịch mới.
+        int releasedTasks = coversDay(leave, today)
+            ? housekeepingService.releaseTasksOfDay(requester.getId(), today, UnassignedReason.LEAVE_APPROVED)
+            : 0;
 
         leave.setStatus(LeaveRequestStatus.APPROVED);
         leave.setApproverId(SecurityUtils.getCurrentUserId());
         leave.setDecidedAt(now);
         leaveRequestRepository.save(leave);
 
-        log.info("Duyệt đơn nghỉ {} của {} — gỡ {} ca, xếp {} lễ tân thay", id, requester.getEmail(),
-            impact.released().size(), assigned.size());
-        return toApprovalResponse(leave, impact, List.of(), assigned, balanceIfAnnual(leave, requester, today));
+        log.info("Duyệt đơn nghỉ {} của {} — gỡ {} ca, xếp {} lễ tân thay, gỡ {} việc dọn", id, requester.getEmail(),
+            impact.released().size(), assigned.size(), releasedTasks);
+        return toApprovalResponse(leave, impact, List.of(), assigned, releasedTasks,
+            balanceIfAnnual(leave, requester, today));
     }
 
     /**
@@ -395,8 +481,9 @@ public class LeaveRequestService {
     private record Kept(Shift shift, String note) {}
 
     /**
-     * Ca của người gửi trong khoảng nghỉ, chia theo BR-SCH-17: ca từ ngày mai chưa check-in thì gỡ; ca của chính
-     * hôm nay và ca đã check-in thì giữ; ca đã qua là lịch sử, bỏ qua.
+     * Ca của người gửi trong khoảng nghỉ, theo BR-SCH-17 sửa 01/11/2026: ca chưa check-in từ HÔM NAY trở đi thì gỡ
+     * (trước đó ca của chính hôm nay giữ lại cho Manager gỡ tay); ca đã check-in thì giữ — người đó đang / đã vào
+     * làm, gỡ là mất dữ liệu chấm công; ca đã qua là lịch sử, bỏ qua.
      */
     private Impact impactOn(LeaveRequest leave, User requester, LocalDate today) {
         List<Shift> shifts = shiftRepository.findByStaffIdAndShiftDateBetweenOrderByShiftDateAscStartTimeAsc(
@@ -407,16 +494,27 @@ public class LeaveRequestService {
             if (shift.getShiftDate().isBefore(today)) {
                 continue;
             }
-            if (shift.getShiftDate().equals(today)) {
-                kept.add(new Kept(shift, "Ca của hôm nay không tự gỡ — gỡ tay ở màn Xếp lịch nếu người này nghỉ luôn hôm nay."));
-            } else if (shift.getCheckInAt() != null) {
-                kept.add(new Kept(shift, "Đã check-in — gỡ người sẽ mất dữ liệu chấm công."));
+            if (shift.getCheckInAt() != null) {
+                kept.add(new Kept(shift, "Đã check-in — giữ nguyên để không mất dữ liệu chấm công."));
             } else {
                 released.add(shift);
             }
         }
         List<Shift> receptionGaps = released.stream().filter(receptionCoverage::losesOnlyReceptionist).toList();
         return new Impact(released, kept, receptionGaps, templateNamesOf(shifts));
+    }
+
+    private static boolean coversDay(LeaveRequest leave, LocalDate day) {
+        return !day.isBefore(leave.getFromDate()) && !day.isAfter(leave.getToDate());
+    }
+
+    /**
+     * Duyệt đơn này có làm người gửi mất hết ca hôm nay không — khi đó việc dọn hôm nay của họ bị gỡ theo (BR-HK-07).
+     * Ca hôm nay đã check-in được giữ thì họ vẫn đang làm, giữ việc.
+     */
+    private static boolean losesTodaysShifts(LeaveRequest leave, Impact impact, LocalDate today) {
+        return coversDay(leave, today)
+            && impact.kept().stream().noneMatch(kept -> kept.shift().getShiftDate().equals(today));
     }
 
     /**
@@ -586,7 +684,8 @@ public class LeaveRequestService {
     // ── Dựng response ───────────────────────────────────────────────────────
 
     private LeaveApprovalResponse toApprovalResponse(LeaveRequest leave, Impact impact, List<ReceptionGap> receptionGaps,
-                                                     List<Replacement> replacements, LeaveBalanceResponse balance) {
+                                                     List<Replacement> replacements, int cleaningTasks,
+                                                     LeaveBalanceResponse balance) {
         return LeaveApprovalResponse.builder()
             .request(toResponse(leave))
             .releasedShifts(impact.released().stream()
@@ -597,6 +696,7 @@ public class LeaveRequestService {
                 .toList())
             .receptionGaps(receptionGaps)
             .replacements(replacements)
+            .releasedCleaningTasks(cleaningTasks)
             .balance(balance)
             .build();
     }
@@ -615,7 +715,10 @@ public class LeaveRequestService {
         return new PageImpl<>(toResponses(page.getContent()), page.getPageable(), page.getTotalElements());
     }
 
-    /** Người gửi, người duyệt / hủy, vị trí và khách sạn cho CẢ trang — mỗi loại một câu truy vấn, tránh N+1. */
+    /**
+     * Người gửi, người duyệt / hủy, vị trí, khách sạn và ảnh đính kèm cho CẢ trang — mỗi loại một câu truy vấn, tránh
+     * N+1. Ảnh chỉ đọc thông tin, không đọc dữ liệu ảnh.
+     */
     private List<LeaveRequestResponse> toResponses(List<LeaveRequest> leaves) {
         Set<UUID> userIds = leaves.stream()
             .flatMap(leave -> Stream.of(leave.getRequesterId(), leave.getApproverId(), leave.getRevokedBy()))
@@ -630,6 +733,10 @@ public class LeaveRequestService {
                 .collect(Collectors.toMap(Position::getId, Position::getName));
         Map<UUID, String> locationNames = locationRepository.findNamesByIds(
             leaves.stream().map(LeaveRequest::getLocationId).collect(Collectors.toSet()));
+        Map<UUID, List<LeaveAttachmentInfo>> attachments = leaves.isEmpty() ? Map.of()
+            : attachmentRepository.findInfoByLeaveRequestIds(leaves.stream().map(LeaveRequest::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(LeaveAttachmentInfo::leaveRequestId));
 
         return leaves.stream().map(leave -> {
             User requester = users.get(leave.getRequesterId());
@@ -638,7 +745,8 @@ public class LeaveRequestService {
             User approver = leave.getApproverId() == null ? null : users.get(leave.getApproverId());
             User revoker = leave.getRevokedBy() == null ? null : users.get(leave.getRevokedBy());
             return LeaveRequestResponse.fromEntity(leave, requester, positionName,
-                locationNames.get(leave.getLocationId()), approver, revoker);
+                locationNames.get(leave.getLocationId()), approver, revoker,
+                attachments.getOrDefault(leave.getId(), List.of()));
         }).toList();
     }
 

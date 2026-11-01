@@ -20,12 +20,19 @@ public class AssignableStaffResponse {
     private UUID   id;
     private String fullName;
     private String phone;
+    /**
+     * Vì sao CHƯA giao việc dọn được dù có ca và quyền Dọn dẹp — hiện là "lễ tân duy nhất của ca, phải trực quầy"
+     * (chốt 01/11/2026). {@code null} = giao được. Vẫn trả người này để bảng theo nhân viên đủ hàng và hộp phân
+     * công hiện lý do thay vì giấu người.
+     */
+    private String blockedReason;
 
-    public static AssignableStaffResponse fromEntity(User staff) {
+    public static AssignableStaffResponse fromEntity(User staff, String blockedReason) {
         return AssignableStaffResponse.builder()
             .id(staff.getId())
             .fullName(staff.getFullName())
             .phone(staff.getPhone())
+            .blockedReason(blockedReason)
             .build();
     }
 }

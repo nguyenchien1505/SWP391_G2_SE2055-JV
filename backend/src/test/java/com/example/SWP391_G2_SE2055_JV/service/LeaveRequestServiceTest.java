@@ -2,12 +2,14 @@ package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest.ReceptionReplacement;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateLeaveRequestRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentUpload;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Candidate;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.ShiftImpact;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveRequestResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.LeaveRequest;
+import com.example.SWP391_G2_SE2055_JV.entity.LeaveRequestAttachment;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
 import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
@@ -22,6 +24,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.LeaveRequestAttachmentRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LeaveRequestRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
@@ -96,6 +99,8 @@ class LeaveRequestServiceTest {
     @Mock ReceptionCoverageRule   receptionCoverage;
     @Mock LeaveQuota              leaveQuota;
     @Mock SchedulePolicyValidator policyValidator;
+    @Mock HousekeepingService     housekeepingService;
+    @Mock LeaveRequestAttachmentRepository attachmentRepository;
 
     @InjectMocks LeaveRequestService service;
 
@@ -309,9 +314,12 @@ class LeaveRequestServiceTest {
     @Nested
     class Approve {
 
-        /** BR-SCH-17: gỡ ca từ ngày mai; ca hôm nay và ca đã check-in giữ nguyên; ca đã qua không đụng. */
+        /**
+         * BR-SCH-17 sửa 01/11/2026: gỡ MỌI ca chưa check-in từ hôm nay — kể cả ca của chính hôm nay; ca đã check-in
+         * giữ nguyên; ca đã qua không đụng. Mất hết ca hôm nay thì việc dọn hôm nay cũng gỡ theo (BR-HK-07).
+         */
         @Test
-        void shouldReleaseShiftsFromTomorrowAndKeepTodaysShift() {
+        void shouldReleaseShiftsFromTodayAndKeepCheckedInShift() {
             loginAs(manager);
             LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.minusDays(1), today.plusDays(3)));
             Shift past = shift(staff, today.minusDays(1));
@@ -320,29 +328,61 @@ class LeaveRequestServiceTest {
             Shift checkedIn = shift(staff, today.plusDays(2));
             checkedIn.setCheckInAt(LocalDateTime.now());
             stubShifts(leave, past, todays, tomorrow, checkedIn);
+            when(housekeepingService.releaseTasksOfDay(staff.getId(), today, UnassignedReason.LEAVE_APPROVED))
+                .thenReturn(2);
 
             LeaveApprovalResponse result = service.approveLeaveRequest(leave.getId(), List.of());
 
+            assertThat(todays.getStaffId()).isNull();
+            assertThat(todays.getUnassignedReason()).isEqualTo(UnassignedReason.LEAVE_APPROVED);
             assertThat(tomorrow.getStaffId()).isNull();
             assertThat(tomorrow.getUnassignedReason()).isEqualTo(UnassignedReason.LEAVE_APPROVED);
             assertThat(tomorrow.getUnassignedAt()).isNotNull();
-            assertThat(todays.getStaffId()).isEqualTo(staff.getId());
             assertThat(checkedIn.getStaffId()).isEqualTo(staff.getId());
             assertThat(past.getStaffId()).isEqualTo(staff.getId());
-            assertThat(result.getReleasedShifts()).extracting(ShiftImpact::shiftId).containsExactly(tomorrow.getId());
-            assertThat(result.getKeptShifts()).extracting(ShiftImpact::shiftId)
-                .containsExactly(todays.getId(), checkedIn.getId());
-            assertThat(result.getKeptShifts()).allSatisfy(kept -> assertThat(kept.note()).isNotBlank());
+            assertThat(result.getReleasedShifts()).extracting(ShiftImpact::shiftId)
+                .containsExactly(todays.getId(), tomorrow.getId());
+            assertThat(result.getKeptShifts()).extracting(ShiftImpact::shiftId).containsExactly(checkedIn.getId());
+            assertThat(result.getKeptShifts()).allSatisfy(kept -> assertThat(kept.note()).contains("check-in"));
             assertThat(result.getReleasedShifts().get(0).templateName()).isEqualTo("Ca sáng");
             assertThat(result.getReceptionGaps()).isEmpty();
             assertThat(result.getReplacements()).isEmpty();
+            assertThat(result.getReleasedCleaningTasks()).isEqualTo(2);
             assertThat(result.getBalance()).isNull();
 
             assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
             assertThat(leave.getApproverId()).isEqualTo(manager.getId());
             assertThat(leave.getDecidedAt()).isNotNull();
             assertThat(result.getRequest().getApproverName()).isEqualTo("Trần Quản Lý");
-            verify(shiftRepository).saveAll(List.of(tomorrow));
+            verify(shiftRepository).saveAll(List.of(todays, tomorrow));
+        }
+
+        /** Đơn chưa tới hôm nay: không có việc dọn nào của người nghỉ để gỡ (việc dọn chỉ giao trong ngày — Q5). */
+        @Test
+        void shouldNotTouchCleaningTasksWhenLeaveStartsLater() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(3)));
+
+            LeaveApprovalResponse result = service.approveLeaveRequest(leave.getId(), List.of());
+
+            assertThat(result.getReleasedCleaningTasks()).isZero();
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** Xem trước báo trước số việc dọn hôm nay sẽ gỡ theo — chỉ khi người đó mất hết ca hôm nay. */
+        @Test
+        void shouldPreviewCleaningTasksOnlyWhenTodaysShiftsAreReleased() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today, today));
+            Shift todays = shift(staff, today);
+            stubShifts(leave, todays);
+            when(housekeepingService.countTasksOfDay(staff.getId(), today)).thenReturn(3);
+
+            assertThat(service.previewApproval(leave.getId()).getReleasedCleaningTasks()).isEqualTo(3);
+
+            todays.setCheckInAt(LocalDateTime.now());
+            assertThat(service.previewApproval(leave.getId()).getReleasedCleaningTasks()).isZero();
+            verify(housekeepingService).countTasksOfDay(staff.getId(), today);
         }
 
         /** Quỹ chỉ bị trừ khi duyệt: lúc duyệt mà quỹ chưa dùng không đủ thì chặn, không đổi gì. */
@@ -780,6 +820,109 @@ class LeaveRequestServiceTest {
             leave.setApproverId(requester == manager ? director.getId() : manager.getId());
             leave.setDecidedAt(today.minusDays(7).atTime(9, 0));
             return leave;
+        }
+    }
+
+    // ── Ảnh minh chứng — chốt 01/11/2026, thay BR-SCH-30 ───────────────────
+
+    @Nested
+    class Attachments {
+
+        /** Chữ ký PNG thật ở 8 byte đầu — đủ để nhận ra kiểu ảnh. */
+        private final byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0};
+
+        private LeaveRequest leave;
+
+        @BeforeEach
+        void pendingLeaveOfStaff() {
+            leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void shouldAttachImageToOwnPendingRequest() {
+            loginAs(staff);
+
+            service.addAttachments(leave.getId(), List.of(new LeaveAttachmentUpload("C:\\fakepath\\giay-kham.png", png)));
+
+            ArgumentCaptor<List<LeaveRequestAttachment>> saved = ArgumentCaptor.forClass(List.class);
+            verify(attachmentRepository).saveAll(saved.capture());
+            assertThat(saved.getValue()).singleElement().satisfies(image -> {
+                assertThat(image.getFileName()).isEqualTo("giay-kham.png");
+                assertThat(image.getContentType()).isEqualTo("image/png");
+                assertThat(image.getSizeBytes()).isEqualTo(png.length);
+                assertThat(image.getLeaveRequestId()).isEqualTo(leave.getId());
+                assertThat(image.getTenantId()).isEqualTo(TENANT_ID);
+            });
+        }
+
+        /** Kiểu ảnh đọc từ nội dung tệp — đổi đuôi ".png" cho một tệp PDF không qua được. */
+        @Test
+        void shouldRefuseFileThatIsNotAnImage() {
+            loginAs(staff);
+
+            assertThatThrownBy(() -> service.addAttachments(leave.getId(),
+                    List.of(new LeaveAttachmentUpload("don.png", "%PDF-1.7".getBytes()))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("không phải ảnh");
+            verify(attachmentRepository, never()).saveAll(any());
+        }
+
+        @Test
+        void shouldRefuseMoreThanThreeImagesPerRequest() {
+            loginAs(staff);
+            when(attachmentRepository.countByLeaveRequestId(leave.getId())).thenReturn(2L);
+
+            assertThatThrownBy(() -> service.addAttachments(leave.getId(), List.of(
+                    new LeaveAttachmentUpload("1.png", png), new LeaveAttachmentUpload("2.png", png))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("tối đa 3 ảnh")
+                .hasMessageContaining("còn thêm được 1 ảnh");
+            verify(attachmentRepository, never()).saveAll(any());
+        }
+
+        @Test
+        void shouldOnlyAttachWhilePending() {
+            loginAs(staff);
+            leave.setStatus(LeaveRequestStatus.REJECTED);
+
+            assertThatThrownBy(() -> service.addAttachments(leave.getId(), List.of(new LeaveAttachmentUpload("a.png", png))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("chờ duyệt");
+        }
+
+        /** Chỉ người gửi đính kèm được — người khác (kể cả người duyệt) nhận 404 như không thấy đơn. */
+        @Test
+        void shouldHideRequestFromOtherUploaders() {
+            loginAs(manager);
+
+            assertThatThrownBy(() -> service.addAttachments(leave.getId(), List.of(new LeaveAttachmentUpload("a.png", png))))
+                .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        void shouldLetRequesterAndReviewerOpenImage() {
+            LeaveRequestAttachment image = LeaveRequestAttachment.builder()
+                .id(UUID.randomUUID()).tenantId(TENANT_ID).leaveRequestId(leave.getId())
+                .fileName("giay-kham.png").contentType("image/png").sizeBytes(png.length).data(png)
+                .build();
+            when(attachmentRepository.findByIdAndLeaveRequestIdAndTenantId(image.getId(), leave.getId(), TENANT_ID))
+                .thenReturn(Optional.of(image));
+
+            loginAs(staff);
+            assertThat(service.getAttachment(leave.getId(), image.getId()).data()).isEqualTo(png);
+            loginAs(manager);
+            assertThat(service.getAttachment(leave.getId(), image.getId()).contentType()).isEqualTo("image/png");
+        }
+
+        /** Giám đốc không duyệt đơn của Staff (BR-SCH-08) nên cũng không xem được ảnh — 404 như đơn. */
+        @Test
+        void shouldHideImageOutsideReviewScope() {
+            loginAs(director);
+
+            assertThatThrownBy(() -> service.getAttachment(leave.getId(), UUID.randomUUID()))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verify(attachmentRepository, never()).findByIdAndLeaveRequestIdAndTenantId(any(), any(), any());
         }
     }
 

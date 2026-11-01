@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -104,6 +105,29 @@ public class ReceptionCoverageRule {
         Set<UUID> after = crewOf(leaving.getLocationId(), leaving.getShiftDate(), leaving.getSourceTemplateId(),
             leaving.getId());
         return hasReceptionist(before) && !hasReceptionist(after);
+    }
+
+    /**
+     * Ca theo mẫu ngày {@code date} tại {@code locationId} mà {@code staff} là lễ tân DUY NHẤT, dạng "Ca sáng ngày
+     * 01/11/2026" — người đó phải trực quầy nên không nhận việc dọn phòng (chốt 01/11/2026). Không có quyền Lễ tân,
+     * hoặc ca nào của họ cũng còn lễ tân khác, thì rỗng. Ca tự nhập giờ không tính, như luật "mỗi ca phải có lễ tân".
+     */
+    public Optional<String> soleReceptionShift(User staff, UUID locationId, LocalDate date) {
+        if (!staff.getPermissions().contains(StaffPermission.RECEPTION)) {
+            return Optional.empty();
+        }
+        for (Shift shift : shiftRepository.findByStaffIdAndShiftDateBetweenOrderByShiftDateAscStartTimeAsc(
+                staff.getId(), date, date)) {
+            if (shift.getSourceTemplateId() == null || !locationId.equals(shift.getLocationId())) {
+                continue;
+            }
+            Set<UUID> others = crewOf(locationId, date, shift.getSourceTemplateId(), null);
+            others.remove(staff.getId());
+            if (!hasReceptionist(others)) {
+                return Optional.of(templateName(shift.getSourceTemplateId()) + " ngày " + date.format(DAY));
+            }
+        }
+        return Optional.empty();
     }
 
     /** Người đang có trong ca, trừ slot {@code excludeShiftId} (nếu có). */
