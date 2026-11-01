@@ -31,6 +31,28 @@ export async function fetchMyLeaveBalance() {
   return data;
 }
 
+/**
+ * POST /{id}/attachments — người gửi đính kèm ảnh minh chứng cho đơn còn chờ duyệt (chốt 01/11/2026, thay
+ * BR-SCH-30): multipart, phần `files`; tối đa 3 ảnh mỗi đơn, 5 MB mỗi ảnh. Trả đơn kèm `attachments` mới.
+ */
+export async function uploadLeaveAttachments(id, files) {
+  const form = new FormData();
+  files.forEach((file) => form.append('files', file, file.name));
+  const { data } = await api.post(`/scheduling/leave-requests/${id}/attachments`, form);
+  return data;
+}
+
+/**
+ * GET /{id}/attachments/{attachmentId} — một ảnh, dạng Blob. Tải qua axios (kèm cookie phiên) rồi tạo object URL:
+ * thẻ <img> trỏ thẳng sang backend khác origin không chắc được gửi kèm cookie.
+ */
+export async function fetchLeaveAttachment(id, attachmentId) {
+  const { data } = await api.get(`/scheduling/leave-requests/${id}/attachments/${attachmentId}`, {
+    responseType: 'blob',
+  });
+  return data;
+}
+
 /** PATCH /{id}/cancel — tự hủy đơn còn chờ duyệt (BR-SCH-16). */
 export async function cancelLeaveRequest(id) {
   const { data } = await api.patch(`/scheduling/leave-requests/${id}/cancel`);
@@ -55,21 +77,29 @@ export async function fetchLeaveReviewQueue({ status, page = 0, size = 20 } = {}
 
 /**
  * GET /{id}/approval-preview — hệ quả nếu duyệt: `releasedShifts` (ca sẽ gỡ), `keptShifts` (ca hôm nay / đã
- * check-in, kèm `note`), `receptionWarnings` (ca sẽ mất lễ tân duy nhất — BR-SCH-29) và `balance` (phép năm).
+ * check-in, kèm `note`), `receptionGaps` (ca sẽ mất lễ tân duy nhất, mỗi ca `{ shift, candidates }` — `candidates`
+ * là lễ tân xếp thay được; BR-SCH-29 sửa 31/10/2026) và `balance` (phép năm).
  */
 export async function fetchLeaveApprovalPreview(id) {
   const { data } = await api.get(`/scheduling/leave-requests/${id}/approval-preview`);
   return data;
 }
 
-/** PATCH /{id}/approve — duyệt; trả cùng cấu trúc với bản xem trước, lúc này là các ca ĐÃ gỡ. */
-export async function approveLeaveRequest(id) {
-  const { data } = await api.patch(`/scheduling/leave-requests/${id}/approve`);
+/**
+ * PATCH /{id}/approve — duyệt; trả cùng cấu trúc với bản xem trước, lúc này là các ca ĐÃ gỡ và `replacements` (lễ
+ * tân đã xếp thay). Có ca sẽ mất lễ tân duy nhất thì bắt buộc gửi `[{ shiftId, staffId }]` cho TỪNG ca đó.
+ */
+export async function approveLeaveRequest(id, replacements = []) {
+  const { data } = await api.patch(`/scheduling/leave-requests/${id}/approve`, { replacements });
   return data;
 }
 
-export async function rejectLeaveRequest(id) {
-  const { data } = await api.patch(`/scheduling/leave-requests/${id}/reject`);
+/**
+ * PATCH /{id}/reject — từ chối đơn đang chờ duyệt, bắt buộc lý do (chốt 31/10/2026). Người gửi đọc được lý do ở
+ * `rejectReason` của đơn. Lịch làm việc không đổi.
+ */
+export async function rejectLeaveRequest(id, reason) {
+  const { data } = await api.patch(`/scheduling/leave-requests/${id}/reject`, { reason });
   return data;
 }
 

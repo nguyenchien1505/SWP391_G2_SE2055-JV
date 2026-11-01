@@ -117,6 +117,9 @@ public class HousekeepingService {
     private final RoomStatusService          roomStatusService;
     private final SupervisorDutyRule         supervisorDutyRule;
     private final CleaningWorkDayRule        cleaningWorkDayRule;
+    // Lễ tân duy nhất của một ca phải trực quầy, không nhận việc dọn (chốt 01/11/2026). Không vòng bean —
+    // ReceptionCoverageRule chỉ dùng repository.
+    private final ReceptionCoverageRule      receptionCoverage;
 
     /**
      * Lịch dọn. Nhân viên chỉ thấy việc có mình trong nhóm dọn (BR-PERM-05); Manager chỉ thấy
@@ -398,9 +401,35 @@ public class HousekeepingService {
      */
     @Transactional
     public int releaseFutureTasks(UUID staffId, UnassignedReason reason, LocalDate today) {
-        List<HousekeepingTask> tasks =
-            taskRepository.findOfStaffAfter(staffId, HousekeepingTaskStatus.IN_PROGRESS, today);
+        return leaveTeams(staffId,
+            taskRepository.findOfStaffAfter(staffId, HousekeepingTaskStatus.IN_PROGRESS, today), reason);
+    }
 
+    /**
+     * BR-HK-07 cho CHÍNH một ngày: người làm vừa mất hết ca của ngày {@code date} — duyệt đơn nghỉ có hôm nay
+     * (BR-SCH-17 sửa 01/11/2026) — thì cũng ra khỏi nhóm dọn của ngày đó, kèm lý do. Còn ca trong ngày (ca đã
+     * check-in được giữ) thì người đó vẫn đang làm, giữ nguyên việc. Gọi SAU khi đã gỡ ca, để "còn ca" đọc đúng
+     * lịch mới.
+     *
+     * @return số việc người này bị gỡ khỏi
+     */
+    @Transactional
+    public int releaseTasksOfDay(UUID staffId, LocalDate date, UnassignedReason reason) {
+        if (shiftRepository.existsByStaffIdAndShiftDate(staffId, date)) {
+            return 0;
+        }
+        return leaveTeams(staffId,
+            taskRepository.findOfStaffOn(staffId, date, HousekeepingTaskStatus.IN_PROGRESS), reason);
+    }
+
+    /** Số việc dọn đang làm ngày {@code date} có người này trong nhóm — xem trước khi duyệt đơn nghỉ. */
+    @Transactional(readOnly = true)
+    public int countTasksOfDay(UUID staffId, LocalDate date) {
+        return taskRepository.findOfStaffOn(staffId, date, HousekeepingTaskStatus.IN_PROGRESS).size();
+    }
+
+    /** Rút tên một người khỏi nhóm dọn của các việc; hết người thì việc về hàng chờ, phòng về «Chờ dọn». */
+    private int leaveTeams(UUID staffId, List<HousekeepingTask> tasks, UnassignedReason reason) {
         for (HousekeepingTask task : tasks) {
             task.getAssigneeIds().remove(staffId);
             if (!task.isAssigned()) {
@@ -495,6 +524,8 @@ public class HousekeepingService {
      *                    đang làm dở ca qua đêm bắt đầu hôm qua (BR-SCH-03), ngày khác thì rỗng. Không bật
      *                    thì trả mọi người có ca ngày đó — bảng "Theo nhân viên" dựng hàng cho cả ngày đã
      *                    qua / tương lai để xem.
+     * @return người là lễ tân duy nhất của ca ngày đó vẫn có mặt nhưng kèm {@code blockedReason} — màn hình hiện
+     *         lý do và không cho chọn (chốt 01/11/2026)
      */
     @Transactional(readOnly = true)
     public List<AssignableStaffResponse> getAssignableStaff(LocalDate date, boolean ongoingOnly) {
@@ -504,7 +535,13 @@ public class HousekeepingService {
         List<User> staff = ongoingOnly
             ? findAssignableNow(tenantId, locationId, date)
             : findAssignable(tenantId, locationId, date);
-        return staff.stream().map(AssignableStaffResponse::fromEntity).toList();
+        // Lễ tân duy nhất của ca vẫn có trong danh sách, kèm lý do — cùng luật assertCanReceiveTask sẽ chặn.
+        return staff.stream()
+            .map(person -> AssignableStaffResponse.fromEntity(person,
+                receptionCoverage.soleReceptionShift(person, locationId, date)
+                    .map(shift -> deskDutyReason(person, shift))
+                    .orElse(null)))
+            .toList();
     }
 
     /**
@@ -591,6 +628,18 @@ public class HousekeepingService {
         // phải cùng mốc với lịch làm việc, nếu không ca và task lệch nhau một ngày.
         LocalDateTime now = ShiftTimeUtils.nowAt(locationTimezoneOf(task));
         cleaningWorkDayRule.assertIsCurrentWorkDay(staff, task.getLocationId(), date, now);
+
+        // Chốt 01/11/2026: lễ tân DUY NHẤT của một ca phải trực quầy — không nhận việc dọn, gán tay lẫn tự nhận.
+        Optional<String> desk = receptionCoverage.soleReceptionShift(staff, task.getLocationId(), date);
+        if (desk.isPresent()) {
+            throw new BusinessException(deskDutyReason(staff, desk.get()));
+        }
+    }
+
+    /** Câu cho người điều phối: vì sao người này không nhận việc dọn — {@code shift} dạng "Ca sáng ngày 01/11/2026". */
+    private static String deskDutyReason(User staff, String shift) {
+        return staff.getFullName() + " là lễ tân duy nhất của " + shift
+            + " nên phải trực quầy — không giao việc dọn phòng được.";
     }
 
     /**
@@ -600,6 +649,7 @@ public class HousekeepingService {
      * <ol>
      *   <li>có ca thuộc ngày làm hiện tại tại khách sạn mình (kể cả ca đêm từ hôm qua — BR-SCH-03);</li>
      *   <li>một ca trong đó đã vào ca và chưa kết thúc ca;</li>
+     *   <li>không phải lễ tân duy nhất của ca nào trong ngày làm đó — phải trực quầy (chốt 01/11/2026);</li>
      *   <li>không giữ việc «Đang thực hiện» nào, ở MỌI ngày, kể cả việc được gán tay — «Chờ kiểm tra»
      *       không tính vì phần của người dọn đã xong.</li>
      * </ol>
@@ -622,6 +672,12 @@ public class HousekeepingService {
         }
 
         LocalDate workDay = working.get().getShiftDate();
+        Optional<String> desk = userRepository.findByIdAndTenantId(staffId, SecurityUtils.getCurrentTenantId())
+            .flatMap(me -> receptionCoverage.soleReceptionShift(me, locationId, workDay));
+        if (desk.isPresent()) {
+            return ClaimCheck.blocked("Bạn là lễ tân duy nhất của " + desk.get()
+                + " nên phải trực quầy — chưa nhận việc dọn phòng được.", workDay);
+        }
         List<HousekeepingTask> holding = taskRepository.search(SecurityUtils.getCurrentTenantId(), null, staffId,
             HousekeepingTaskStatus.IN_PROGRESS, null, null, null, null, Pageable.unpaged()).getContent();
         if (!holding.isEmpty()) {

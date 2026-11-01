@@ -30,6 +30,7 @@ const TABS = [
  * Đầu trang là quỹ phép năm: phép tích lũy theo tháng làm việc, đơn đang chờ duyệt đã tính vào phần "còn lại"
  * (BR-SCH-28). Đơn của nhân viên do quản lý khách sạn duyệt, đơn của quản lý do giám đốc duyệt (BR-SCH-08).
  * Chỉ đơn còn chờ duyệt mới tự hủy được; đơn đã duyệt thì người duyệt hủy phần còn lại (BR-SCH-16 sửa 28/10/2026).
+ * Đơn bị từ chối luôn kèm lý do của người duyệt, hiện ngay trên thẻ đơn (chốt 31/10/2026).
  */
 export default function MyLeavePage() {
   const { user } = useAuth();
@@ -79,12 +80,17 @@ export default function MyLeavePage() {
     load(0);
   }, [load]);
 
-  function finishCreate(created) {
+  /** Ảnh gửi sau đơn: ảnh lỗi thì đơn vẫn đã gửi — nói rõ phần nào xong, phần nào chưa. */
+  function finishCreate(created, attachmentError) {
     setCreating(false);
-    setBanner({
-      type: 'success',
-      text: `Đã gửi đơn nghỉ ${formatLeaveRange(created.fromDate, created.toDate)} — chờ ${approverLabel.toLowerCase()} duyệt.`,
-    });
+    const range = formatLeaveRange(created.fromDate, created.toDate);
+    const images = created.attachments?.length ?? 0;
+    setBanner(attachmentError
+      ? { type: 'warn', text: `Đã gửi đơn nghỉ ${range} nhưng chưa đính kèm được ảnh: ${attachmentError}` }
+      : {
+        type: 'success',
+        text: `Đã gửi đơn nghỉ ${range}${images > 0 ? ` kèm ${images} ảnh` : ''} — chờ ${approverLabel.toLowerCase()} duyệt.`,
+      });
     loadBalance();
     load(0);
   }
@@ -109,8 +115,8 @@ export default function MyLeavePage() {
           <p className="breadcrumb">Lịch làm việc › Đơn xin nghỉ</p>
           <h1>Đơn xin nghỉ của tôi</h1>
           <p className="muted">
-            Đơn do {approverLabel.toLowerCase()} duyệt. Duyệt xong, các ca từ ngày mai trong khoảng nghỉ tự gỡ khỏi
-            lịch của bạn; ca của chính hôm nay quản lý sẽ xếp lại. Đơn đã duyệt mà muốn đi làm lại sớm thì nhờ{' '}
+            Đơn do {approverLabel.toLowerCase()} duyệt. Duyệt xong, mọi ca trong khoảng nghỉ — kể cả ca hôm nay nếu bạn
+            chưa vào ca — tự gỡ khỏi lịch của bạn. Đơn đã duyệt mà muốn đi làm lại sớm thì nhờ{' '}
             {approverLabel.toLowerCase()} hủy phần còn lại — phép năm được hoàn.
           </p>
         </div>

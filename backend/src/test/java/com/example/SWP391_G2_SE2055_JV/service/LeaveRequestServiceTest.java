@@ -1,12 +1,17 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest.ReceptionReplacement;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateLeaveRequestRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentUpload;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Candidate;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.ShiftImpact;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveRequestResponse;
 import com.example.SWP391_G2_SE2055_JV.entity.LeaveRequest;
+import com.example.SWP391_G2_SE2055_JV.entity.LeaveRequestAttachment;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
+import com.example.SWP391_G2_SE2055_JV.entity.Position;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import com.example.SWP391_G2_SE2055_JV.entity.ShiftTemplate;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
@@ -14,10 +19,12 @@ import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveType;
 import com.example.SWP391_G2_SE2055_JV.enums.PositionType;
 import com.example.SWP391_G2_SE2055_JV.enums.Role;
+import com.example.SWP391_G2_SE2055_JV.enums.StaffPermission;
 import com.example.SWP391_G2_SE2055_JV.enums.UnassignedReason;
 import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
+import com.example.SWP391_G2_SE2055_JV.repository.LeaveRequestAttachmentRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LeaveRequestRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.LocationRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.PositionRepository;
@@ -36,6 +43,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
@@ -44,6 +52,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,6 +64,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -74,6 +85,7 @@ class LeaveRequestServiceTest {
     private static final UUID LOCATION_ID       = UUID.randomUUID();
     private static final UUID OTHER_LOCATION_ID = UUID.randomUUID();
     private static final UUID TEMPLATE_ID       = UUID.randomUUID();
+    private static final UUID RECEPTION_POSITION_ID = UUID.randomUUID();
     private static final String TIMEZONE        = "Asia/Ho_Chi_Minh";
     private static final DateTimeFormatter DAY  = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final Pageable PAGE          = PageRequest.of(0, 20);
@@ -86,6 +98,9 @@ class LeaveRequestServiceTest {
     @Mock ShiftTemplateRepository shiftTemplateRepository;
     @Mock ReceptionCoverageRule   receptionCoverage;
     @Mock LeaveQuota              leaveQuota;
+    @Mock SchedulePolicyValidator policyValidator;
+    @Mock HousekeepingService     housekeepingService;
+    @Mock LeaveRequestAttachmentRepository attachmentRepository;
 
     @InjectMocks LeaveRequestService service;
 
@@ -299,9 +314,12 @@ class LeaveRequestServiceTest {
     @Nested
     class Approve {
 
-        /** BR-SCH-17: gỡ ca từ ngày mai; ca hôm nay và ca đã check-in giữ nguyên; ca đã qua không đụng. */
+        /**
+         * BR-SCH-17 sửa 01/11/2026: gỡ MỌI ca chưa check-in từ hôm nay — kể cả ca của chính hôm nay; ca đã check-in
+         * giữ nguyên; ca đã qua không đụng. Mất hết ca hôm nay thì việc dọn hôm nay cũng gỡ theo (BR-HK-07).
+         */
         @Test
-        void shouldReleaseShiftsFromTomorrowAndKeepTodaysShift() {
+        void shouldReleaseShiftsFromTodayAndKeepCheckedInShift() {
             loginAs(manager);
             LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.minusDays(1), today.plusDays(3)));
             Shift past = shift(staff, today.minusDays(1));
@@ -310,45 +328,61 @@ class LeaveRequestServiceTest {
             Shift checkedIn = shift(staff, today.plusDays(2));
             checkedIn.setCheckInAt(LocalDateTime.now());
             stubShifts(leave, past, todays, tomorrow, checkedIn);
+            when(housekeepingService.releaseTasksOfDay(staff.getId(), today, UnassignedReason.LEAVE_APPROVED))
+                .thenReturn(2);
 
-            LeaveApprovalResponse result = service.approveLeaveRequest(leave.getId());
+            LeaveApprovalResponse result = service.approveLeaveRequest(leave.getId(), List.of());
 
+            assertThat(todays.getStaffId()).isNull();
+            assertThat(todays.getUnassignedReason()).isEqualTo(UnassignedReason.LEAVE_APPROVED);
             assertThat(tomorrow.getStaffId()).isNull();
             assertThat(tomorrow.getUnassignedReason()).isEqualTo(UnassignedReason.LEAVE_APPROVED);
             assertThat(tomorrow.getUnassignedAt()).isNotNull();
-            assertThat(todays.getStaffId()).isEqualTo(staff.getId());
             assertThat(checkedIn.getStaffId()).isEqualTo(staff.getId());
             assertThat(past.getStaffId()).isEqualTo(staff.getId());
-            assertThat(result.getReleasedShifts()).extracting(ShiftImpact::shiftId).containsExactly(tomorrow.getId());
-            assertThat(result.getKeptShifts()).extracting(ShiftImpact::shiftId)
-                .containsExactly(todays.getId(), checkedIn.getId());
-            assertThat(result.getKeptShifts()).allSatisfy(kept -> assertThat(kept.note()).isNotBlank());
+            assertThat(result.getReleasedShifts()).extracting(ShiftImpact::shiftId)
+                .containsExactly(todays.getId(), tomorrow.getId());
+            assertThat(result.getKeptShifts()).extracting(ShiftImpact::shiftId).containsExactly(checkedIn.getId());
+            assertThat(result.getKeptShifts()).allSatisfy(kept -> assertThat(kept.note()).contains("check-in"));
             assertThat(result.getReleasedShifts().get(0).templateName()).isEqualTo("Ca sáng");
-            assertThat(result.getReceptionWarnings()).isEmpty();
+            assertThat(result.getReceptionGaps()).isEmpty();
+            assertThat(result.getReplacements()).isEmpty();
+            assertThat(result.getReleasedCleaningTasks()).isEqualTo(2);
             assertThat(result.getBalance()).isNull();
 
             assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
             assertThat(leave.getApproverId()).isEqualTo(manager.getId());
             assertThat(leave.getDecidedAt()).isNotNull();
             assertThat(result.getRequest().getApproverName()).isEqualTo("Trần Quản Lý");
-            verify(shiftRepository).saveAll(List.of(tomorrow));
+            verify(shiftRepository).saveAll(List.of(todays, tomorrow));
         }
 
-        /** BR-SCH-29: ca mất lễ tân duy nhất chỉ được cảnh báo — vẫn duyệt và vẫn gỡ người. */
+        /** Đơn chưa tới hôm nay: không có việc dọn nào của người nghỉ để gỡ (việc dọn chỉ giao trong ngày — Q5). */
         @Test
-        void shouldWarnButStillApproveWhenShiftLosesOnlyReceptionist() {
+        void shouldNotTouchCleaningTasksWhenLeaveStartsLater() {
             loginAs(manager);
-            LocalDate tomorrowDate = today.plusDays(1);
-            LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, tomorrowDate, tomorrowDate));
-            Shift tomorrow = shift(staff, tomorrowDate);
-            stubShifts(leave, tomorrow);
-            when(receptionCoverage.losesOnlyReceptionist(tomorrow)).thenReturn(true);
+            LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(3)));
 
-            LeaveApprovalResponse result = service.approveLeaveRequest(leave.getId());
+            LeaveApprovalResponse result = service.approveLeaveRequest(leave.getId(), List.of());
 
-            assertThat(result.getReceptionWarnings()).containsExactly("Ca sáng ngày " + tomorrowDate.format(DAY));
-            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
-            assertThat(tomorrow.getStaffId()).isNull();
+            assertThat(result.getReleasedCleaningTasks()).isZero();
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** Xem trước báo trước số việc dọn hôm nay sẽ gỡ theo — chỉ khi người đó mất hết ca hôm nay. */
+        @Test
+        void shouldPreviewCleaningTasksOnlyWhenTodaysShiftsAreReleased() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today, today));
+            Shift todays = shift(staff, today);
+            stubShifts(leave, todays);
+            when(housekeepingService.countTasksOfDay(staff.getId(), today)).thenReturn(3);
+
+            assertThat(service.previewApproval(leave.getId()).getReleasedCleaningTasks()).isEqualTo(3);
+
+            todays.setCheckInAt(LocalDateTime.now());
+            assertThat(service.previewApproval(leave.getId()).getReleasedCleaningTasks()).isZero();
+            verify(housekeepingService).countTasksOfDay(staff.getId(), today);
         }
 
         /** Quỹ chỉ bị trừ khi duyệt: lúc duyệt mà quỹ chưa dùng không đủ thì chặn, không đổi gì. */
@@ -360,7 +394,7 @@ class LeaveRequestServiceTest {
             when(leaveQuota.balanceOf(staff, from.getYear(), today))
                 .thenReturn(LeaveBalanceResponse.builder().year(from.getYear()).entitledDays(1).usedDays(0).build());
 
-            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId()))
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("chỉ còn 1 ngày");
             assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.PENDING);
@@ -373,7 +407,7 @@ class LeaveRequestServiceTest {
             LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
             leave.setStatus(LeaveRequestStatus.REJECTED);
 
-            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId()))
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("đã được xử lý");
         }
@@ -384,7 +418,7 @@ class LeaveRequestServiceTest {
             staff.setStatus(UserStatus.TERMINATED);
             LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
 
-            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId()))
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("đã nghỉ việc");
         }
@@ -397,7 +431,7 @@ class LeaveRequestServiceTest {
             leave.setLocationId(OTHER_LOCATION_ID);
             stubLeave(leave);
 
-            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId()))
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of()))
                 .isInstanceOf(ResourceNotFoundException.class);
             verifyNoInteractions(shiftRepository);
         }
@@ -408,7 +442,7 @@ class LeaveRequestServiceTest {
             loginAs(manager);
             LeaveRequest leave = stubLeave(leave(manager, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
 
-            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId()))
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of()))
                 .isInstanceOf(ResourceNotFoundException.class);
             assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.PENDING);
         }
@@ -418,7 +452,7 @@ class LeaveRequestServiceTest {
             loginAs(director);
             LeaveRequest leave = stubLeave(leave(manager, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
 
-            LeaveApprovalResponse result = service.approveLeaveRequest(leave.getId());
+            LeaveApprovalResponse result = service.approveLeaveRequest(leave.getId(), List.of());
 
             assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
             assertThat(leave.getApproverId()).isEqualTo(director.getId());
@@ -430,8 +464,171 @@ class LeaveRequestServiceTest {
             loginAs(director);
             LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
 
-            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId()))
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of()))
                 .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    // ── Lễ tân thay — BR-SCH-29 sửa (chốt 31/10/2026) ───────────────────────
+
+    /**
+     * Lan (người gửi, lễ tân) xin nghỉ ngày mai và là lễ tân duy nhất của "Ca sáng" hôm đó: duyệt phải kèm một lễ tân
+     * thay. Khách sạn còn bốn nhân viên, chỉ Mai thay được.
+     */
+    @Nested
+    class ReplaceReceptionist {
+
+        private LocalDate day;
+        private LeaveRequest leave;
+        private Shift gap;
+        private User mai;   // lễ tân rảnh — thay được
+        private User hung;  // dọn phòng, không có quyền Lễ tân
+        private User thu;   // lễ tân đã được duyệt nghỉ đúng ngày đó
+        private User khoa;  // lễ tân nhưng vướng Schedule Policy
+
+        @BeforeEach
+        void setUpReceptionGap() {
+            loginAs(manager);
+            day = today.plusDays(1);
+            staff.getPermissions().add(StaffPermission.RECEPTION);
+            mai = receptionist("Đỗ Thị Mai");
+            hung = user(Role.STAFF, LOCATION_ID, "Hoàng Văn Hùng");
+            thu = receptionist("Vũ Thị Thu");
+            khoa = receptionist("Ngô Văn Khoa");
+
+            leave = stubLeave(leave(staff, LeaveType.UNPAID, day, day));
+            gap = shift(staff, day);
+            stubShifts(leave, gap);
+            when(receptionCoverage.losesOnlyReceptionist(gap)).thenReturn(true);
+
+            lenient().when(userRepository.findByTenantIdAndLocationIdAndRole(eq(TENANT_ID), eq(LOCATION_ID),
+                    eq(Role.STAFF), any()))
+                .thenReturn(new PageImpl<>(List.of(staff, mai, hung, thu, khoa)));
+            for (User person : List.of(mai, hung, thu, khoa)) {
+                lenient().when(userRepository.findByIdAndTenantId(person.getId(), TENANT_ID))
+                    .thenReturn(Optional.of(person));
+            }
+            lenient().when(leaveRequestRepository.findOverlapping(eq(thu.getId()), any(), eq(day), eq(day)))
+                .thenReturn(List.of(leave(thu, LeaveType.ANNUAL, day, day)));
+            lenient().doThrow(new BusinessException("Trùng ca: nhân viên đã có ca 06:00–14:00 tại khách sạn này."))
+                .when(policyValidator).validate(eq(TENANT_ID), eq(khoa.getId()), any(), any());
+            lenient().when(positionRepository.findAllById(any())).thenReturn(List.of(Position.builder()
+                .id(RECEPTION_POSITION_ID).tenantId(TENANT_ID).name("Nhân viên lễ tân").build()));
+        }
+
+        /** Gợi ý chỉ có người xếp được: bỏ người gửi, người không có quyền Lễ tân, người đang nghỉ, người vướng Policy. */
+        @Test
+        void previewListsOnlyReceptionistsWhoCanTakeTheShift() {
+            LeaveApprovalResponse preview = service.previewApproval(leave.getId());
+
+            assertThat(preview.getReceptionGaps()).singleElement().satisfies(view -> {
+                assertThat(view.shift().shiftId()).isEqualTo(gap.getId());
+                assertThat(view.shift().templateName()).isEqualTo("Ca sáng");
+                assertThat(view.candidates()).extracting(Candidate::fullName).containsExactly("Đỗ Thị Mai");
+                assertThat(view.candidates().get(0).positionName()).isEqualTo("Nhân viên lễ tân");
+            });
+            assertThat(preview.getReplacements()).isEmpty();
+            assertThat(gap.getStaffId()).isEqualTo(staff.getId());
+            verify(shiftRepository, never()).saveAndFlush(any());
+        }
+
+        @Test
+        void shouldNotApproveWithoutReplacement() {
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Ca sáng ngày " + day.format(DAY))
+                .hasMessageContaining("Chọn lễ tân thay");
+            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.PENDING);
+            assertThat(gap.getStaffId()).isEqualTo(staff.getId());
+            verify(shiftRepository, never()).saveAll(anyList());
+        }
+
+        /** Lễ tân thay vào CHÍNH ca của người nghỉ — ca có người ngay, không còn mang lý do gỡ. */
+        @Test
+        void shouldPutChosenReceptionistIntoTheLeaversShift() {
+            LeaveApprovalResponse result = service.approveLeaveRequest(leave.getId(), List.of(replace(gap, mai)));
+
+            assertThat(gap.getStaffId()).isEqualTo(mai.getId());
+            assertThat(gap.getUnassignedReason()).isNull();
+            assertThat(gap.getUnassignedAt()).isNull();
+            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.APPROVED);
+            assertThat(result.getReplacements()).singleElement().satisfies(done -> {
+                assertThat(done.shift().shiftId()).isEqualTo(gap.getId());
+                assertThat(done.staffId()).isEqualTo(mai.getId());
+                assertThat(done.fullName()).isEqualTo("Đỗ Thị Mai");
+            });
+            assertThat(result.getReceptionGaps()).isEmpty();
+            assertThat(result.getReleasedShifts()).extracting(ShiftImpact::shiftId).containsExactly(gap.getId());
+            verify(policyValidator).validate(TENANT_ID, mai.getId(), gap, gap.getId());
+            verify(shiftRepository).saveAndFlush(gap);
+        }
+
+        @Test
+        void shouldRefuseReplacementWithoutReceptionPermission() {
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of(replace(gap, hung))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Hoàng Văn Hùng không thay được ở Ca sáng ngày " + day.format(DAY))
+                .hasMessageContaining("Không có quyền Lễ tân");
+            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.PENDING);
+        }
+
+        @Test
+        void shouldRefuseReplacementOnApprovedLeaveThatDay() {
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of(replace(gap, thu))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Đã được duyệt nghỉ ngày " + day.format(DAY));
+            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.PENDING);
+        }
+
+        /** Lễ tân thay cũng qua đủ Schedule Policy như khi xếp ca tay (BR-SCH-02) — vướng là không duyệt. */
+        @Test
+        void shouldRefuseReplacementWhoBreaksSchedulePolicy() {
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of(replace(gap, khoa))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Ngô Văn Khoa không thay được")
+                .hasMessageContaining("Trùng ca");
+            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.PENDING);
+        }
+
+        @Test
+        void shouldRefuseRequesterAsOwnReplacement() {
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(), List.of(replace(gap, staff))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("chính người xin nghỉ");
+        }
+
+        /** Lịch đổi giữa lúc xem trước và lúc duyệt: ca không cần người thay thì không xếp bừa vào. */
+        @Test
+        void shouldRefuseReplacementForShiftThatDoesNotNeedOne() {
+            Shift notAGap = shift(staff, day.plusDays(5));
+
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(),
+                    List.of(replace(gap, mai), replace(notAGap, mai))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Lịch làm việc vừa thay đổi");
+            assertThat(gap.getStaffId()).isEqualTo(staff.getId());
+        }
+
+        @Test
+        void shouldRefuseTwoReplacementsForOneShift() {
+            assertThatThrownBy(() -> service.approveLeaveRequest(leave.getId(),
+                    List.of(replace(gap, mai), replace(gap, khoa))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Mỗi ca chỉ chọn một lễ tân thay");
+        }
+
+        private User receptionist(String fullName) {
+            User person = user(Role.STAFF, LOCATION_ID, fullName);
+            person.setPositionId(RECEPTION_POSITION_ID);
+            person.getPermissions().add(StaffPermission.RECEPTION);
+            return person;
+        }
+
+        private ReceptionReplacement replace(Shift shift, User person) {
+            ReceptionReplacement replacement = new ReceptionReplacement();
+            replacement.setShiftId(shift.getId());
+            replacement.setStaffId(person.getId());
+            return replacement;
         }
     }
 
@@ -464,12 +661,41 @@ class LeaveRequestServiceTest {
             loginAs(manager);
             LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
 
-            LeaveRequestResponse response = service.rejectLeaveRequest(leave.getId());
+            LeaveRequestResponse response = service.rejectLeaveRequest(leave.getId(), "  Cuối tuần thiếu người dọn  ");
 
             assertThat(response.getStatus()).isEqualTo(LeaveRequestStatus.REJECTED);
             assertThat(leave.getApproverId()).isEqualTo(manager.getId());
             assertThat(leave.getDecidedAt()).isNotNull();
+            assertThat(leave.getRejectReason()).isEqualTo("Cuối tuần thiếu người dọn");
+            assertThat(response.getRejectReason()).isEqualTo("Cuối tuần thiếu người dọn");
+            assertThat(response.getApproverName()).isEqualTo("Trần Quản Lý");
             verifyNoInteractions(shiftRepository);
+        }
+
+        /** Chốt 31/10/2026: từ chối phải kèm lý do — người gửi đọc được vì sao đơn không được duyệt. */
+        @Test
+        void shouldRequireReasonToReject() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
+
+            assertThatThrownBy(() -> service.rejectLeaveRequest(leave.getId(), "   "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("lý do từ chối");
+            assertThat(leave.getStatus()).isEqualTo(LeaveRequestStatus.PENDING);
+            assertThat(leave.getApproverId()).isNull();
+            verify(leaveRequestRepository, never()).save(any());
+        }
+
+        @Test
+        void shouldNotRejectDecidedRequest() {
+            loginAs(manager);
+            LeaveRequest leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
+            leave.setStatus(LeaveRequestStatus.CANCELLED);
+
+            assertThatThrownBy(() -> service.rejectLeaveRequest(leave.getId(), "Thiếu người"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("đã được xử lý");
+            assertThat(leave.getRejectReason()).isNull();
         }
 
         @Test
@@ -594,6 +820,109 @@ class LeaveRequestServiceTest {
             leave.setApproverId(requester == manager ? director.getId() : manager.getId());
             leave.setDecidedAt(today.minusDays(7).atTime(9, 0));
             return leave;
+        }
+    }
+
+    // ── Ảnh minh chứng — chốt 01/11/2026, thay BR-SCH-30 ───────────────────
+
+    @Nested
+    class Attachments {
+
+        /** Chữ ký PNG thật ở 8 byte đầu — đủ để nhận ra kiểu ảnh. */
+        private final byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0};
+
+        private LeaveRequest leave;
+
+        @BeforeEach
+        void pendingLeaveOfStaff() {
+            leave = stubLeave(leave(staff, LeaveType.UNPAID, today.plusDays(2), today.plusDays(2)));
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void shouldAttachImageToOwnPendingRequest() {
+            loginAs(staff);
+
+            service.addAttachments(leave.getId(), List.of(new LeaveAttachmentUpload("C:\\fakepath\\giay-kham.png", png)));
+
+            ArgumentCaptor<List<LeaveRequestAttachment>> saved = ArgumentCaptor.forClass(List.class);
+            verify(attachmentRepository).saveAll(saved.capture());
+            assertThat(saved.getValue()).singleElement().satisfies(image -> {
+                assertThat(image.getFileName()).isEqualTo("giay-kham.png");
+                assertThat(image.getContentType()).isEqualTo("image/png");
+                assertThat(image.getSizeBytes()).isEqualTo(png.length);
+                assertThat(image.getLeaveRequestId()).isEqualTo(leave.getId());
+                assertThat(image.getTenantId()).isEqualTo(TENANT_ID);
+            });
+        }
+
+        /** Kiểu ảnh đọc từ nội dung tệp — đổi đuôi ".png" cho một tệp PDF không qua được. */
+        @Test
+        void shouldRefuseFileThatIsNotAnImage() {
+            loginAs(staff);
+
+            assertThatThrownBy(() -> service.addAttachments(leave.getId(),
+                    List.of(new LeaveAttachmentUpload("don.png", "%PDF-1.7".getBytes()))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("không phải ảnh");
+            verify(attachmentRepository, never()).saveAll(any());
+        }
+
+        @Test
+        void shouldRefuseMoreThanThreeImagesPerRequest() {
+            loginAs(staff);
+            when(attachmentRepository.countByLeaveRequestId(leave.getId())).thenReturn(2L);
+
+            assertThatThrownBy(() -> service.addAttachments(leave.getId(), List.of(
+                    new LeaveAttachmentUpload("1.png", png), new LeaveAttachmentUpload("2.png", png))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("tối đa 3 ảnh")
+                .hasMessageContaining("còn thêm được 1 ảnh");
+            verify(attachmentRepository, never()).saveAll(any());
+        }
+
+        @Test
+        void shouldOnlyAttachWhilePending() {
+            loginAs(staff);
+            leave.setStatus(LeaveRequestStatus.REJECTED);
+
+            assertThatThrownBy(() -> service.addAttachments(leave.getId(), List.of(new LeaveAttachmentUpload("a.png", png))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("chờ duyệt");
+        }
+
+        /** Chỉ người gửi đính kèm được — người khác (kể cả người duyệt) nhận 404 như không thấy đơn. */
+        @Test
+        void shouldHideRequestFromOtherUploaders() {
+            loginAs(manager);
+
+            assertThatThrownBy(() -> service.addAttachments(leave.getId(), List.of(new LeaveAttachmentUpload("a.png", png))))
+                .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        void shouldLetRequesterAndReviewerOpenImage() {
+            LeaveRequestAttachment image = LeaveRequestAttachment.builder()
+                .id(UUID.randomUUID()).tenantId(TENANT_ID).leaveRequestId(leave.getId())
+                .fileName("giay-kham.png").contentType("image/png").sizeBytes(png.length).data(png)
+                .build();
+            when(attachmentRepository.findByIdAndLeaveRequestIdAndTenantId(image.getId(), leave.getId(), TENANT_ID))
+                .thenReturn(Optional.of(image));
+
+            loginAs(staff);
+            assertThat(service.getAttachment(leave.getId(), image.getId()).data()).isEqualTo(png);
+            loginAs(manager);
+            assertThat(service.getAttachment(leave.getId(), image.getId()).contentType()).isEqualTo("image/png");
+        }
+
+        /** Giám đốc không duyệt đơn của Staff (BR-SCH-08) nên cũng không xem được ảnh — 404 như đơn. */
+        @Test
+        void shouldHideImageOutsideReviewScope() {
+            loginAs(director);
+
+            assertThatThrownBy(() -> service.getAttachment(leave.getId(), UUID.randomUUID()))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verify(attachmentRepository, never()).findByIdAndLeaveRequestIdAndTenantId(any(), any(), any());
         }
     }
 

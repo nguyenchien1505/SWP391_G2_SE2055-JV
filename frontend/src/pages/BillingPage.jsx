@@ -21,10 +21,15 @@ const INVOICE_KIND_LABEL = { MUA_GOI: 'Mua gói', GIA_HAN: 'Gia hạn', MUA_THEM
 
 /** Ba loại tài nguyên tính tiền — BR-SAAS-02, BR-SAAS-03. */
 const RESOURCES = [
-  { key: 'location', label: 'Khách sạn', icon: '🏢', usage: 'locations', quota: 'quotaLocation', price: 'pricePerLocation' },
-  { key: 'user', label: 'Nhân viên', icon: '👥', usage: 'staff', quota: 'quotaUser', price: 'pricePerUser' },
-  { key: 'room', label: 'Phòng', icon: '🛏', usage: 'rooms', quota: 'quotaRoom', price: 'pricePerRoom' },
+  { key: 'location', label: 'Khách sạn', icon: '🏢', usage: 'locations', quota: 'quotaLocation', planned: 'plannedQuotaLocation', price: 'pricePerLocation' },
+  { key: 'user', label: 'Nhân viên', icon: '👥', usage: 'staff', quota: 'quotaUser', planned: 'plannedQuotaUser', price: 'pricePerUser' },
+  { key: 'room', label: 'Phòng', icon: '🛏', usage: 'rooms', quota: 'quotaRoom', planned: 'plannedQuotaRoom', price: 'pricePerRoom' },
 ];
+
+/** Đã gia hạn trước kỳ tới với số lượng khác gói hiện tại (đổi gói từ kỳ tới). */
+function plannedDiffers(overview) {
+  return overview.plannedFrom != null && RESOURCES.some((r) => overview[r.planned] !== overview[r.quota]);
+}
 
 // ── Tiện ích ngày / số ─────────────────────────────────────────────────────
 
@@ -346,7 +351,9 @@ function BuyMorePanel({ overview, retry }) {
   }
   const amount = Math.round((fullCycleDiff * daysLeft) / CYCLE_DAYS);
   const belowMinimum = increased && amount < MIN_UPGRADE_AMOUNT;
-  const valid = Object.keys(errors).length === 0 && increased && daysLeft > 0 && !belowMinimum;
+  // Khớp backend: đã đổi gói cho kỳ tới (gia hạn trước) thì chờ tới kỳ đó mới mua thêm.
+  const blockedByPlan = plannedDiffers(overview);
+  const valid = Object.keys(errors).length === 0 && increased && daysLeft > 0 && !belowMinimum && !blockedByPlan;
 
   return (
     <section className="panel">
@@ -357,6 +364,12 @@ function BuyMorePanel({ overview, retry }) {
         Tăng số lượng giữa kỳ, chỉ trả phần chênh lệch cho {daysLeft} ngày còn lại tới ngày đến hạn (tối thiểu{' '}
         {formatVnd(MIN_UPGRADE_AMOUNT)}). Quota mới có hiệu lực ngay sau khi thanh toán thành công.
       </p>
+      {blockedByPlan && (
+        <div className="alert alert--warn" role="status">
+          Bạn đã gia hạn trước cho kỳ bắt đầu {formatDate(overview.plannedFrom)} với số lượng khác gói hiện tại, nên
+          chưa mua thêm quota được tới ngày đó.
+        </div>
+      )}
       <QuotaInputs values={values} onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))} errors={errors} />
       <dl className="kv">
         <div>
@@ -387,15 +400,46 @@ function BuyMorePanel({ overview, retry }) {
 }
 
 /**
- * Gia hạn 1 kỳ 30 ngày theo quota hiện tại. Kỳ nối tiếp ngày đến hạn; đang bị khóa vì chưa gia hạn
- * thì tính từ hôm nay (khớp backend).
+ * Gia hạn 1 kỳ 30 ngày, giữ nguyên hoặc thay đổi (tăng / giảm) số lượng cho kỳ đó. Kỳ nối tiếp ngày
+ * đến hạn; đang bị khóa vì chưa gia hạn thì cộng bù số ngày bị khóa (khớp backend). Số lượng mới chỉ có
+ * hiệu lực từ ngày kỳ mới bắt đầu — kỳ đang dùng không bị giảm.
  */
-function RenewPanel({ overview }) {
+function RenewPanel({ overview, retry }) {
   const { pay, submitting, error, info } = usePayment('Không tạo được thanh toán gia hạn.');
   const { status, suspendReason, nextBillingDate: due } = overview;
   const locked = status === 'SUSPENDED' && suspendReason === 'PAYMENT_FAILED';
   const canRenew = daysUntil(due) <= MAX_PREPAY_DAYS;
-  const nextStart = locked ? todayIso() : due;
+  // Máy chủ tính sẵn (ngày đến hạn + số ngày bị khóa); bản cũ chưa có trường này thì tính như trước.
+  const nextStart = overview.nextPeriodStart ?? (locked ? todayIso() : due);
+  const lockedDays = locked
+    ? Math.max(0, Math.round((new Date(`${nextStart}T00:00:00`) - new Date(`${due}T00:00:00`)) / 86400000))
+    : 0;
+  // Kỳ mới chưa bắt đầu = gia hạn trước: số lượng mới đợi tới ngày nextStart mới có hiệu lực.
+  const prepaying = daysUntil(nextStart) > 0;
+
+  // "Giữ nguyên" = số lượng của kỳ liền trước: kỳ đã gia hạn trước (nếu có), ngược lại gói hiện tại.
+  const keep = Object.fromEntries(RESOURCES.map((r) => [r.key, overview[r.planned] ?? overview[r.quota]]));
+  const retryDiffers = retry && RESOURCES.some((r) => Number(retry[r.quota]) !== keep[r.key]);
+  const [changing, setChanging] = useState(Boolean(retryDiffers));
+  const [values, setValues] = useState(() =>
+    Object.fromEntries(RESOURCES.map((r) => [r.key, String(retryDiffers ? retry[r.quota] : keep[r.key])])),
+  );
+
+  const errors = {};
+  let fee = 0;
+  let decreasedBelowCurrent = false;
+  for (const r of RESOURCES) {
+    const n = changing ? toNumber(values[r.key]) : keep[r.key];
+    const used = overview[r.usage]?.used ?? 0;
+    if (n == null) errors[r.key] = 'Nhập số nguyên không âm';
+    else if (r.key === 'location' && n < 1) errors[r.key] = 'Cần ít nhất 1 khách sạn';
+    else if (n < keep[r.key] && n < used) errors[r.key] = `Không được ít hơn số đang dùng (${used})`;
+    else {
+      fee += n * overview[r.price];
+      if (n < overview[r.quota]) decreasedBelowCurrent = true;
+    }
+  }
+  const valid = Object.keys(errors).length === 0;
 
   return (
     <section className="panel">
@@ -416,9 +460,63 @@ function RenewPanel({ overview }) {
             {formatDate(nextStart)} → {formatDate(addDays(nextStart, CYCLE_DAYS - 1))}
           </dd>
         </div>
+        {locked && (
+          <div>
+            <dt>Cách tính kỳ</dt>
+            <dd>
+              Tính tiếp từ ngày đến hạn {formatDate(due)} (những ngày ân hạn vẫn được dùng)
+              {lockedDays > 0 && `, cộng bù ${lockedDays} ngày bị khóa`} → bắt đầu {formatDate(nextStart)}.
+            </dd>
+          </div>
+        )}
+        {overview.plannedFrom && (
+          <div>
+            <dt>Đã gia hạn trước</dt>
+            <dd>
+              Từ {formatDate(overview.plannedFrom)}: {RESOURCES.map((r) => overview[r.planned]).join(' / ')} (KS / NV /
+              Phòng)
+            </dd>
+          </div>
+        )}
+      </dl>
+
+      <div className="field">
+        <span className="field__label">Số lượng cho kỳ tới</span>
+        <label>
+          <input type="radio" name="renew-mode" checked={!changing} onChange={() => setChanging(false)} /> Giữ nguyên (
+          {RESOURCES.map((r) => keep[r.key]).join(' / ')})
+        </label>
+        <label>
+          <input type="radio" name="renew-mode" checked={changing} onChange={() => setChanging(true)} /> Thay đổi (tăng
+          hoặc giảm)
+        </label>
+      </div>
+      {changing && (
+        <>
+          <QuotaInputs values={values} onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))} errors={errors} />
+          <p className="muted">
+            {prepaying
+              ? `Số lượng mới có hiệu lực từ ngày ${formatDate(nextStart)}; tới lúc đó vẫn dùng gói hiện tại.`
+              : 'Số lượng mới có hiệu lực ngay sau khi thanh toán thành công.'}{' '}
+            Giảm thì không được ít hơn số đang dùng. Muốn tăng ngay trong kỳ hiện tại, dùng Mua thêm quota.
+          </p>
+        </>
+      )}
+      {changing && prepaying && decreasedBelowCurrent && (
+        <div className="alert alert--warn" role="status">
+          Bạn đang gia hạn trước với số lượng ít hơn gói hiện tại. Từ khi thanh toán tới hết ngày{' '}
+          {formatDate(addDays(nextStart, -1))}, bạn không tạo thêm được vượt số lượng mới. Muốn dùng đủ gói hiện tại tới
+          hết kỳ, hãy gia hạn từ ngày {formatDate(nextStart)}.
+        </div>
+      )}
+
+      <dl className="kv">
         <div>
-          <dt>Số tiền (quota hiện tại)</dt>
-          <dd>{formatVnd(overview.periodFee)}</dd>
+          <dt>Số tiền kỳ tới</dt>
+          <dd>
+            <b>{valid ? formatVnd(fee) : '—'}</b>
+            {valid && fee !== overview.periodFee && ` (gói hiện tại: ${formatVnd(overview.periodFee)})`}
+          </dd>
         </div>
       </dl>
       {!canRenew && (
@@ -427,7 +525,12 @@ function RenewPanel({ overview }) {
         </p>
       )}
       <PaymentFeedback error={error} info={info} />
-      <button type="button" className="btn btn--primary" disabled={!canRenew || submitting} onClick={() => pay(renewPlan)}>
+      <button
+        type="button"
+        className="btn btn--primary"
+        disabled={!canRenew || !valid || submitting}
+        onClick={() => pay(() => renewPlan(changing ? toRequest(values) : undefined))}
+      >
         {submitting ? 'Đang chuyển sang VNPay…' : 'Gia hạn'}
       </button>
     </section>
@@ -570,7 +673,7 @@ export default function BillingPage() {
       )}
       {!adminLocked && trial && <BuyPlanPanel overview={overview} retry={retry} />}
       {!adminLocked && !trial && status === 'ACTIVE' && <BuyMorePanel overview={overview} retry={retry} />}
-      {!adminLocked && !trial && <RenewPanel overview={overview} />}
+      {!adminLocked && !trial && <RenewPanel overview={overview} retry={retry} />}
 
       {/* C. Lịch sử hóa đơn đã thanh toán */}
       <section className="panel">

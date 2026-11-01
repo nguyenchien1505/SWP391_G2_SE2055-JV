@@ -73,11 +73,15 @@ public class BillingController {
         return ResponseEntity.ok(billingService.upgrade(request, clientIp(http)));
     }
 
-    /** Gia hạn 1 kỳ 30 ngày theo quota hiện tại: trả link sang trang thanh toán VNPay. */
+    /**
+     * Gia hạn 1 kỳ 30 ngày: trả link sang trang thanh toán VNPay. Body (tùy chọn) là số lượng cho kỳ
+     * tới — tăng / giảm; không gửi body là giữ nguyên.
+     */
     @PostMapping("/renew")
     @PreAuthorize("hasRole('DIRECTOR')")
-    public ResponseEntity<PaymentUrlResponse> renew(HttpServletRequest http) {
-        return ResponseEntity.ok(billingService.renew(clientIp(http)));
+    public ResponseEntity<PaymentUrlResponse> renew(@Valid @RequestBody(required = false) PurchaseRequest request,
+                                                    HttpServletRequest http) {
+        return ResponseEntity.ok(billingService.renew(request, clientIp(http)));
     }
 
     /**

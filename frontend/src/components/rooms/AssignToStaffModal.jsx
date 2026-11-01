@@ -7,7 +7,8 @@ import { taskRoomLabel } from '../../pages/rooms/roomLabels';
 
 /**
  * Giao NHIỀU việc trong hàng chờ cho MỘT người — chiều ngược lại của AssignTaskModal, mở từ nút
- * "+ Giao việc" trên một hàng của bảng theo nhân viên. BR-HK-02: giao tay, không giới hạn số việc.
+ * "+ Giao việc" trên một hàng của bảng theo nhân viên, hoặc "+ Giao phòng" trên ô hôm nay của «Lịch dọn phòng».
+ * BR-HK-02: giao tay, không giới hạn số việc.
  * Muốn thêm người dọn cùng một phòng thì dùng nút "Thêm người" trên chính việc đó.
  *
  * Mỗi việc gọi API gán riêng: một việc lỗi (ví dụ vừa có người khác giao mất) không kéo cả loạt

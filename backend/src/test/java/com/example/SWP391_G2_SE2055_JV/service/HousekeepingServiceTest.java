@@ -115,6 +115,7 @@ class HousekeepingServiceTest {
     @Mock RoomStatusService          roomStatusService;
     @Mock SupervisorDutyRule         supervisorDutyRule;
     @Mock CleaningWorkDayRule        cleaningWorkDayRule;
+    @Mock ReceptionCoverageRule      receptionCoverage;
 
     @InjectMocks HousekeepingService service;
 
@@ -755,6 +756,103 @@ class HousekeepingServiceTest {
             service.releaseFutureTasks(STAFF_ID, UnassignedReason.LEAVE_APPROVED, today);
 
             verify(taskRepository).findOfStaffAfter(STAFF_ID, HousekeepingTaskStatus.IN_PROGRESS, today);
+        }
+    }
+
+    // ── Gỡ việc của một ngày — BR-HK-07 khi duyệt đơn nghỉ có hôm nay ───────
+
+    @Nested
+    class ReleaseTasksOfDay {
+
+        /** Người nghỉ vừa mất hết ca hôm nay: rút khỏi nhóm, việc về hàng chờ, phòng về «Chờ dọn». */
+        @Test
+        void shouldReleaseTasksWhenNoShiftLeftThatDay() {
+            HousekeepingTask alone = inProgressTask(STAFF_ID);
+            when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_ID, today)).thenReturn(false);
+            when(taskRepository.findOfStaffOn(STAFF_ID, today, HousekeepingTaskStatus.IN_PROGRESS))
+                .thenReturn(List.of(alone));
+            Room room = stubRoom();
+
+            int released = service.releaseTasksOfDay(STAFF_ID, today, UnassignedReason.LEAVE_APPROVED);
+
+            assertThat(released).isEqualTo(1);
+            assertThat(alone.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
+            assertThat(alone.getUnassignedReason()).isEqualTo(UnassignedReason.LEAVE_APPROVED);
+            verify(roomStatusService).revertToDirty(room, alone.getId(), "Người dọn phòng được duyệt nghỉ");
+        }
+
+        /** Còn ca trong ngày (ca đã check-in được giữ) thì người đó vẫn đang làm — giữ nguyên việc. */
+        @Test
+        void shouldKeepTasksWhileStillOnShiftThatDay() {
+            when(shiftRepository.existsByStaffIdAndShiftDate(STAFF_ID, today)).thenReturn(true);
+
+            assertThat(service.releaseTasksOfDay(STAFF_ID, today, UnassignedReason.LEAVE_APPROVED)).isZero();
+            verifyNoInteractions(taskRepository, roomStatusService);
+        }
+    }
+
+    // ── Lễ tân duy nhất của ca phải trực quầy — chốt 01/11/2026 ─────────────
+
+    @Nested
+    class DeskDuty {
+
+        private static final String SHIFT = "Ca sáng ngày 01/11/2026";
+
+        /** Manager / Giám sát gán tay: chặn, việc và phòng đứng yên. */
+        @Test
+        void shouldNotAssignSoleReceptionistOfShift() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            HousekeepingTask task = unassignedTask();
+            stubTask(task);
+            stubLocation();
+            User kiem = housekeepingStaff();
+            stubStaff(kiem);
+            when(receptionCoverage.soleReceptionShift(kiem, LOCATION_ID, today)).thenReturn(Optional.of(SHIFT));
+
+            assertThatThrownBy(() -> service.assignTask(task.getId(), request(today, STAFF_ID)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Phạm Dọn Dẹp là lễ tân duy nhất của " + SHIFT)
+                .hasMessageContaining("không giao việc dọn phòng được");
+            assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.UNASSIGNED);
+            verifyNoInteractions(roomStatusService);
+        }
+
+        /** Hộp phân công vẫn liệt kê người đó, kèm lý do — không giấu người khỏi danh sách. */
+        @Test
+        void shouldListSoleReceptionistWithReason() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+            stubLocation();
+            User kiem = housekeepingStaff();
+            User hoa = secondStaff();
+            when(assignableStaffRepository.findAssignable(TENANT_ID, LOCATION_ID, today,
+                Role.STAFF, UserStatus.ACTIVE, StaffPermission.HOUSEKEEPING))
+                .thenReturn(List.of(kiem, hoa));
+            when(receptionCoverage.soleReceptionShift(kiem, LOCATION_ID, today)).thenReturn(Optional.of(SHIFT));
+
+            List<AssignableStaffResponse> staff = service.getAssignableStaff(today, true);
+
+            assertThat(staff).extracting(AssignableStaffResponse::getFullName)
+                .containsExactly("Phạm Dọn Dẹp", "Nguyễn Thị Hoa");
+            assertThat(staff.get(0).getBlockedReason()).contains("lễ tân duy nhất của " + SHIFT);
+            assertThat(staff.get(1).getBlockedReason()).isNull();
+        }
+
+        /** Tự nhận cũng bị chặn — màn «Việc chờ nhận» nói rõ vì sao. */
+        @Test
+        void shouldTellCleanerWhyTheyCannotClaim() {
+            TestAuth.loginAs(STAFF_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            stubLocation();
+            stubOpenTasks(unassignedTask());
+            stubCurrentShifts(false, shift(today, true, false));
+            User kiem = housekeepingStaff();
+            stubStaff(kiem);
+            when(receptionCoverage.soleReceptionShift(kiem, LOCATION_ID, today)).thenReturn(Optional.of(SHIFT));
+
+            OpenTasksResponse response = service.getOpenTasks();
+
+            assertThat(response.isCanClaim()).isFalse();
+            assertThat(response.getBlockedReason()).isEqualTo(
+                "Bạn là lễ tân duy nhất của " + SHIFT + " nên phải trực quầy — chưa nhận việc dọn phòng được.");
         }
     }
 

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
-import { createLeaveRequest } from '../../api/leaveRequests';
+import { createLeaveRequest, uploadLeaveAttachments } from '../../api/leaveRequests';
 import { formatDate, todayIso } from '../../pages/rooms/format';
+import { MAX_LEAVE_IMAGES, shrinkImage } from '../../pages/scheduling/leaveImages';
 import { daysInclusive } from '../../pages/scheduling/leaveLabels';
 
 /** Khớp @Size(max = 500) của CreateLeaveRequestRequest và cột leave_requests.reason. */
@@ -13,9 +14,12 @@ const REASON_MAX = 500;
  * Ô ngày chặn sẵn ngày chắc chắn không hợp lệ (ngày đã qua; phép năm chưa đủ báo trước) để người dùng khỏi
  * bấm rồi mới nhận lỗi. Mọi luật vẫn do backend kiểm lại — câu lỗi của backend hiện nguyên văn.
  *
+ * Ảnh minh chứng (chốt 01/11/2026, không bắt buộc): tối đa 3 ảnh, thu nhỏ ngay trên máy rồi mới gửi. Gửi đơn trước,
+ * gửi ảnh sau — ảnh lỗi thì đơn vẫn đã gửi, trang cha báo riêng phần ảnh.
+ *
  * @param balance       quỹ phép năm (GET /balance); null khi chưa tải được — vẫn gửi được, backend kiểm
  * @param approverLabel ai duyệt đơn: "Quản lý khách sạn" / "Giám đốc"
- * @param onCreated     nhận đơn vừa tạo
+ * @param onCreated     nhận (đơn vừa tạo, câu lỗi đính kèm ảnh nếu có)
  */
 export default function LeaveRequestForm({ balance, approverLabel, onCreated, onCancel }) {
   const today = todayIso();
@@ -29,6 +33,13 @@ export default function LeaveRequestForm({ balance, approverLabel, onCreated, on
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [images, setImages] = useState([]); // [{ key, file, url }] — ảnh đã thu nhỏ, chờ gửi
+  const [preparing, setPreparing] = useState(false);
+
+  // Rời form thì thu hồi mọi ảnh xem trước còn giữ.
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
+  useEffect(() => () => imagesRef.current.forEach((image) => URL.revokeObjectURL(image.url)), []);
 
   const annual = values.leaveType === 'ANNUAL';
   const minFrom = annual ? balance?.earliestAnnualStart ?? today : today;
@@ -52,6 +63,31 @@ export default function LeaveRequestForm({ balance, approverLabel, onCreated, on
     }));
   }
 
+  /** Thu nhỏ từng ảnh vừa chọn; quá 3 ảnh thì bỏ phần thừa và nói rõ. */
+  async function addImages(fileList) {
+    const room = MAX_LEAVE_IMAGES - images.length;
+    const picked = [...fileList].slice(0, room);
+    if (picked.length === 0) return;
+    setPreparing(true);
+    setError(fileList.length > room ? `Mỗi đơn tối đa ${MAX_LEAVE_IMAGES} ảnh — đã bỏ bớt ảnh thừa.` : '');
+    const ready = [];
+    for (const file of picked) {
+      try {
+        const small = await shrinkImage(file);
+        ready.push({ key: `${file.name}-${file.lastModified}-${ready.length}`, file: small, url: URL.createObjectURL(small) });
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+    setImages((current) => [...current, ...ready]);
+    setPreparing(false);
+  }
+
+  function removeImage(image) {
+    URL.revokeObjectURL(image.url);
+    setImages((current) => current.filter((item) => item.key !== image.key));
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setError('');
@@ -68,11 +104,22 @@ export default function LeaveRequestForm({ balance, approverLabel, onCreated, on
       return;
     }
     setSubmitting(true);
+    let created;
     try {
-      onCreated(await createLeaveRequest({ ...values, reason: values.reason.trim() }));
+      created = await createLeaveRequest({ ...values, reason: values.reason.trim() });
     } catch (err) {
       setError(readErrorMessage(err, 'Không gửi được đơn nghỉ.'));
       setSubmitting(false);
+      return;
+    }
+    if (images.length === 0) {
+      onCreated(created);
+      return;
+    }
+    try {
+      onCreated(await uploadLeaveAttachments(created.id, images.map((image) => image.file)));
+    } catch (err) {
+      onCreated(created, readErrorMessage(err, 'Không đính kèm được ảnh.'));
     }
   }
 
@@ -184,6 +231,49 @@ export default function LeaveRequestForm({ balance, approverLabel, onCreated, on
         </span>
       </label>
 
+      <div className="field leave-form__images">
+        <span className="field__label">
+          Ảnh minh chứng <span className="muted">(không bắt buộc, tối đa {MAX_LEAVE_IMAGES} ảnh)</span>
+        </span>
+        {images.length > 0 && (
+          <ul className="leave-form__thumbs">
+            {images.map((image) => (
+              <li key={image.key}>
+                <img src={image.url} alt={`Ảnh ${image.file.name}`} />
+                <button
+                  type="button"
+                  className="leave-form__remove"
+                  aria-label={`Bỏ ảnh ${image.file.name}`}
+                  onClick={() => removeImage(image)}
+                  disabled={submitting}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {images.length < MAX_LEAVE_IMAGES && (
+          <label className={`btn btn--ghost btn--sm leave-form__pick ${submitting || preparing ? 'is-disabled' : ''}`}>
+            {preparing ? 'Đang xử lý ảnh…' : '+ Thêm ảnh'}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              disabled={submitting || preparing}
+              onChange={(e) => {
+                addImages(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        )}
+        <span className="field__help">
+          Ví dụ giấy khám bệnh, giấy mời. Ảnh được thu nhỏ trước khi gửi; người duyệt đơn xem được.
+        </span>
+      </div>
+
       {error && (
         <div className="alert alert--error" role="alert">
           {error}
@@ -194,7 +284,7 @@ export default function LeaveRequestForm({ balance, approverLabel, onCreated, on
         <button type="button" className="btn btn--ghost" onClick={onCancel} disabled={submitting}>
           Hủy bỏ
         </button>
-        <button type="submit" className="btn btn--primary" disabled={submitting}>
+        <button type="submit" className="btn btn--primary" disabled={submitting || preparing}>
           {submitting ? 'Đang gửi…' : 'Gửi đơn'}
         </button>
       </div>

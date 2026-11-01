@@ -9,6 +9,7 @@ import CleaningDayBoard from '../../components/rooms/CleaningDayBoard';
 import InspectTaskModal from '../../components/rooms/InspectTaskModal';
 import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import ReleaseTaskModal from '../../components/rooms/ReleaseTaskModal';
+import StatCard from '../../components/StatCard';
 import TaskCard from '../../components/rooms/TaskCard';
 import TaskReturnsModal from '../../components/rooms/TaskReturnsModal';
 import { todayIso } from './format';
@@ -17,6 +18,9 @@ import './rooms.css';
 
 /** Ba cột của bảng lịch dọn — đúng ba trạng thái "đang mở" của một việc (BR-HK-11). */
 const COLUMNS = TASK_STATUS_ORDER;
+
+/** Đủ cho mọi việc đang mở của một khách sạn 2–3 sao — cùng mức với bảng theo nhân viên, không phân trang. */
+const PAGE_SIZE = 500;
 
 /** Tab thứ tư: việc đã đóng trong ngày, để đối chiếu cuối ca. */
 const CLOSED = 'CLOSED';
@@ -59,6 +63,9 @@ function readSavedView() {
  *
  * Mỗi cột của bảng ba cột gọi API riêng với `status` tương ứng — đơn giản hơn tải hết rồi lọc ở
  * trình duyệt, và mỗi cột tự phân trang được khi dữ liệu lớn.
+ *
+ * Đầu trang là phần tổng quan (chốt 01/11/2026), hiện ở cả hai cách xem: chờ dọn chưa giao, đang dọn, tồn đọng
+ * (cờ do backend tính — BR-HK-04), chờ kiểm tra, xong hôm nay.
  */
 export default function HousekeepingPage() {
   const { user } = useAuth();
@@ -72,6 +79,7 @@ export default function HousekeepingPage() {
   const [version, setVersion] = useState(0);    // tăng sau mỗi thao tác để bảng theo nhân viên tải lại
   const [columns, setColumns] = useState({});   // { [status]: task[] }
   const [closedTasks, setClosedTasks] = useState([]);
+  const [overview, setOverview] = useState(null); // số việc theo trạng thái — phần tổng quan đầu trang
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [banner, setBanner] = useState(null);   // { type: 'success' | 'error' | 'info', text }
@@ -91,10 +99,10 @@ export default function HousekeepingPage() {
       // Bốn truy vấn song song: ba cột đang mở + tab đã đóng trong ngày. `locationWide`: Giám sát xem cả
       // khách sạn như Quản lý, không chỉ việc có mình trong nhóm.
       const [unassigned, inProgress, pending, closed] = await Promise.all([
-        fetchTasks({ status: 'UNASSIGNED', locationWide: true }),
-        fetchTasks({ status: 'IN_PROGRESS', locationWide: true }),
-        fetchTasks({ status: 'PENDING_INSPECTION', locationWide: true }),
-        fetchTasks({ assignedDate: today, locationWide: true }),
+        fetchTasks({ status: 'UNASSIGNED', locationWide: true, size: PAGE_SIZE }),
+        fetchTasks({ status: 'IN_PROGRESS', locationWide: true, size: PAGE_SIZE }),
+        fetchTasks({ status: 'PENDING_INSPECTION', locationWide: true, size: PAGE_SIZE }),
+        fetchTasks({ assignedDate: today, locationWide: true, size: PAGE_SIZE }),
       ]);
       setColumns({
         UNASSIGNED: unassigned.content ?? [],
@@ -102,6 +110,14 @@ export default function HousekeepingPage() {
         PENDING_INSPECTION: pending.content ?? [],
       });
       setClosedTasks((closed.content ?? []).filter((task) => CLOSED_STATUSES.includes(task.status)));
+      setOverview({
+        unassigned: unassigned.totalElements ?? 0,
+        inProgress: inProgress.totalElements ?? 0,
+        // BR-HK-04: cờ tồn đọng do backend tính — việc ca đêm từ hôm qua chưa tồn đọng khi ca chưa hết.
+        overdue: (inProgress.content ?? []).filter((task) => task.overdue).length,
+        pending: pending.totalElements ?? 0,
+        doneToday: (closed.content ?? []).filter((task) => task.status === 'COMPLETED').length,
+      });
     } catch (err) {
       setLoadError(readErrorMessage(err, 'Không tải được lịch dọn phòng.'));
     } finally {
@@ -109,16 +125,17 @@ export default function HousekeepingPage() {
     }
   }, [today]);
 
-  // Bảng ba cột chỉ tải khi đang hiện; bảng theo nhân viên tự tải theo ngày nó đang xem.
+  // Số liệu ba cột dùng cho cả phần tổng quan đầu trang nên tải ở mọi cách xem; bảng theo nhân viên tự tải thêm
+  // theo ngày nó đang xem.
   useEffect(() => {
-    if (view === 'status') load();
-  }, [view, load]);
+    load();
+  }, [load]);
 
-  /** Sau mỗi thao tác: tải lại đúng bảng đang hiện. */
+  /** Sau mỗi thao tác: tải lại tổng quan, bảng ba cột và bảng theo nhân viên. */
   const refresh = useCallback(() => {
-    if (view === 'status') load();
+    load();
     setVersion((current) => current + 1);
-  }, [view, load]);
+  }, [load]);
 
   function chooseView(next) {
     setView(next);
@@ -249,6 +266,46 @@ export default function HousekeepingPage() {
           <button type="button" className="alert__close" onClick={() => setBanner(null)} aria-label="Đóng">
             ×
           </button>
+        </div>
+      )}
+
+      {overview && (
+        <div className="stat-grid hk-overview" role="group" aria-label="Tổng quan việc dọn phòng">
+          <StatCard
+            label="Chờ dọn · chưa giao"
+            value={overview.unassigned}
+            note="Phòng «Chờ dọn» chưa có ai nhận"
+            icon="🧹"
+            tone="amber"
+          />
+          <StatCard
+            label="Đang dọn"
+            value={overview.inProgress}
+            note={overview.overdue > 0 ? `Trong đó ${overview.overdue} việc tồn đọng` : 'Phòng «Đang dọn»'}
+            icon="🧽"
+            tone="blue"
+          />
+          <StatCard
+            label="Tồn đọng"
+            value={overview.overdue}
+            note="Việc hôm trước hết ca mà chưa xong"
+            icon="⏰"
+            tone={overview.overdue > 0 ? 'red' : 'green'}
+          />
+          <StatCard
+            label="Chờ kiểm tra"
+            value={overview.pending}
+            note="Đã dọn xong, chờ nghiệm thu"
+            icon="🔍"
+            tone="indigo"
+          />
+          <StatCard
+            label="Xong hôm nay"
+            value={overview.doneToday}
+            note="Đã kiểm tra trong ngày"
+            icon="✅"
+            tone="green"
+          />
         </div>
       )}
 

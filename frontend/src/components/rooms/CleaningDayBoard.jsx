@@ -277,6 +277,12 @@ export default function CleaningDayBoard({
                       {row.shiftLabel ? `Ca ${row.shiftLabel}` : 'Có ca trong ngày'}
                       {row.person.phone ? ` · ${row.person.phone}` : ''}
                     </small>
+                    {/* Chốt 01/11/2026: lễ tân duy nhất của ca phải trực quầy — không giao việc dọn. */}
+                    {row.person.blockedReason && (
+                      <small className="staff-row__desk" title={row.person.blockedReason}>
+                        Trực quầy lễ tân — không giao việc dọn
+                      </small>
+                    )}
                   </div>
                   <div className="staff-row__counts">
                     <span className="chip">{row.working} đang làm</span>
@@ -287,10 +293,10 @@ export default function CleaningDayBoard({
                     <button
                       type="button"
                       className="btn btn--primary btn--sm"
-                      disabled={!canAssign || data.queue.length === 0}
-                      title={!canAssign
+                      disabled={!canAssign || data.queue.length === 0 || Boolean(row.person.blockedReason)}
+                      title={row.person.blockedReason ?? (!canAssign
                         ? 'Việc dọn chỉ giao được trong ngày'
-                        : data.queue.length === 0 ? 'Hàng chờ không còn việc nào' : undefined}
+                        : data.queue.length === 0 ? 'Hàng chờ không còn việc nào' : undefined)}
                       onClick={() => onAssignToPerson({
                         person: { ...row.person, shiftLabel: row.shiftLabel },
                         date,

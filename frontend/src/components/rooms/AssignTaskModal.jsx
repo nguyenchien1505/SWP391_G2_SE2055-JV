@@ -15,8 +15,9 @@ import { yesterdayIso } from '../../pages/rooms/workDay';
  *   - **Đang làm** — thêm người vào nhóm: phòng đứng yên, người mới dọn cùng ngày với nhóm.
  *
  * Danh sách người nhận do BACKEND lọc (`/assignable-staff?date=`) với đúng bộ điều kiện mà lệnh gán
- * sẽ kiểm lại: đang làm việc, cùng khách sạn, có quyền Dọn dẹp, và có ca ngày đó — ai hiện ra là gán
- * được. KHÔNG hiện giới hạn số việc mỗi người: BR-HK-02 nói rõ là không có giới hạn.
+ * sẽ kiểm lại: đang làm việc, cùng khách sạn, có quyền Dọn dẹp, và có ca ngày đó. Người là lễ tân DUY NHẤT
+ * của ca mình (chốt 01/11/2026) vẫn hiện nhưng không chọn được, kèm lý do (`blockedReason`) — phải trực quầy.
+ * KHÔNG hiện giới hạn số việc mỗi người: BR-HK-02 nói rõ là không có giới hạn.
  *
  * Việc dọn chỉ giao cho NGÀY LÀM HIỆN TẠI (phòng sang «Đang dọn» ngay khi giao — Q5): hôm nay, hoặc
  * ca qua đêm bắt đầu từ hôm qua mà người làm chưa hết ca (BR-SCH-03, chốt 28/10/2026). Lựa chọn "Ca đêm
@@ -69,6 +70,7 @@ export default function AssignTaskModal({ task, onClose, onAssigned }) {
   const nightShiftDay = !adding && staffByDay?.[days[1]]?.length > 0 ? days[1] : null;
   // Người đã trong nhóm thì không chọn lại.
   const candidates = (staff ?? []).filter((person) => !team.has(person.id));
+  const firstSelectable = candidates.find((person) => !person.blockedReason);
 
   function chooseDate(day) {
     setDate(day);
@@ -147,19 +149,23 @@ export default function AssignTaskModal({ task, onClose, onAssigned }) {
           {candidates.length > 0 && (
             <fieldset className="choice-list">
               <legend className="field__label">{adding ? 'Thêm vào nhóm' : 'Giao cho'}</legend>
-              {candidates.map((person, index) => (
-                <label key={person.id} className={`choice ${selected.has(person.id) ? 'is-selected' : ''}`}>
+              {candidates.map((person) => (
+                <label
+                  key={person.id}
+                  className={`choice ${selected.has(person.id) ? 'is-selected' : ''} ${person.blockedReason ? 'is-disabled' : ''}`}
+                >
                   <input
                     type="checkbox"
                     value={person.id}
                     checked={selected.has(person.id)}
                     onChange={() => toggle(person.id)}
-                    disabled={submitting}
-                    autoFocus={index === 0}
+                    disabled={submitting || Boolean(person.blockedReason)}
+                    autoFocus={person === firstSelectable}
                   />
                   <span>
                     <b>{person.fullName}</b>
                     <small>{person.phone}</small>
+                    {person.blockedReason && <small className="choice__blocked">{person.blockedReason}</small>}
                   </span>
                 </label>
               ))}

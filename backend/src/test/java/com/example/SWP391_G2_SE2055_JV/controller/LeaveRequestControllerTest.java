@@ -1,6 +1,11 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest.ReceptionReplacement;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentFile;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentUpload;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.Replacement;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse.ShiftImpact;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveRequestResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
@@ -13,20 +18,26 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -34,8 +45,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -198,19 +212,52 @@ class LeaveRequestControllerTest {
             verifyNoInteractions(leaveRequestService);
         }
 
+        /** Đơn không làm ca nào thiếu lễ tân thì duyệt không cần body. */
         @ParameterizedTest
         @ValueSource(strings = {"ROLE_MANAGER", "ROLE_DIRECTOR"})
         void shouldLetReviewersApprove(String authorities) throws Exception {
-            when(leaveRequestService.approveLeaveRequest(LEAVE_ID)).thenReturn(LeaveApprovalResponse.builder()
-                .request(sample(LeaveRequestStatus.APPROVED))
-                .releasedShifts(List.of()).keptShifts(List.of())
-                .receptionWarnings(List.of("Ca chiều ngày 03/11/2026"))
-                .build());
+            when(leaveRequestService.approveLeaveRequest(LEAVE_ID, List.of())).thenReturn(approved(List.of()));
 
             mockMvc.perform(patch("/scheduling/leave-requests/{id}/approve", LEAVE_ID).with(authorities(authorities)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.request.status").value("APPROVED"))
-                .andExpect(jsonPath("$.receptionWarnings[0]").value("Ca chiều ngày 03/11/2026"));
+                .andExpect(jsonPath("$.replacements").isEmpty());
+        }
+
+        /** BR-SCH-29 sửa (chốt 31/10/2026): lễ tân thay cho ca sẽ mất lễ tân đi kèm lệnh duyệt. */
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldPassReceptionReplacementsToService() throws Exception {
+            UUID shiftId = UUID.randomUUID();
+            UUID staffId = UUID.randomUUID();
+            ShiftImpact shift = new ShiftImpact(shiftId, LocalDate.of(2026, 11, 3), LocalTime.of(14, 0),
+                LocalTime.of(22, 0), "Ca chiều", null);
+            when(leaveRequestService.approveLeaveRequest(eq(LEAVE_ID), any()))
+                .thenReturn(approved(List.of(new Replacement(shift, staffId, "Lễ tân Test"))));
+
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/approve", LEAVE_ID)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"replacements\": [{\"shiftId\": \"" + shiftId + "\", \"staffId\": \"" + staffId + "\"}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.replacements[0].fullName").value("Lễ tân Test"))
+                .andExpect(jsonPath("$.replacements[0].shift.templateName").value("Ca chiều"));
+
+            ArgumentCaptor<List<ReceptionReplacement>> sent = ArgumentCaptor.forClass(List.class);
+            verify(leaveRequestService).approveLeaveRequest(eq(LEAVE_ID), sent.capture());
+            assertThat(sent.getValue()).singleElement().satisfies(replacement -> {
+                assertThat(replacement.getShiftId()).isEqualTo(shiftId);
+                assertThat(replacement.getStaffId()).isEqualTo(staffId);
+            });
+        }
+
+        @Test
+        @WithMockUser(roles = "MANAGER")
+        void shouldRequireStaffForEveryReplacement() throws Exception {
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/approve", LEAVE_ID)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"replacements\": [{\"shiftId\": \"" + UUID.randomUUID() + "\"}]}"))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(leaveRequestService);
         }
 
         /** Giám sát vận hành không duyệt đơn (BR-PERM-07) — chặn ở tầng URL, service không được gọi. */
@@ -219,7 +266,8 @@ class LeaveRequestControllerTest {
         void shouldForbidStaffAndSupervisorsFromDeciding(String authorities) throws Exception {
             mockMvc.perform(patch("/scheduling/leave-requests/{id}/approve", LEAVE_ID).with(authorities(authorities)))
                 .andExpect(status().isForbidden());
-            mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID).with(authorities(authorities)))
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID).with(authorities(authorities))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"reason\": \"Thiếu người\"}"))
                 .andExpect(status().isForbidden());
             mockMvc.perform(get("/scheduling/leave-requests/{id}/approval-preview", LEAVE_ID)
                     .with(authorities(authorities)))
@@ -252,14 +300,38 @@ class LeaveRequestControllerTest {
             verifyNoInteractions(leaveRequestService);
         }
 
+        /** Chốt 31/10/2026: từ chối kèm lý do, và lý do có trong response để người gửi đọc được. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_MANAGER", "ROLE_DIRECTOR"})
+        void shouldLetReviewersRejectWithReason(String authorities) throws Exception {
+            LeaveRequestResponse rejected = sample(LeaveRequestStatus.REJECTED);
+            rejected.setRejectReason("Cuối tuần thiếu người");
+            when(leaveRequestService.rejectLeaveRequest(LEAVE_ID, "Cuối tuần thiếu người")).thenReturn(rejected);
+
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID).with(authorities(authorities))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"reason\": \"Cuối tuần thiếu người\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectReason").value("Cuối tuần thiếu người"));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"{}", "{\"reason\": \"  \"}"})
+        @WithMockUser(roles = "MANAGER")
+        void shouldRequireReasonToReject(String body) throws Exception {
+            mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(leaveRequestService);
+        }
+
+        /** Gọi kiểu cũ, không kèm body, thì 400 — không có đường nào từ chối đơn mà thiếu lý do. */
         @Test
         @WithMockUser(roles = "MANAGER")
-        void shouldRejectForManager() throws Exception {
-            when(leaveRequestService.rejectLeaveRequest(LEAVE_ID)).thenReturn(sample(LeaveRequestStatus.REJECTED));
-
+        void shouldRefuseRejectWithoutBody() throws Exception {
             mockMvc.perform(patch("/scheduling/leave-requests/{id}/reject", LEAVE_ID))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("REJECTED"));
+                .andExpect(status().isBadRequest());
+            verifyNoInteractions(leaveRequestService);
         }
 
         /** Đơn ngoài phạm vi duyệt (khách sạn khác, đơn của chính mình) trả 404. */
@@ -274,6 +346,58 @@ class LeaveRequestControllerTest {
         }
     }
 
+    // ── Ảnh minh chứng — chốt 01/11/2026 ────────────────────────────────────
+
+    @Nested
+    class Attachments {
+
+        private final MockMultipartFile image =
+            new MockMultipartFile("files", "giay-kham.png", "image/png", new byte[]{1, 2, 3});
+
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_STAFF", "ROLE_MANAGER"})
+        @SuppressWarnings("unchecked")
+        void shouldPassUploadedImagesToService(String authorities) throws Exception {
+            when(leaveRequestService.addAttachments(eq(LEAVE_ID), any())).thenReturn(sample(LeaveRequestStatus.PENDING));
+
+            mockMvc.perform(multipart("/scheduling/leave-requests/{id}/attachments", LEAVE_ID).file(image)
+                    .with(authorities(authorities)))
+                .andExpect(status().isOk());
+
+            ArgumentCaptor<List<LeaveAttachmentUpload>> sent = ArgumentCaptor.forClass(List.class);
+            verify(leaveRequestService).addAttachments(eq(LEAVE_ID), sent.capture());
+            assertThat(sent.getValue()).singleElement().satisfies(upload -> {
+                assertThat(upload.fileName()).isEqualTo("giay-kham.png");
+                assertThat(upload.data()).containsExactly(1, 2, 3);
+            });
+        }
+
+        /** Giám đốc không gửi đơn nghỉ (không có cấp trên duyệt) nên cũng không đính kèm ảnh. */
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldNotLetDirectorUpload() throws Exception {
+            mockMvc.perform(multipart("/scheduling/leave-requests/{id}/attachments", LEAVE_ID).file(image))
+                .andExpect(status().isForbidden());
+            verifyNoInteractions(leaveRequestService);
+        }
+
+        /** Người gửi và người duyệt xem ảnh; service lo phạm vi. Ảnh hiện ngay trên trang, không tải về. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_STAFF", "ROLE_MANAGER", "ROLE_DIRECTOR"})
+        void shouldServeImageInline(String authorities) throws Exception {
+            UUID imageId = UUID.randomUUID();
+            when(leaveRequestService.getAttachment(LEAVE_ID, imageId))
+                .thenReturn(new LeaveAttachmentFile("giấy khám.png", "image/png", new byte[]{9, 8}));
+
+            mockMvc.perform(get("/scheduling/leave-requests/{id}/attachments/{imageId}", LEAVE_ID, imageId)
+                    .with(authorities(authorities)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_PNG))
+                .andExpect(content().bytes(new byte[]{9, 8}))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, startsWith("inline")));
+        }
+    }
+
     // ── Dữ liệu mẫu ─────────────────────────────────────────────────────────
 
     private static RequestPostProcessor authorities(String commaSeparated) {
@@ -281,6 +405,14 @@ class LeaveRequestControllerTest {
             Arrays.stream(commaSeparated.split(","))
                 .map(SimpleGrantedAuthority::new)
                 .toList());
+    }
+
+    private static LeaveApprovalResponse approved(List<Replacement> replacements) {
+        return LeaveApprovalResponse.builder()
+            .request(sample(LeaveRequestStatus.APPROVED))
+            .releasedShifts(List.of()).keptShifts(List.of())
+            .receptionGaps(List.of()).replacements(replacements)
+            .build();
     }
 
     private static LeaveRequestResponse sample(LeaveRequestStatus status) {

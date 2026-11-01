@@ -1,9 +1,13 @@
 package com.example.SWP391_G2_SE2055_JV.controller;
 
+import com.example.SWP391_G2_SE2055_JV.dto.ApproveLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.CreateLeaveRequestRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentFile;
+import com.example.SWP391_G2_SE2055_JV.dto.LeaveAttachmentUpload;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveApprovalResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveBalanceResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.LeaveRequestResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.RejectLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.RevokeLeaveRequestRequest;
 import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
 import com.example.SWP391_G2_SE2055_JV.service.LeaveRequestService;
@@ -13,11 +17,21 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -67,6 +81,36 @@ public class LeaveRequestController {
     }
 
     /**
+     * Người gửi đính kèm ảnh minh chứng cho đơn còn chờ duyệt (chốt 01/11/2026, thay BR-SCH-30): multipart, phần
+     * {@code files}; tối đa 3 ảnh mỗi đơn, 5 MB mỗi ảnh. Trả đơn kèm danh sách ảnh mới.
+     */
+    @PostMapping(path = "/{id}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('STAFF','MANAGER')")
+    public ResponseEntity<LeaveRequestResponse> addAttachments(
+            @PathVariable UUID id,
+            @RequestParam(name = "files", required = false) List<MultipartFile> files) throws IOException {
+        List<LeaveAttachmentUpload> uploads = new ArrayList<>();
+        for (MultipartFile file : files == null ? List.<MultipartFile>of() : files) {
+            uploads.add(new LeaveAttachmentUpload(file.getOriginalFilename(), file.getBytes()));
+        }
+        return ResponseEntity.ok(leaveRequestService.addAttachments(id, uploads));
+    }
+
+    /** Một ảnh đính kèm — người gửi đơn và người duyệt theo cấp (BR-SCH-08) xem được; ngoài phạm vi 404. */
+    @GetMapping("/{id}/attachments/{attachmentId}")
+    @PreAuthorize("hasAnyRole('STAFF','MANAGER','DIRECTOR')")
+    public ResponseEntity<byte[]> getAttachment(@PathVariable UUID id, @PathVariable UUID attachmentId) {
+        LeaveAttachmentFile file = leaveRequestService.getAttachment(id, attachmentId);
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(file.contentType()))
+            .header(HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.inline().filename(file.fileName(), StandardCharsets.UTF_8).build().toString())
+            // Ảnh không đổi sau khi gửi; "private" để proxy dùng chung không giữ ảnh của người khác.
+            .cacheControl(CacheControl.maxAge(Duration.ofHours(1)).cachePrivate())
+            .body(file.data());
+    }
+
+    /**
      * Hàng đơn cần duyệt — Manager: đơn Staff khách sạn mình; Giám đốc: đơn Manager. Không truyền
      * {@code status} = mọi trạng thái.
      */
@@ -78,23 +122,37 @@ public class LeaveRequestController {
         return ResponseEntity.ok(leaveRequestService.getReviewQueue(status, pageable));
     }
 
-    /** Xem trước hệ quả của việc duyệt: ca sẽ gỡ, ca giữ, cảnh báo lễ tân (BR-SCH-29), quỹ phép năm. */
+    /**
+     * Xem trước hệ quả của việc duyệt: ca sẽ gỡ, ca giữ, ca sẽ mất lễ tân duy nhất kèm các lễ tân xếp thay được
+     * (BR-SCH-29 sửa 31/10/2026), quỹ phép năm.
+     */
     @GetMapping("/{id}/approval-preview")
     @PreAuthorize("hasAnyRole('MANAGER','DIRECTOR')")
     public ResponseEntity<LeaveApprovalResponse> previewApproval(@PathVariable UUID id) {
         return ResponseEntity.ok(leaveRequestService.previewApproval(id));
     }
 
+    /**
+     * Duyệt đơn. Ca theo mẫu sẽ mất lễ tân duy nhất thì phải gửi kèm lễ tân thay cho từng ca (BR-SCH-29 sửa
+     * 31/10/2026), chọn trong danh sách của {@code approval-preview}; đơn không làm ca nào thiếu lễ tân thì không cần
+     * body.
+     */
     @PatchMapping("/{id}/approve")
     @PreAuthorize("hasAnyRole('MANAGER','DIRECTOR')")
-    public ResponseEntity<LeaveApprovalResponse> approveLeaveRequest(@PathVariable UUID id) {
-        return ResponseEntity.ok(leaveRequestService.approveLeaveRequest(id));
+    public ResponseEntity<LeaveApprovalResponse> approveLeaveRequest(
+            @PathVariable UUID id,
+            @Valid @RequestBody(required = false) ApproveLeaveRequestRequest request) {
+        return ResponseEntity.ok(leaveRequestService.approveLeaveRequest(id,
+            request == null ? List.of() : request.getReplacements()));
     }
 
+    /** Từ chối đơn đang chờ duyệt, bắt buộc lý do — người gửi đọc được (chốt 31/10/2026). Lịch làm việc không đổi. */
     @PatchMapping("/{id}/reject")
     @PreAuthorize("hasAnyRole('MANAGER','DIRECTOR')")
-    public ResponseEntity<LeaveRequestResponse> rejectLeaveRequest(@PathVariable UUID id) {
-        return ResponseEntity.ok(leaveRequestService.rejectLeaveRequest(id));
+    public ResponseEntity<LeaveRequestResponse> rejectLeaveRequest(
+            @PathVariable UUID id,
+            @Valid @RequestBody RejectLeaveRequestRequest request) {
+        return ResponseEntity.ok(leaveRequestService.rejectLeaveRequest(id, request.getReason()));
     }
 
     /** BR-SCH-16 bản sửa 28/10/2026: người duyệt hủy phần ngày chưa tới của đơn đã duyệt, bắt buộc lý do. */
