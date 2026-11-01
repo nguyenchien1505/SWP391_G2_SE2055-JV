@@ -387,7 +387,7 @@ class LeaveRequestFlowTest {
         assertThat(em.find(Shift.class, cleanerTomorrow.getId()).getStaffId()).isEqualTo(cleaner.getId());
     }
 
-    /** V13: đơn bị từ chối phải có lý do — DB chặn dù có đường ghi nào bỏ sót ở service. */
+    /** V17: đơn bị từ chối phải có lý do — DB chặn dù có đường ghi nào bỏ sót ở service. */
     @Test
     void shouldRequireRejectReasonAtDatabaseLevel() {
         LeaveRequest broken = LeaveRequest.builder().tenantId(tenantId).locationId(hanoi)

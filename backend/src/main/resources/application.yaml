@@ -65,7 +65,7 @@ spring:
 
   servlet:
     multipart:
-      # Ảnh minh chứng đơn nghỉ (chốt 01/11/2026): mỗi ảnh tối đa 5 MB, mỗi đơn tối đa 3 ảnh — khớp CHECK của V14.
+      # Ảnh minh chứng đơn nghỉ (chốt 01/11/2026): mỗi ảnh tối đa 5 MB, mỗi đơn tối đa 3 ảnh — khớp CHECK của V18.
       max-file-size: 5MB
       max-request-size: 16MB
 

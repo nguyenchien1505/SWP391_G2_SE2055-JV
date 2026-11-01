@@ -99,7 +99,7 @@ public class LeaveRequestService {
 
     private static final Set<LeaveRequestStatus> APPROVED_ONLY = EnumSet.of(LeaveRequestStatus.APPROVED);
 
-    /** Ảnh minh chứng: mỗi đơn tối đa 3 ảnh, mỗi ảnh tối đa 5 MB — khớp CHECK của V14 và giới hạn multipart. */
+    /** Ảnh minh chứng: mỗi đơn tối đa 3 ảnh, mỗi ảnh tối đa 5 MB — khớp CHECK của V18 và giới hạn multipart. */
     static final int MAX_ATTACHMENTS = 3;
     static final int MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 

@@ -17,7 +17,7 @@
 --   Lễ tân Test       Phép năm     −20 → −19 (2 ngày)           Đã duyệt     Quỹ phép của Lễ tân Test đã dùng 2 ngày
 --   Quản lý Hà Nội    Phép năm     +10 → +11 (2 ngày)           Chờ duyệt    Giám đốc duyệt đơn của Manager (BR-SCH-08)
 --   Trần Văn Nam      Không lương  +3 (1 ngày)                  Từ chối      dondep3 mở «Đơn xin nghỉ» đọc lý do từ chối
---                                                                           (bắt buộc từ 31/10/2026 — V13)
+--                                                                           (bắt buộc từ 31/10/2026 — V17)
 --
 -- Ca chiều +2 cho Kiêm nhiệm Test (lễ tân) và Trần Văn Nam (không phải lễ tân): duyệt đơn của Kiêm nhiệm thì
 -- ca đó còn người mà hết lễ tân. Bỏ qua người đã có ca ngày đó — database mới đã có sẵn hai ca này từ seed dọn
