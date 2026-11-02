@@ -2,12 +2,14 @@ package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.CompleteTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.TaskReturnResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.TaskRoomDamageResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
@@ -584,7 +586,7 @@ class HousekeepingTaskControllerTest {
         void shouldCompleteTaskForHousekeepingStaff() throws Exception {
             HousekeepingTaskResponse done = sampleTask();
             done.setStatus(HousekeepingTaskStatus.PENDING_INSPECTION);
-            when(housekeepingService.completeTask(TASK_ID)).thenReturn(done);
+            when(housekeepingService.completeTask(eq(TASK_ID), any())).thenReturn(done);
 
             mockMvc.perform(patch("/housekeeping/tasks/{id}/complete", TASK_ID))
                 .andExpect(status().isOk())
@@ -619,15 +621,77 @@ class HousekeepingTaskControllerTest {
             verifyNoInteractions(housekeepingService);
         }
 
+        /** Chốt 02/11/2026: body không bắt buộc — có thì lời nhắn tới thẳng service. */
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldPassNoteForInspectorToService() throws Exception {
+            when(housekeepingService.completeTask(eq(TASK_ID), any())).thenReturn(sampleTask());
+
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/complete", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"note\": \"Thiếu 1 gối\"}"))
+                .andExpect(status().isOk());
+
+            ArgumentCaptor<CompleteTaskRequest> captor = ArgumentCaptor.forClass(CompleteTaskRequest.class);
+            verify(housekeepingService).completeTask(eq(TASK_ID), captor.capture());
+            assertThat(captor.getValue().getNote()).isEqualTo("Thiếu 1 gối");
+        }
+
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldRejectNoteLongerThan500() throws Exception {
+            mockMvc.perform(patch("/housekeeping/tasks/{id}/complete", TASK_ID)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"note\": \"" + "x".repeat(501) + "\"}"))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(housekeepingService);
+        }
+
         /** BR-PERM-05: người ngoài nhóm dọn thì service chặn → 400. */
         @Test
         @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
         void shouldReturnBadRequestWhenNotInTeam() throws Exception {
-            when(housekeepingService.completeTask(TASK_ID))
+            when(housekeepingService.completeTask(eq(TASK_ID), any()))
                 .thenThrow(new BusinessException("Chỉ người trong nhóm dọn mới bấm hoàn thành task này."));
 
             mockMvc.perform(patch("/housekeeping/tasks/{id}/complete", TASK_ID))
                 .andExpect(status().isBadRequest());
+        }
+    }
+
+    // ── Báo hỏng của phòng đang dọn — chốt 02/11/2026 ───────────────────────
+
+    @Nested
+    class RoomDamage {
+
+        @Test
+        void shouldReturnUnauthorizedWithoutLogin() throws Exception {
+            mockMvc.perform(get("/housekeeping/tasks/{id}/damage-reports", TASK_ID))
+                .andExpect(status().isUnauthorized());
+            verifyNoInteractions(housekeepingService);
+        }
+
+        /** Báo hỏng của phòng: mọi role xem việc dọn đều gọi được — phạm vi lọc ở service. */
+        @ParameterizedTest
+        @ValueSource(strings = {"ROLE_MANAGER", "ROLE_STAFF,POSITION_SUPERVISION", "ROLE_STAFF,POSITION_HOUSEKEEPING"})
+        void shouldListRoomDamageForAnyRoleThatSeesTasks(String authorities) throws Exception {
+            UUID assetId = UUID.randomUUID();
+            when(housekeepingService.getRoomDamageReports(TASK_ID)).thenReturn(List.of(TaskRoomDamageResponse.builder()
+                .fixedAssetId(assetId).openReports(2).reportedByMe(true).lastReportedAt(LocalDateTime.now()).build()));
+
+            mockMvc.perform(get("/housekeeping/tasks/{id}/damage-reports", TASK_ID).with(authorities(authorities)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].fixedAssetId").value(assetId.toString()))
+                .andExpect(jsonPath("$[0].openReports").value(2))
+                .andExpect(jsonPath("$[0].reportedByMe").value(true));
+        }
+
+        @Test
+        @WithMockUser(authorities = {"ROLE_STAFF", "POSITION_HOUSEKEEPING"})
+        void shouldReturnNotFoundForRoomDamageOutOfScope() throws Exception {
+            when(housekeepingService.getRoomDamageReports(TASK_ID))
+                .thenThrow(new ResourceNotFoundException("HousekeepingTask", "id", TASK_ID));
+
+            mockMvc.perform(get("/housekeeping/tasks/{id}/damage-reports", TASK_ID))
+                .andExpect(status().isNotFound());
         }
     }
 
