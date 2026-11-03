@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { canReportDamage, hasPermission } from '../../permissions';
 import { readErrorMessage } from '../../api/client';
-import { fetchTasks } from '../../api/housekeeping';
+import { claimTask, fetchOpenTasks, fetchTasks } from '../../api/housekeeping';
 import { createRoom, deleteRoom, fetchAllRooms, fetchRoom, updateRoom } from '../../api/rooms';
 import AssetAuditModal from '../../components/AssetAuditModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -17,6 +17,7 @@ import { assetService } from '../../services/assetApi';
 import AssignTaskModal from '../../components/rooms/AssignTaskModal';
 import InspectTaskModal from '../../components/rooms/InspectTaskModal';
 import LockRoomModal from '../../components/rooms/LockRoomModal';
+import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
 import RoomActionDialog from '../../components/rooms/RoomActionDialog';
 import RoomBoardPanel from '../../components/rooms/RoomBoardPanel';
 import RoomCard from '../../components/rooms/RoomCard';
@@ -64,6 +65,12 @@ const NO_FILTER = { status: '', floor: '', roomType: '', search: '' };
  * dọn làm ở màn Công việc dọn phòng (F6). Nhân viên Lễ tân / Dọn dẹp bấm thẳng vào tài sản trong
  * bảng chi tiết để báo hỏng (BR-ASSET-05) — không phải sang tab tài sản của chi tiết phòng.
  *
+ * Nhân viên Dọn dẹp nhận việc NGAY TRÊN SƠ ĐỒ (chốt 02/11/2026, thay danh sách chờ nhận ở «Việc của tôi»):
+ * bảng chi tiết của phòng có việc chưa ai nhận có nút «Nhận phòng này». Không có bộ lọc riêng: phòng «Chờ dọn»
+ * luôn có đúng một việc chưa phân công và ngược lại (BR-HK-01, BR-HK-11, Q5), nên ô lọc «Chờ dọn» chính là danh
+ * sách chờ nhận — «Việc của tôi» mở sẵn ô này qua `?status=DIRTY`. Được nhận hay không, vì sao, do backend nói
+ * (`/housekeeping/tasks/open`). Nhận xong chuyển sang «Việc của tôi».
+ *
  * Đổi trạng thái xong chỉ thay đúng thẻ đó bằng phòng trong response — không tải lại cả sơ đồ,
  * để Lễ tân đang xếp khách không bị mất chỗ đang xem.
  */
@@ -74,6 +81,8 @@ export default function RoomBoardPage() {
   const isReception = user?.role === 'STAFF' && hasPermission(user, 'RECEPTION');
   const role = useMemo(() => ({ isDirector, isManager, isReception }), [isDirector, isManager, isReception]);
   const isStaff = user?.role === 'STAFF';
+  // Nhân viên Dọn dẹp tự nhận việc trên sơ đồ (BR-HK-14 → 16).
+  const isCleaner = isStaff && hasPermission(user, 'HOUSEKEEPING');
   // Chấm công M2: khối «Ca hôm nay» cho nhân viên (Sơ đồ phòng là trang đầu của lễ tân).
   const { shifts: workDayShifts, reload: reloadWorkDay, today: workDayToday } = useWorkDayShifts(isStaff);
   // Nhân viên có quyền Lễ tân hoặc Dọn dẹp — BR-ASSET-05.
@@ -101,10 +110,14 @@ export default function RoomBoardPage() {
   const navigate = useNavigate();
   const [banner, setBanner] = useState(navigationState?.banner ?? null); // { type, text }
 
-  /** Vào / kết thúc ca xong (hay lỗi): báo bằng banner chung của trang, tải lại khối ca. */
+  /**
+   * Vào / kết thúc ca xong (hay lỗi): báo bằng banner chung của trang, tải lại khối ca — và việc chờ nhận, vì
+   * nhân viên dọn được nhận hay không đổi theo ca (BR-HK-15).
+   */
   function handleShiftChanged(message) {
     setBanner(message);
     reloadWorkDay();
+    loadTasks();
   }
 
   // Kiểu xem nằm trên URL để quay lại từ trang chi tiết vẫn đúng dạng đang xem.
@@ -123,15 +136,23 @@ export default function RoomBoardPage() {
   const [roomForm, setRoomForm] = useState(null); // null | { mode: 'create' } | { mode: 'edit', room }
   const [deleting, setDeleting] = useState(null);
 
-  const [filters, setFilters] = useState(NO_FILTER);
+  // Mở sẵn một ô trạng thái từ màn khác (`?status=DIRTY` — «Việc của tôi» khi chưa có phòng nào).
+  const [filters, setFilters] = useState(() => ({
+    ...NO_FILTER,
+    status: ROOM_STATUS_ORDER.includes(searchParams.get('status')) ? searchParams.get('status') : '',
+  }));
   const [collapsedFloors, setCollapsedFloors] = useState(() => new Set());
   const [selectedId, setSelectedId] = useState(null);
   const [historyKey, setHistoryKey] = useState(0);
   // Tăng sau mỗi lần kiểm kê → bảng chi tiết nạp lại danh sách tài sản của phòng.
   const [assetsKey, setAssetsKey] = useState(0);
 
-  // Chỉ Quản lý chi nhánh: việc dọn đang mở theo phòng (kèm tên nhóm dọn).
+  // Quản lý chi nhánh: việc dọn đang mở theo phòng (kèm tên nhóm dọn). Nhân viên Dọn dẹp: việc đang chờ nhận.
   const [tasksByRoom, setTasksByRoom] = useState({});
+  // Chỉ nhân viên Dọn dẹp: { canClaim, blockedReason, tasks } — được nhận hay không do backend nói.
+  const [openTasks, setOpenTasks] = useState(null);
+  const [claimingId, setClaimingId] = useState(null);
+  const [previousOf, setPreviousOf] = useState(null);   // việc dọn lại đang xem lý do lần trước không đạt
 
   const [assigning, setAssigning] = useState(null);
   const [inspecting, setInspecting] = useState(null);   // việc dọn «Chờ kiểm tra» đang mở hộp đạt / không đạt
@@ -151,9 +172,21 @@ export default function RoomBoardPage() {
 
   /**
    * Lỗi tải việc dọn không chặn sơ đồ: thẻ chỉ thiếu dòng gợi ý, thao tác đổi trạng thái vẫn dùng
-   * được. Vai trò khác không gọi — nhân viên gọi API này chỉ thấy việc của chính mình.
+   * được. Nhân viên Dọn dẹp tải việc đang chờ nhận của cả khách sạn (BR-HK-14); vai trò khác không gọi —
+   * nhân viên gọi danh sách việc dọn chỉ thấy việc của chính mình.
    */
   const loadTasks = useCallback(async () => {
+    if (isCleaner) {
+      try {
+        const open = await fetchOpenTasks();
+        setOpenTasks(open);
+        setTasksByRoom(indexOpenTasks(open.tasks ?? []));
+      } catch {
+        setOpenTasks(null);
+        setTasksByRoom({});
+      }
+      return;
+    }
     if (!isManager) return;
     try {
       const pages = await Promise.all(OPEN_TASK_STATUSES.map((status) => fetchTasks({ status, size: 100 })));
@@ -161,7 +194,7 @@ export default function RoomBoardPage() {
     } catch {
       setTasksByRoom({});
     }
-  }, [isManager]);
+  }, [isManager, isCleaner]);
 
   /** Báo hỏng của cả khách sạn, một lần gọi — lỗi thì chỉ thiếu nút "Xem báo hỏng", sơ đồ vẫn dùng được. */
   const loadReports = useCallback(async () => {
@@ -286,6 +319,34 @@ export default function RoomBoardPage() {
     afterChange();
   }
 
+  /**
+   * Nhân viên Dọn dẹp nhận phòng (RM-21): thành công thì sang «Việc của tôi» — chi tiết phòng vừa nhận. Lỗi
+   * (người khác vừa nhận trước, chưa vào ca…) thì báo nguyên câu của backend và tải lại phòng lẫn danh sách
+   * chờ nhận (BR-HK-18).
+   */
+  async function handleClaim(task) {
+    setClaimingId(task.id);
+    setBanner(null);
+    try {
+      const claimed = await claimTask(task.id);
+      navigate('/don-phong/cua-toi', {
+        state: {
+          banner: {
+            type: 'success',
+            text: `Bạn đã nhận phòng ${taskRoomLabel(claimed)} — phòng chuyển sang «Đang dọn».`,
+          },
+        },
+      });
+    } catch (err) {
+      showError(readErrorMessage(err, 'Không nhận được phòng này.'));
+      refreshRoom(task.roomId);
+      loadTasks();
+      // Màn hẹp: bảng chi tiết đang đè lên trang — đóng để câu báo hiện ra.
+      if (!wideRef.current) setSelectedId(null);
+      setClaimingId(null);
+    }
+  }
+
   function saveNote(updated) {
     setNoteRoom(null);
     replaceRoom(updated);
@@ -382,7 +443,7 @@ export default function RoomBoardPage() {
   const selectedRoom = rooms.find((room) => room.id === selectedId) ?? null;
   const modalOpen = Boolean(
     assigning || noteRoom || auditing || addingAssetTo || openReportId || roomForm || deleting
-      || reportingAsset || action.pending,
+      || reportingAsset || previousOf || action.pending,
   );
 
   // Esc đóng bảng chi tiết khi nó đang đè lên trang — trừ lúc có hộp thoại mở (Esc là của hộp thoại).
@@ -401,6 +462,19 @@ export default function RoomBoardPage() {
     [rooms, filters],
   );
   const hasFilter = Boolean(filters.status || filters.floor || filters.roomType || filters.search.trim());
+
+  /**
+   * Thẻ phòng của nhân viên Dọn dẹp: nhãn «Chờ dọn» đã nói phòng đang chờ người nhận, nên chỉ thêm "Dọn lại" khi
+   * phòng phải dọn lại sau kiểm tra không đạt (BR-HK-12) — điều trạng thái phòng không cho biết.
+   */
+  const cardHint = (room) => {
+    const waiting = isCleaner ? tasksByRoom[room.id]?.[0] : null;
+    if (waiting?.createdSource === 'INSPECTION_FAILED') {
+      return { text: 'Dọn lại', attention: true };
+    }
+    return roomCardHint(room, isCleaner ? [] : tasksByRoom[room.id]);
+  };
+  const claimTaskOf = (room) => (isCleaner && openTasks ? tasksByRoom[room.id]?.[0] ?? null : null);
   const locationName = isDirector ? (locations ?? []).find((item) => item.id === locationId)?.name : null;
 
   const panelProps = selectedRoom && {
@@ -441,6 +515,14 @@ export default function RoomBoardPage() {
       : undefined,
     reportNotice: reportNotice?.roomId === selectedRoom.id ? reportNotice.text : null,
     onDismissReportNotice: () => setReportNotice(null),
+    claim: claimTaskOf(selectedRoom) && {
+      task: claimTaskOf(selectedRoom),
+      canClaim: openTasks.canClaim,
+      blockedReason: openTasks.blockedReason,
+    },
+    claiming: claimingId !== null,
+    onClaim: handleClaim,
+    onShowPreviousInspection: setPreviousOf,
   };
 
   return (
@@ -669,7 +751,7 @@ export default function RoomBoardPage() {
                       <RoomCard
                         key={room.id}
                         room={room}
-                        hint={roomCardHint(room, tasksByRoom[room.id])}
+                        hint={cardHint(room)}
                         selected={room.id === selectedId}
                         onSelect={(picked) => setSelectedId(picked.id)}
                       />
@@ -782,6 +864,7 @@ export default function RoomBoardPage() {
           onSubmitted={finishDamageReport}
         />
       )}
+      {previousOf && <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />}
     </div>
   );
 }

@@ -68,6 +68,13 @@ export default function InspectTaskModal({ task, onClose, onInspected }) {
             </p>
           </div>
 
+          {/* Lời nhắn người dọn để lại lúc báo xong (chốt 02/11/2026) — đọc trước khi chấm đạt / không đạt. */}
+          {task.completionNote && (
+            <div className="alert alert--info">
+              <b>Người dọn ghi chú:</b> {task.completionNote}
+            </div>
+          )}
+
           <fieldset className="inspect-choices">
             <legend className="field__label">
               Kết quả kiểm tra <span className="req">*</span>
