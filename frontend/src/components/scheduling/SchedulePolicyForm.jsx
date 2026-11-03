@@ -4,84 +4,89 @@ import { updatePolicy } from '../../api/scheduling';
 import { formatDateTime } from '../../pages/rooms/format';
 
 /**
- * Các nhóm tham số của Schedule Policy. Mỗi nhóm có câu ghi chú riêng vì cách áp dụng khác nhau: luật xếp ca
- * chỉ áp cho ca xếp từ lúc lưu, còn quỹ phép tính lại ngay theo số mới.
+ * Bốn card của Schedule Policy (chốt bố cục 04/11/2026): «Quy định xếp ca» rộng hết hàng; hàng dưới bên trái là «Yêu
+ * cầu đổi ca» rồi «Quy chuẩn chấm công», bên phải là «Nghỉ phép năm». Điện thoại xếp dọc theo đúng thứ tự mảng này.
+ *
+ * `warn`: cảnh báo nổi bật (chỉ card xếp ca — ràng buộc cứng). `note`: một dòng chữ nhỏ cho điều ảnh hưởng tới quyết
+ * định của Giám đốc. Mã BR chỉ ghi trong comment, không hiện trên giao diện.
  */
 const GROUPS = [
   {
+    // BR-SCH-02, BR-SCH-03, BR-SCH-13..15.
     key: 'schedule',
-    title: 'Xếp ca',
-    note: 'Ca vi phạm bất kỳ điều nào đều bị chặn, không có ngoại lệ. Số mới áp cho ca xếp từ lúc lưu; ca đã xếp giữ nguyên.',
+    title: 'Quy định xếp ca',
+    warn: 'Ràng buộc cứng: vi phạm sẽ chặn lưu ca trên toàn hệ thống. Số mới chỉ áp cho ca xếp từ lúc lưu.',
   },
   {
+    // BR-SCH-11, BR-SCH-21.
     key: 'swap',
-    title: 'Đổi ca',
-    note: 'Áp cho yêu cầu gửi từ lúc lưu; yêu cầu đã gửi giữ hạn cũ.',
+    title: 'Yêu cầu đổi ca',
   },
   {
+    // BR-SCH-27, BR-SCH-07 bản sửa.
     key: 'leave',
     title: 'Nghỉ phép năm',
-    note: 'Quỹ phép tính lại mỗi lần xem, nên đổi số ngày phép thì quỹ của mọi người đổi theo ngay.',
+    note: 'Đổi số ngày phép thì quỹ phép của mọi người tính lại ngay.',
   },
   {
+    // BR-ATT-02.
     key: 'attendance',
-    title: 'Chấm công',
+    title: 'Quy chuẩn chấm công',
     note: 'Hệ thống chỉ đánh dấu đi muộn / về sớm, không tự phạt.',
   },
 ];
 
 /**
- * BR-SCH-02 (5 luật chặn cứng khi xếp ca), BR-SCH-21 (hạn trả lời đổi ca), BR-SCH-27 và BR-SCH-07 bản sửa (phép
- * năm), BR-ATT-02 (ngưỡng đi muộn / về sớm). Giới hạn min/max khớp UpdateSchedulePolicyRequest ở backend (và cột /
- * CHECK của DB), để lỗi hiện ngay trên ô nhập thay vì đợi server trả 422.
+ * Giới hạn min/max khớp UpdateSchedulePolicyRequest ở backend (và cột / CHECK của DB), để lỗi hiện ngay dưới ô nhập
+ * thay vì đợi server trả 422. `help` hiện trong ô ⓘ cạnh nhãn.
  */
 const FIELDS = [
   {
     group: 'schedule',
-    key: 'maxHoursPerDay', label: 'Giờ làm tối đa mỗi ngày', unit: 'giờ', min: 0.5, max: 24, step: 0.5,
-    help: 'Cộng mọi ca trong ngày; ca qua đêm tính vào ngày bắt đầu.',
+    key: 'maxHoursPerDay', label: 'Giờ làm tối đa / ngày', unit: 'giờ', min: 0.5, max: 24, step: 0.5,
+    help: 'Cộng mọi ca trong ngày; ca qua đêm tính trọn vào ngày bắt đầu ca.',
   },
   {
     group: 'schedule',
-    key: 'maxHoursPerWeek', label: 'Giờ làm tối đa mỗi tuần', unit: 'giờ', min: 0.5, max: 168, step: 0.5,
-    help: 'Tuần từ Thứ Hai đến Chủ Nhật.',
+    key: 'maxHoursPerWeek', label: 'Giờ làm tối đa / tuần', unit: 'giờ', min: 0.5, max: 168, step: 0.5,
+    help: 'Tuần tính từ Thứ Hai đến Chủ Nhật, theo ngày bắt đầu ca.',
   },
   {
     group: 'schedule',
     key: 'maxConsecutiveShifts', label: 'Số ngày làm liền tối đa', unit: 'ngày', min: 1, step: 1, integer: true,
-    help: 'Đếm số ngày liên tiếp có ca, không đếm số ca.',
+    help: 'Đếm số ngày liên tiếp có ca, không đếm số ca — hai ca trong một ngày vẫn là một ngày.',
   },
   {
     group: 'schedule',
     key: 'minRestHoursBetweenShifts', label: 'Nghỉ tối thiểu giữa 2 ca', unit: 'giờ', min: 0, max: 99.99, step: 0.5,
-    help: 'Từ lúc hết ca trước tới lúc vào ca sau.',
+    help: 'Tính từ lúc kết thúc ca trước tới lúc bắt đầu ca sau, kể cả khi hai ca khác ngày.',
   },
   {
     group: 'schedule',
-    key: 'minDaysOffPerWeek', label: 'Ngày nghỉ tối thiểu mỗi tuần', unit: 'ngày', min: 0, max: 7, step: 1, integer: true,
-    help: 'Mỗi tuần có ca tối đa (7 − số này) ngày.',
+    key: 'minDaysOffPerWeek', label: 'Ngày nghỉ tối thiểu / tuần', unit: 'ngày', min: 0, max: 7, step: 1, integer: true,
+    help: 'Mỗi tuần một người có ca tối đa (7 − số này) ngày khác nhau.',
   },
   {
     group: 'swap',
     key: 'swapResponseTimeoutHours', label: 'Thời gian chờ đồng nghiệp trả lời', unit: 'giờ', min: 1, max: 168, step: 1,
     integer: true,
-    help: 'Quá hạn mà chưa đồng ý thì yêu cầu tự hủy.',
+    help: 'Quá thời gian này mà đồng nghiệp chưa đồng ý thì yêu cầu đổi ca tự hủy. Yêu cầu đã gửi giữ hạn cũ.',
   },
   {
     group: 'leave',
     key: 'annualLeaveDaysPerYear', label: 'Số ngày phép mỗi năm', unit: 'ngày', min: 0, max: 60, step: 1, integer: true,
-    help: 'Tích lũy theo tháng làm việc; không chuyển sang năm sau.',
+    help: 'Tích lũy theo tháng làm việc tính từ ngày bắt đầu làm; phép còn dư không chuyển sang năm sau.',
   },
   {
     group: 'leave',
-    key: 'annualLeaveNoticeDays', label: 'Báo trước khi xin phép năm', unit: 'ngày', min: 0, max: 30, step: 1, integer: true,
-    help: 'Nghỉ không lương không cần báo trước.',
+    key: 'annualLeaveNoticeDays', label: 'Báo trước khi xin nghỉ phép', unit: 'ngày', min: 0, max: 30, step: 1, integer: true,
+    help: 'Đơn phép năm phải gửi trước ít nhất số ngày này. Nghỉ không lương không cần báo trước.',
   },
   {
     group: 'attendance',
     key: 'lateEarlyThresholdMinutes', label: 'Ngưỡng đi muộn / về sớm', unit: 'phút', min: 0, max: 60, step: 1,
     integer: true,
-    help: 'Trễ / sớm quá số phút này mới bị đánh dấu.',
+    help: 'Vào ca trễ hoặc ra ca sớm QUÁ số phút này mới bị đánh dấu đi muộn / về sớm.',
   },
 ];
 
@@ -116,8 +121,8 @@ function fieldError(field, raw) {
  * Quy định chung của cả chuỗi — BR-SCH-01: một bộ cấp Tenant, chỉ Giám đốc sửa, dùng chung mọi khách sạn.
  * DM-18: sửa đè, không lưu lịch sử. PUT toàn phần nên luôn gửi đủ mọi trường.
  *
- * Mỗi dòng: nhãn và gợi ý bên trái, ô nhập hẹp bên phải (điện thoại xếp dọc). Mỗi nhóm có «Dùng mặc định» riêng,
- * để trả một nhóm về mặc định không kéo theo các nhóm khác.
+ * Mỗi card có «Dùng mặc định» riêng, để trả một nhóm về mặc định không kéo theo nhóm khác. Thanh «Lần sửa gần nhất /
+ * Bỏ thay đổi / Lưu quy định» dính đáy màn hình để bấm Lưu được ngay khi đang cuộn.
  *
  * @param onSaved nhận policy mới sau khi lưu
  */
@@ -163,66 +168,80 @@ export default function SchedulePolicyForm({ policy, onSaved }) {
 
   function renderField(field) {
     const id = `policy-${field.key}`;
+    const message = errors[field.key];
     return (
-      <div key={field.key} className="field policy-row">
-        <div className="policy-row__text">
-          <label className="field__label" htmlFor={id}>
-            {field.label} <span className="req">*</span>
-          </label>
-          <p id={`${id}-help`} className={`field__help ${errors[field.key] ? 'field__help--error' : ''}`}>
-            {errors[field.key] || field.help}
-          </p>
+      <div key={field.key} className="field policy-field">
+        <div className="policy-field__row">
+          <span className="policy-field__name">
+            <label htmlFor={id}>{field.label}</label>
+            {/* Chạm (điện thoại) hoặc rê chuột / Tab tới thì hiện giải thích. */}
+            <button type="button" className="policy-tip" aria-label={`Giải thích: ${field.help}`}>
+              <span aria-hidden="true">ⓘ</span>
+              <span role="tooltip" id={`${id}-tip`} className="policy-tip__bubble">
+                {field.help}
+              </span>
+            </button>
+          </span>
+          <span className="input-unit policy-field__input">
+            <input
+              id={id}
+              type="number"
+              inputMode={field.integer ? 'numeric' : 'decimal'}
+              min={field.min}
+              max={field.max}
+              step={field.step}
+              value={values[field.key]}
+              onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+              aria-invalid={Boolean(message)}
+              aria-describedby={message ? `${id}-error` : `${id}-tip`}
+            />
+            <span className="input-unit__suffix">{field.unit}</span>
+          </span>
         </div>
-        <span className="input-unit policy-row__input">
-          <input
-            id={id}
-            type="number"
-            inputMode={field.integer ? 'numeric' : 'decimal'}
-            min={field.min}
-            max={field.max}
-            step={field.step}
-            value={values[field.key]}
-            onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-            aria-invalid={Boolean(errors[field.key])}
-            aria-describedby={`${id}-help`}
-          />
-          <span className="input-unit__suffix">{field.unit}</span>
-        </span>
+        {message && (
+          <p id={`${id}-error`} className="field__help field__help--error policy-field__error">
+            {message}
+          </p>
+        )}
       </div>
     );
   }
 
   return (
-    <form className="panel form policy-form" onSubmit={handleSubmit} noValidate>
-      <header className="form__head">
-        <span className="form__icon" aria-hidden="true">⚖</span>
-        <div>
-          <h2>Quy định chung</h2>
-          <p className="muted">Áp dụng cho mọi khách sạn trong chuỗi.</p>
-        </div>
-      </header>
-
+    <form className="form policy-form" onSubmit={handleSubmit} noValidate>
       {!policy && <p className="state">Đang tải quy định…</p>}
 
-      {policy &&
-        GROUPS.map((group) => (
-          <section key={group.key} className="policy-group" aria-labelledby={`policy-group-${group.key}`}>
-            <div className="policy-group__head">
-              <h3 id={`policy-group-${group.key}`}>{group.title}</h3>
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => resetGroup(group.key)}
-                disabled={submitting || isGroupDefault(group.key)}
-                title="Điền lại giá trị mặc định cho nhóm này — chưa lưu cho tới khi bấm Lưu"
-              >
-                Dùng mặc định
-              </button>
-            </div>
-            <p className="policy-group__note">{group.note}</p>
-            {fieldsOf(group.key).map(renderField)}
-          </section>
-        ))}
+      {policy && (
+        <div className="policy-cards">
+          {GROUPS.map((group) => (
+            <section
+              key={group.key}
+              className={`policy-card policy-card--${group.key}`}
+              aria-labelledby={`policy-group-${group.key}`}
+            >
+              <div className="policy-card__head">
+                <h3 id={`policy-group-${group.key}`}>{group.title}</h3>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => resetGroup(group.key)}
+                  disabled={submitting || isGroupDefault(group.key)}
+                  title="Điền lại giá trị mặc định cho nhóm này — chưa lưu cho tới khi bấm Lưu"
+                >
+                  Dùng mặc định
+                </button>
+              </div>
+              {group.warn && (
+                <p className="policy-card__warn">
+                  <span aria-hidden="true">⚠</span> {group.warn}
+                </p>
+              )}
+              {group.note && <p className="policy-card__note">{group.note}</p>}
+              <div className="policy-card__fields">{fieldsOf(group.key).map(renderField)}</div>
+            </section>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="alert alert--error" role="alert">
