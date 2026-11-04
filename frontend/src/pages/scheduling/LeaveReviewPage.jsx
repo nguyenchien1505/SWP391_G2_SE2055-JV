@@ -6,6 +6,7 @@ import LeaveTicket from '../../components/scheduling/LeaveTicket';
 import RejectLeaveDialog from '../../components/scheduling/RejectLeaveDialog';
 import RevokeLeaveDialog from '../../components/scheduling/RevokeLeaveDialog';
 import { useAuth } from '../../context/AuthContext';
+import { pendingBadge, usePendingCounts } from '../../context/PendingCountsContext';
 import { formatDate, todayIso } from '../rooms/format';
 import { daysInclusive } from './leaveLabels';
 import '../rooms/rooms.css';
@@ -45,6 +46,9 @@ export default function LeaveReviewPage() {
   const [rejecting, setRejecting] = useState(null); // đơn đang mở hộp thoại từ chối
   const [revoking, setRevoking] = useState(null); // đơn đã duyệt đang mở hộp thoại hủy phần còn lại
   const [banner, setBanner] = useState(null); // { type, text }
+  // Bộ đếm chung với menu trái: duyệt / từ chối xong thì cả hai cùng giảm.
+  const { counts, refresh: refreshPending } = usePendingCounts();
+  const pending = counts.leave;
 
   const load = useCallback(async (nextPage) => {
     setLoading(true);
@@ -87,6 +91,7 @@ export default function LeaveReviewPage() {
     }
     setBanner({ type: 'success', text: parts.join(' ') });
     load(0);
+    refreshPending();
   }
 
   function finishReject(updated) {
@@ -96,6 +101,7 @@ export default function LeaveReviewPage() {
       text: `Đã từ chối đơn nghỉ của ${updated.requesterName}. Người gửi sẽ thấy lý do trên đơn của mình.`,
     });
     load(0);
+    refreshPending();
   }
 
   /** Số ngày vừa hủy đọc từ chính kết quả backend: hủy cả đơn, hoặc phần sau ngày kết thúc mới. */
@@ -166,6 +172,10 @@ export default function LeaveReviewPage() {
               onClick={() => setStatus(tab.key)}
             >
               {tab.label}
+              {' '}
+              {tab.key === 'PENDING' && pendingBadge(pending) && (
+                <span className="room-tab__count">{pendingBadge(pending)}</span>
+              )}
             </button>
           ))}
         </div>

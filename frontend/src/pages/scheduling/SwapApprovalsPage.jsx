@@ -3,6 +3,7 @@ import { readErrorMessage } from '../../api/client';
 import { approveSwap, rejectSwap } from '../../api/scheduling';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import SwapRequestList, { SwapPair } from '../../components/scheduling/SwapRequestList';
+import { pendingBadge, usePendingCounts } from '../../context/PendingCountsContext';
 import { CLOSED_SWAP_STATUSES, swapShiftLabel } from './swapRequests';
 import '../rooms/rooms.css';
 import './scheduling.css';
@@ -33,6 +34,9 @@ export default function SwapApprovalsPage() {
   const [confirming, setConfirming] = useState(null); // { request, action }
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
+  // Bộ đếm chung với menu trái: duyệt / từ chối xong thì cả hai cùng giảm.
+  const { counts, refresh: refreshCounts } = usePendingCounts();
+  const awaiting = counts.swap;
 
   const current = TABS.find((t) => t.key === tab);
 
@@ -54,6 +58,7 @@ export default function SwapApprovalsPage() {
     } finally {
       setBusy(false);
       setVersion((v) => v + 1);
+      refreshCounts();
     }
   }
 
@@ -116,6 +121,10 @@ export default function SwapApprovalsPage() {
             onClick={() => setTab(item.key)}
           >
             {item.label}
+            {' '}
+            {item.key === 'manager' && pendingBadge(awaiting) && (
+              <span className="room-tab__count">{pendingBadge(awaiting)}</span>
+            )}
           </button>
         ))}
       </div>

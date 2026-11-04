@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { PendingCountsProvider, pendingBadge, usePendingCounts } from '../context/PendingCountsContext';
 import { STAFF_PERMISSIONS, canReportDamage, hasPermission, isSupervisor } from '../permissions';
 import Logo from './Logo';
 
@@ -123,7 +124,7 @@ const NAV_GROUPS = [
       // Đơn sửa giờ vào / ra ca khi quên bấm, mất mạng (chấm công M2).
       { label: 'Điều chỉnh công', to: '/dieu-chinh-cong', visible: (user) => isStaff(user) && !usesFormsGroup(user) },
       // Giám đốc duyệt đơn của quản lý (BR-SCH-08). Manager duyệt đơn nhân viên ở nhóm «Đơn từ».
-      { label: 'Duyệt đơn nghỉ', to: '/duyet-don-nghi', visible: isDirector },
+      { label: 'Duyệt đơn nghỉ', to: '/duyet-don-nghi', visible: isDirector, pending: 'leave' },
     ],
   },
   {
@@ -136,13 +137,13 @@ const NAV_GROUPS = [
       { label: 'Đơn xin nghỉ', to: '/don-nghi', visible: (user) => isStaff(user) && usesFormsGroup(user) },
       { label: 'Điều chỉnh công', to: '/dieu-chinh-cong', visible: (user) => isStaff(user) && usesFormsGroup(user) },
       // Yêu cầu đổi ca đồng nghiệp đã đồng ý — BR-SCH-09 (Milestone 2).
-      { label: 'Duyệt đổi ca', to: '/duyet-doi-ca', visible: isBranchManager },
+      { label: 'Duyệt đổi ca', to: '/duyet-doi-ca', visible: isBranchManager, pending: 'swap' },
       // Đơn xin nghỉ của chính quản lý — giám đốc duyệt (BR-SCH-08).
       { label: 'Đơn xin nghỉ', to: '/don-nghi', visible: isManager },
       // Quản lý duyệt đơn của nhân viên khách sạn mình (BR-SCH-08).
-      { label: 'Duyệt đơn nghỉ', to: '/duyet-don-nghi', visible: isManager },
+      { label: 'Duyệt đơn nghỉ', to: '/duyet-don-nghi', visible: isManager, pending: 'leave' },
       // Đơn sửa giờ chấm công của nhân viên khách sạn mình (chấm công M2).
-      { label: 'Duyệt điều chỉnh công', to: '/duyet-dieu-chinh-cong', visible: isManager },
+      { label: 'Duyệt điều chỉnh công', to: '/duyet-dieu-chinh-cong', visible: isManager, pending: 'adjustment' },
     ],
   },
   {
@@ -195,8 +196,21 @@ function formatToday() {
   return `${weekday}, ${date} - ${time}`;
 }
 
+/**
+ * Bọc khung bằng bộ đếm đơn chờ duyệt dùng chung: menu trái (mục có `pending`) và các trang con (tab «Chờ duyệt»,
+ * thẻ dashboard) đọc cùng một số.
+ */
 export default function AppLayout({ children }) {
+  return (
+    <PendingCountsProvider>
+      <Shell>{children}</Shell>
+    </PendingCountsProvider>
+  );
+}
+
+function Shell({ children }) {
   const { user, signOut } = useAuth();
+  const { counts } = usePendingCounts();
   const [navOpen, setNavOpen] = useState(false);
 
   // Ngăn kéo menu (màn hẹp): Esc để đóng, như bấm ra nền mờ bên ngoài.
@@ -249,15 +263,24 @@ export default function AppLayout({ children }) {
           {visibleGroups.map((group) => (
             <div className="nav-group" key={group.title}>
               <p className="nav-group__title">{group.title}</p>
-              {group.items.map((item) =>
-                item.to ? (
+              {group.items.map((item) => {
+                // Số đơn đang chờ mình duyệt; không có đơn thì không hiện gì.
+                const badge = item.pending ? pendingBadge(counts[item.pending]) : null;
+                return item.to ? (
                   <NavLink
                     key={item.label}
                     to={item.to}
                     onClick={() => setNavOpen(false)}
-                    className={({ isActive }) => `nav-item ${isActive ? 'nav-item--active' : ''}`}
+                    className={({ isActive }) =>
+                      `nav-item ${isActive ? 'nav-item--active' : ''} ${badge ? 'nav-item--count' : ''}`}
                   >
                     {item.label}
+                    {badge && (
+                      <>
+                        {' '}
+                        <span className="nav-item__count">{badge}</span>
+                      </>
+                    )}
                   </NavLink>
                 ) : (
                   <button
@@ -269,8 +292,8 @@ export default function AppLayout({ children }) {
                   >
                     {item.label}
                   </button>
-                ),
-              )}
+                );
+              })}
             </div>
           ))}
         </nav>

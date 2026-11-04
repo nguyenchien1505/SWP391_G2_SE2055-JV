@@ -1518,6 +1518,38 @@ button.link-button:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;
 }
+/* Viên số trên tab kiểu room-tab (ví dụ «Chờ duyệt 2» ở các màn duyệt) — cùng kiểu .tab__count. */
+.room-tab__count {
+  display: inline-block;
+  min-width: 22px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e7eff8;
+  color: var(--primary);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+}
+/* Số đơn chờ duyệt cạnh mục duyệt trên menu trái — chỉ hiện khi có đơn (PendingCountsContext). */
+.nav-item.nav-item--count {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.nav-item__count {
+  flex-shrink: 0;
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
 .tab--link {
   border-style: dashed;
 }

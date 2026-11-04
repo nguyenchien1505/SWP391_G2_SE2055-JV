@@ -1449,3 +1449,22 @@
     flex: 1 1 auto;
   }
 }
+
+/* Form gửi đơn điều chỉnh công: styles.css mới định kiểu input và select trong .field, chưa có textarea (preflight
+   của Tailwind còn xóa viền mặc định) — cùng kiểu .leave-form textarea của form đơn nghỉ. */
+.adjustment-form textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 11px 12px;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+.adjustment-form textarea:focus {
+  outline: 2px solid rgba(46, 116, 181, 0.35);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
