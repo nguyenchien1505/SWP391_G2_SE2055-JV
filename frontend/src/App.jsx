@@ -80,8 +80,9 @@ function RequireLogin({ children }) {
   return user ? children : <Navigate to="/dang-nhap" replace />;
 }
 
-// Khu Quản trị nền tảng chỉ dành cho PLATFORM_ADMIN (BR-PERM-01). Đây chỉ là lớp bảo vệ giao
-// diện; quyền thật do backend quyết định (vai trò khác gọi /platform/** nhận 403).
+// Khu Quản trị nền tảng chỉ dành cho PLATFORM_ADMIN (BR-PERM-01); còn mật khẩu tạm thì phải đổi
+// trước như mọi vai trò khác (BR-USER-07). Đây chỉ là lớp bảo vệ giao diện; quyền thật do backend
+// quyết định (vai trò khác gọi /platform/** nhận 403, còn mật khẩu tạm cũng nhận 403).
 function RequireAdmin({ children }) {
   const { user, loading } = useAuth();
 
@@ -90,6 +91,9 @@ function RequireAdmin({ children }) {
   }
   if (!user) {
     return <Navigate to="/dang-nhap" replace />;
+  }
+  if (user.mustChangePassword) {
+    return <Navigate to="/doi-mat-khau" replace />;
   }
   return user.role === 'PLATFORM_ADMIN' ? children : <Navigate to="/khach-san" replace />;
 }
