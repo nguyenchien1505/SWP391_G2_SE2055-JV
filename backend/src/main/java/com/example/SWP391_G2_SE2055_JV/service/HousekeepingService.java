@@ -2,12 +2,15 @@ package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.CompleteTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.TaskReturnResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.TaskRoomDamageResponse;
+import com.example.SWP391_G2_SE2055_JV.entity.DamageReport;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTaskReturn;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
@@ -16,6 +19,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.DamageReportStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
@@ -28,6 +32,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.AssignableStaffRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.DamageReportRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskReturnRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskReturnRepository.TaskReturnCount;
@@ -53,6 +58,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -120,6 +126,9 @@ public class HousekeepingService {
     // Lễ tân duy nhất của một ca phải trực quầy, không nhận việc dọn (chốt 01/11/2026). Không vòng bean —
     // ReceptionCoverageRule chỉ dùng repository.
     private final ReceptionCoverageRule      receptionCoverage;
+    // Chỉ ĐỌC: báo hỏng đang chờ của phòng đang dọn ({@link #getRoomDamageReports}). Tạo / xử lý phiếu vẫn ở
+    // DamageReportService.
+    private final DamageReportRepository     damageReportRepository;
 
     /**
      * Lịch dọn. Nhân viên chỉ thấy việc có mình trong nhóm dọn (BR-PERM-05); Manager chỉ thấy
@@ -261,9 +270,11 @@ public class HousekeepingService {
     /**
      * Người trong nhóm dọn bấm hoàn thành — BR-PERM-05, BR-ROOM-02. Một người bấm là xong cho cả
      * nhóm (chốt 05/10/2026): việc sang «Chờ kiểm tra», chưa phải hoàn thành.
+     *
+     * @param request lời nhắn cho người kiểm tra (chốt 02/11/2026); {@code null} hoặc để trống = không ghi chú
      */
     @Transactional
-    public HousekeepingTaskResponse completeTask(UUID id) {
+    public HousekeepingTaskResponse completeTask(UUID id, CompleteTaskRequest request) {
         HousekeepingTask task = getOwnedTaskForUpdate(id);
 
         if (!task.isAssignedTo(SecurityUtils.getCurrentUserId())) {
@@ -276,10 +287,36 @@ public class HousekeepingService {
         // BR-HK-06: việc dọn CHƯA xong ở đây — còn chờ Manager nghiệm thu, nên completedAt vẫn để
         // trống (điền khi có kết quả kiểm tra, F6).
         task.setStatus(HousekeepingTaskStatus.PENDING_INSPECTION);
+        task.setCompletionNote(normalize(request == null ? null : request.getNote()));
         roomStatusService.markPendingInspection(roomOf(task), task.getId());
 
         log.info("Hoàn thành task {} → {}", id, task.getStatus());
         return toResponse(taskRepository.save(task));
+    }
+
+    /**
+     * Báo hỏng đang chờ xử lý của các tài sản trong phòng của việc dọn, gộp theo tài sản (chốt 02/11/2026) —
+     * người dọn thấy "đã có người báo" để khỏi báo trùng. Cùng phạm vi xem với {@link #getTask}. Chỉ trả số
+     * phiếu và "có phải mình báo không": nhân viên vẫn chỉ đọc phiếu của chính mình (BR-ASSET-05).
+     */
+    @Transactional(readOnly = true)
+    public List<TaskRoomDamageResponse> getRoomDamageReports(UUID taskId) {
+        HousekeepingTask task = getOwnedTask(taskId);
+        assertCanView(task);
+
+        UUID me = SecurityUtils.getCurrentUserId();
+        // Phiếu mới nhất trước, nên phiếu đầu của mỗi nhóm là lần báo gần nhất.
+        Map<UUID, List<DamageReport>> byAsset = damageReportRepository
+            .findOfRoom(task.getTenantId(), task.getRoomId(), DamageReportStatus.NEW).stream()
+            .collect(Collectors.groupingBy(DamageReport::getFixedAssetId, LinkedHashMap::new, Collectors.toList()));
+        return byAsset.entrySet().stream()
+            .map(entry -> TaskRoomDamageResponse.builder()
+                .fixedAssetId(entry.getKey())
+                .openReports(entry.getValue().size())
+                .reportedByMe(entry.getValue().stream().anyMatch(report -> me.equals(report.getReporterId())))
+                .lastReportedAt(entry.getValue().get(0).getReportedAt())
+                .build())
+            .toList();
     }
 
     /**

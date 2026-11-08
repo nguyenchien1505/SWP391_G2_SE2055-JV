@@ -93,6 +93,10 @@ public class HousekeepingTask extends AuditableEntity {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    /** Người dọn ghi cho người kiểm tra lúc bấm «Hoàn thành» — không bắt buộc (V20). */
+    @Column(name = "completion_note", length = 500)
+    private String completionNote;
+
     /** CHECKOUT_AUTO | INSPECTION_FAILED — BR-HK-12. */
     @Enumerated(EnumType.STRING)
     @Column(name = "created_source", length = 30, nullable = false)

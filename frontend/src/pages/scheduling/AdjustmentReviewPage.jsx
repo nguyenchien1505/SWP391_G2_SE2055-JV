@@ -6,6 +6,7 @@ import {
   rejectAdjustment,
 } from '../../api/attendanceAdjustments';
 import AdjustmentDetails from '../../components/scheduling/AdjustmentDetails';
+import { pendingBadge, usePendingCounts } from '../../context/PendingCountsContext';
 import '../rooms/rooms.css';
 import './scheduling.css';
 
@@ -29,6 +30,9 @@ export default function AdjustmentReviewPage() {
   const [banner, setBanner] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [notes, setNotes] = useState({});   // id → ghi chú / lý do từ chối đang gõ
+  // Bộ đếm chung với menu trái: duyệt / từ chối xong thì cả hai cùng giảm.
+  const { counts, refresh: refreshPending } = usePendingCounts();
+  const pending = counts.adjustment;
 
   const current = TABS.find((t) => t.key === tab);
 
@@ -64,6 +68,7 @@ export default function AdjustmentReviewPage() {
     } finally {
       setBusyId(null);
       load();
+      refreshPending();
     }
   }
 
@@ -89,7 +94,13 @@ export default function AdjustmentReviewPage() {
             className={`tab ${tab === t.key ? 'tab--active' : ''}`}
             onClick={() => setTab(t.key)}
           >
-            {t.label}
+            <span>
+              {t.label}
+              {' '}
+              {t.key === 'pending' && pendingBadge(pending) && (
+                <span className="tab__count">{pendingBadge(pending)}</span>
+              )}
+            </span>
           </button>
         ))}
       </div>

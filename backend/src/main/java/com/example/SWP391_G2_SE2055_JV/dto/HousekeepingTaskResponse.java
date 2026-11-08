@@ -57,6 +57,8 @@ public class HousekeepingTaskResponse {
     /** Số lần việc này bị người tự nhận trả lại (BR-HK-17) — thẻ việc hiện liên kết "Lịch sử trả lại". */
     private int                    returnCount;
     private LocalDateTime          completedAt;
+    /** Lời nhắn của người dọn cho người kiểm tra, ghi lúc bấm «Hoàn thành» (chốt 02/11/2026). */
+    private String                 completionNote;
     private TaskCreatedSource      createdSource;
     private UUID                   parentTaskId;
     private UnassignedReason       unassignedReason;
@@ -99,6 +101,7 @@ public class HousekeepingTaskResponse {
             .assignmentSource(task.getAssignmentSource())
             .returnCount(returnCount)
             .completedAt(task.getCompletedAt())
+            .completionNote(task.getCompletionNote())
             .createdSource(task.getCreatedSource())
             .parentTaskId(task.getParentTaskId())
             .unassignedReason(task.getUnassignedReason())

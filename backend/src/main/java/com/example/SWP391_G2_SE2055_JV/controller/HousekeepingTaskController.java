@@ -2,12 +2,14 @@ package com.example.SWP391_G2_SE2055_JV.controller;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.CompleteTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.TaskReturnResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.TaskRoomDamageResponse;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.service.HousekeepingService;
@@ -169,8 +171,20 @@ public class HousekeepingTaskController {
      */
     @PatchMapping("/{id}/complete")
     @PreAuthorize("hasAnyRole('PLATFORM_ADMIN') or hasAuthority('POSITION_HOUSEKEEPING')")
-    public ResponseEntity<HousekeepingTaskResponse> completeTask(@PathVariable UUID id) {
-        return ResponseEntity.ok(housekeepingService.completeTask(id));
+    public ResponseEntity<HousekeepingTaskResponse> completeTask(
+            @PathVariable UUID id,
+            @Valid @RequestBody(required = false) CompleteTaskRequest request) {
+        return ResponseEntity.ok(housekeepingService.completeTask(id, request));
+    }
+
+    /**
+     * Báo hỏng đang chờ xử lý của tài sản trong phòng của việc dọn, gộp theo tài sản — màn chi tiết phòng đang
+     * dọn hiện "đã có người báo" (chốt 02/11/2026). Phạm vi xem như {@code GET /{id}}.
+     */
+    @GetMapping("/{id}/damage-reports")
+    @PreAuthorize("hasAnyRole('PLATFORM_ADMIN','DIRECTOR','MANAGER','STAFF')")
+    public ResponseEntity<List<TaskRoomDamageResponse>> getRoomDamageReports(@PathVariable UUID id) {
+        return ResponseEntity.ok(housekeepingService.getRoomDamageReports(id));
     }
 
     /**

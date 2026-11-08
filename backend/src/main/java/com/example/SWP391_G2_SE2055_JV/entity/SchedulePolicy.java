@@ -10,7 +10,8 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Bộ ràng buộc xếp ca của một Tenant — BR-SCH-01, BR-SCH-02, BR-SCH-20, BR-SCH-21.
+ * Bộ ràng buộc xếp ca của một Tenant — BR-SCH-01, BR-SCH-02, BR-SCH-20, BR-SCH-21; từ M2 thêm quỹ phép
+ * năm và hạn báo trước (BR-SCH-27, BR-SCH-07 bản sửa) và ngưỡng đi muộn / về sớm (BR-ATT-02).
  *
  * <p>DM-18: mỗi Tenant ĐÚNG 1 bản ghi (unique trên {@code tenant_id}), sửa đè trực
  * tiếp, KHÔNG lưu lịch sử phiên bản. Giá trị mới chỉ áp cho ca xếp từ thời điểm sửa
@@ -58,4 +59,19 @@ public class SchedulePolicy extends AuditableEntity {
     @Column(name = "swap_response_timeout_hours", nullable = false)
     @lombok.Builder.Default
     private int swapResponseTimeoutHours = 24;
+
+    /** Quỹ phép năm, tích lũy theo tháng làm việc — BR-SCH-27. */
+    @Column(name = "annual_leave_days_per_year", nullable = false)
+    @lombok.Builder.Default
+    private int annualLeaveDaysPerYear = 12;
+
+    /** Phép năm phải gửi trước tối thiểu bấy nhiêu ngày; nghỉ không lương không áp — BR-SCH-07 bản sửa. */
+    @Column(name = "annual_leave_notice_days", nullable = false)
+    @lombok.Builder.Default
+    private int annualLeaveNoticeDays = 3;
+
+    /** Vào trễ / ra sớm QUÁ số phút này mới tính đi muộn / về sớm — BR-ATT-02. */
+    @Column(name = "late_early_threshold_minutes", nullable = false)
+    @lombok.Builder.Default
+    private int lateEarlyThresholdMinutes = 5;
 }

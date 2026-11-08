@@ -59,4 +59,20 @@ public interface DamageReportRepository extends JpaRepository<DamageReport, UUID
 
     /** Tài sản đã từng bị báo hỏng (mọi trạng thái) thì không xóa cứng được — xem {@code FixedAssetService.deleteFixedAsset}. */
     boolean existsByFixedAssetId(UUID fixedAssetId);
+
+    /**
+     * Phiếu theo trạng thái của mọi tài sản đang nằm trong một phòng, mới nhất trước — màn chi tiết phòng đang
+     * dọn của người dọn báo "đã có người báo hỏng" để khỏi báo trùng ({@code HousekeepingService.getRoomDamageReports}).
+     */
+    @Query("""
+        SELECT d FROM DamageReport d, FixedAsset a
+        WHERE a.id = d.fixedAssetId
+          AND d.tenantId = :tenantId
+          AND a.roomId = :roomId
+          AND d.status = :status
+        ORDER BY d.reportedAt DESC
+        """)
+    List<DamageReport> findOfRoom(@Param("tenantId") UUID tenantId,
+                                  @Param("roomId") UUID roomId,
+                                  @Param("status") DamageReportStatus status);
 }

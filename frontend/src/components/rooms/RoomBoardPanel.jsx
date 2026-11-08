@@ -51,6 +51,13 @@ const HISTORY_PREVIEW = 5;
  *                   là một nút — bấm thẳng vào tài sản → hộp thoại báo hỏng (trang cha vẽ hộp thoại)
  * @param reportNotice câu báo vừa gửi báo hỏng của phòng này — hiện ngay trên danh sách tài sản, vì
  *                   trên màn hẹp bảng này đè lên trang nên banner đầu trang bị che
+ * @param claim     chỉ nhân viên Dọn dẹp, phòng có việc đang chờ nhận (chốt 02/11/2026 — nhận việc ngay trên
+ *                  sơ đồ thay cho danh sách chờ nhận ở «Việc của tôi»): `{ task, canClaim, blockedReason }`
+ *                  do backend trả. Có thì hiện nút «Nhận phòng này» đúng chỗ nút Phân công của Quản lý; chưa
+ *                  nhận được thì nút mờ và nói vì sao.
+ * @param claiming  đang gửi lệnh nhận
+ * @param onClaim   (task) => trang cha gọi API nhận việc
+ * @param onShowPreviousInspection (task) => việc dọn lại: xem lần trước không đạt ở đâu trước khi nhận
  */
 export default function RoomBoardPanel({
   room,
@@ -75,6 +82,10 @@ export default function RoomBoardPanel({
   onReportAsset,
   reportNotice = null,
   onDismissReportNotice,
+  claim = null,
+  claiming = false,
+  onClaim,
+  onShowPreviousInspection,
 }) {
   const meta = roomStatusMeta(room.status);
   const actions = roomActionsFor(room);
@@ -104,8 +115,20 @@ export default function RoomBoardPanel({
         </div>
         {/* Mỗi phòng tối đa 1 việc dọn đang mở (BR-HK-11): Phân công và Kiểm tra không bao giờ cùng hiện —
             cùng một chỗ, cùng cỡ nút. */}
-        {(unassigned.length > 0 || pendingInspection.length > 0) && (
+        {(unassigned.length > 0 || pendingInspection.length > 0 || claim) && (
           <div className="board-panel__head-actions">
+            {claim && (
+              <button
+                type="button"
+                className="btn btn--primary board-panel__head-action"
+                disabled={!claim.canClaim || claiming}
+                title={claim.canClaim ? undefined : claim.blockedReason}
+                onClick={() => onClaim(claim.task)}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">cleaning_services</span>
+                {claiming ? 'Đang nhận…' : 'Nhận phòng này'}
+              </button>
+            )}
             {unassigned.map((task) => (
               <button
                 key={task.id}
@@ -159,7 +182,29 @@ export default function RoomBoardPanel({
               ))}
             </div>
           )}
-          {actions.length === 0 && (
+          {/* Nhân viên dọn: việc đang chờ nhận — lý do chưa nhận được (chưa vào ca, đang dọn phòng khác…) và
+              lý do phải dọn lại. Câu "chỉ xem được trạng thái" lúc này thừa nên bỏ. */}
+          {claim && (
+            <div className="board-panel__claim">
+              <p className="muted">
+                {claim.task.createdSource === 'INSPECTION_FAILED'
+                  ? 'Phòng phải dọn lại sau lần kiểm tra không đạt, đang chờ người nhận.'
+                  : 'Phòng đang chờ người nhận dọn.'}
+              </p>
+              {!claim.canClaim && claim.blockedReason && (
+                <p className="board-panel__why">
+                  <span className="material-symbols-outlined" aria-hidden="true">info</span>
+                  {claim.blockedReason}
+                </p>
+              )}
+              {claim.task.parentTaskId && (
+                <button type="button" className="link-btn" onClick={() => onShowPreviousInspection(claim.task)}>
+                  Xem lý do phải dọn lại
+                </button>
+              )}
+            </div>
+          )}
+          {actions.length === 0 && !claim && (
             <p className="board-panel__why">
               <span className="material-symbols-outlined" aria-hidden="true">info</span>
               {whyNoRoomActions(room, role)}

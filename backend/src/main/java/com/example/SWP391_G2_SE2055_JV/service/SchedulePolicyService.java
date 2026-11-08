@@ -42,6 +42,9 @@ public class SchedulePolicyService {
         policy.setMinRestHoursBetweenShifts(request.getMinRestHoursBetweenShifts());
         policy.setMinDaysOffPerWeek(request.getMinDaysOffPerWeek());
         policy.setSwapResponseTimeoutHours(request.getSwapResponseTimeoutHours());
+        policy.setAnnualLeaveDaysPerYear(request.getAnnualLeaveDaysPerYear());
+        policy.setAnnualLeaveNoticeDays(request.getAnnualLeaveNoticeDays());
+        policy.setLateEarlyThresholdMinutes(request.getLateEarlyThresholdMinutes());
 
         log.info("Cập nhật Schedule Policy của Tenant {}", tenantId);
         // Giá trị mới chỉ áp cho ca xếp từ đây trở đi; ca đã xếp giữ nguyên (BR-SCH-20).

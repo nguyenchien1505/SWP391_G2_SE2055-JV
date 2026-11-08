@@ -1,12 +1,17 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.CompleteTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
+import com.example.SWP391_G2_SE2055_JV.dto.TaskRoomDamageResponse;
+import com.example.SWP391_G2_SE2055_JV.entity.AssetCategory;
+import com.example.SWP391_G2_SE2055_JV.entity.DamageReport;
 import com.example.SWP391_G2_SE2055_JV.entity.Department;
+import com.example.SWP391_G2_SE2055_JV.entity.FixedAsset;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
 import com.example.SWP391_G2_SE2055_JV.entity.Location;
@@ -16,6 +21,10 @@ import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import com.example.SWP391_G2_SE2055_JV.entity.Tenant;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.AssetKind;
+import com.example.SWP391_G2_SE2055_JV.enums.AssetPurpose;
+import com.example.SWP391_G2_SE2055_JV.enums.DamageReportStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.FixedAssetStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
@@ -180,7 +189,7 @@ class HousekeepingFlowTest {
         housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
         loginAsCleaner();
 
-        housekeepingService.completeTask(checkoutTaskOf201.getId());
+        housekeepingService.completeTask(checkoutTaskOf201.getId(), null);
         flushAndClear();
 
         HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
@@ -226,7 +235,7 @@ class HousekeepingFlowTest {
             assignRequest(today, cleaner.getId(), secondCleaner.getId()));
         loginAs(secondCleaner);
 
-        housekeepingService.completeTask(checkoutTaskOf201.getId());
+        housekeepingService.completeTask(checkoutTaskOf201.getId(), null);
         flushAndClear();
 
         HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
@@ -333,7 +342,7 @@ class HousekeepingFlowTest {
 
         housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
         loginAsCleaner();
-        housekeepingService.completeTask(checkoutTaskOf201.getId());
+        housekeepingService.completeTask(checkoutTaskOf201.getId(), null);
         loginAsSupervisor(supervisor);
         InspectTaskRequest request = new InspectTaskRequest();
         request.setResult(InspectionResult.FAIL);
@@ -625,7 +634,7 @@ class HousekeepingFlowTest {
         loginAsCleaner();
         housekeepingService.returnTask(checkoutTaskOf201.getId(), returnRequest("Phải xuống hỗ trợ lễ tân"));
         loginAs(secondCleaner);
-        housekeepingService.completeTask(checkoutTaskOf201.getId());
+        housekeepingService.completeTask(checkoutTaskOf201.getId(), null);
         flushAndClear();
 
         HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
@@ -641,6 +650,66 @@ class HousekeepingFlowTest {
         assertThat(historyOf(dirty201)).noneMatch(row -> row.getToStatus() == RoomStatus.DIRTY);
     }
 
+    // ── Chi tiết phòng đang dọn — chốt 02/11/2026 ───────────────────────────
+
+    /** V20 trên DB thật: lời nhắn cho người kiểm tra lưu cùng bước báo xong. */
+    @Test
+    void shouldPersistInspectorNoteOnComplete() {
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
+        loginAsCleaner();
+        CompleteTaskRequest done = new CompleteTaskRequest();
+        done.setNote("Thiếu 1 gối, đã báo kho");
+
+        housekeepingService.completeTask(checkoutTaskOf201.getId(), done);
+        flushAndClear();
+
+        HousekeepingTask task = em.find(HousekeepingTask.class, checkoutTaskOf201.getId());
+        assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.PENDING_INSPECTION);
+        assertThat(task.getCompletionNote()).isEqualTo("Thiếu 1 gối, đã báo kho");
+    }
+
+    /**
+     * Câu nối báo hỏng với tài sản của phòng chạy trên DB thật: chỉ phiếu đang chờ, chỉ tài sản nằm trong phòng
+     * của việc dọn.
+     */
+    @Test
+    void shouldCountOpenDamageReportsOfTaskRoomOnly() {
+        UUID category = persist(AssetCategory.builder().tenantId(tenantId).name("Điện tử")
+            .assetKind(AssetKind.FIXED).purpose(AssetPurpose.GUEST_USE).build()).getId();
+        Room other = persistRoom(persist(RoomType.builder().tenantId(tenantId).name("Đơn").build()).getId(),
+            "202", RoomStatus.AVAILABLE);
+        FixedAsset tv = persistAsset(category, dirty201, "TV-201", "Tivi");
+        FixedAsset dryer = persistAsset(category, dirty201, "SAY-201", "Máy sấy tóc");
+        FixedAsset tvOther = persistAsset(category, other, "TV-202", "Tivi");
+        persistReport(tv, secondCleaner, DamageReportStatus.NEW);
+        persistReport(tv, cleaner, DamageReportStatus.NEW);
+        persistReport(dryer, secondCleaner, DamageReportStatus.RESOLVED);   // đã xử lý — không tính
+        persistReport(tvOther, secondCleaner, DamageReportStatus.NEW);       // phòng khác — không tính
+        housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
+        flushAndClear();
+        loginAsCleaner();
+
+        List<TaskRoomDamageResponse> result = housekeepingService.getRoomDamageReports(checkoutTaskOf201.getId());
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getFixedAssetId()).isEqualTo(tv.getId());
+        assertThat(result.get(0).getOpenReports()).isEqualTo(2);
+        assertThat(result.get(0).isReportedByMe()).isTrue();
+    }
+
+    private FixedAsset persistAsset(UUID category, Room room, String code, String name) {
+        return persist(FixedAsset.builder().tenantId(tenantId).locationId(hanoi).categoryId(category)
+            .assetCode(code).name(name).roomId(room.getId()).status(FixedAssetStatus.GOOD).build());
+    }
+
+    private void persistReport(FixedAsset asset, User reporter, DamageReportStatus status) {
+        persist(DamageReport.builder().tenantId(tenantId).locationId(hanoi).fixedAssetId(asset.getId())
+            .reporterId(reporter.getId()).description("Hỏng").status(status).reportedAt(LocalDateTime.now())
+            .resolvedBy(status == DamageReportStatus.RESOLVED ? manager.getId() : null)
+            .resolvedAt(status == DamageReportStatus.RESOLVED ? LocalDateTime.now() : null)
+            .build());
+    }
+
     // ── Tiện ích ────────────────────────────────────────────────────────────
 
     /**
@@ -650,7 +719,7 @@ class HousekeepingFlowTest {
     private InspectionRecordResponse runCleaningCycleThenInspect(InspectionResult result, String reason) {
         housekeepingService.assignTask(checkoutTaskOf201.getId(), assignRequest(today));
         loginAsCleaner();
-        housekeepingService.completeTask(checkoutTaskOf201.getId());
+        housekeepingService.completeTask(checkoutTaskOf201.getId(), null);
         loginAsManager();
 
         InspectTaskRequest request = new InspectTaskRequest();

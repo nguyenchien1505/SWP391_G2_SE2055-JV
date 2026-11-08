@@ -1,8 +1,12 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.entity.LeaveRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.SchedulePolicy;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
+import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.LeaveType;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
+import com.example.SWP391_G2_SE2055_JV.repository.LeaveRequestRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import com.example.SWP391_G2_SE2055_JV.utils.ShiftTimeUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,7 +35,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Bộ kiểm tra Schedule Policy — BR-SCH-02, BR-SCH-03, BR-SCH-05, BR-SCH-13, BR-SCH-14,
- * BR-SCH-15, BR-SCH-20.
+ * BR-SCH-15, BR-SCH-20, BR-SCH-31.
  *
  * <p>Mỗi nhóm test NỚI LỎNG mọi giới hạn ({@link #relaxAllLimits()}) rồi chỉ siết đúng quy tắc
  * đang kiểm, để chắc chắn ca bị chặn vì quy tắc đó chứ không phải vì quy tắc khác chạy trước.
@@ -49,8 +54,10 @@ class SchedulePolicyValidatorTest {
     /** Thứ Hai — đầu tuần lịch theo BR-SCH-13. */
     private static final LocalDate MONDAY = LocalDate.of(2026, 10, 5);
 
-    @Mock SchedulePolicyService policyService;
-    @Mock ShiftRepository       shiftRepository;
+    @Mock SchedulePolicyService  policyService;
+    @Mock ShiftRepository        shiftRepository;
+    // Không stub thì trả danh sách rỗng — mọi nhóm test khác coi như không ai đang nghỉ.
+    @Mock LeaveRequestRepository leaveRequestRepository;
 
     @InjectMocks SchedulePolicyValidator validator;
 
@@ -73,7 +80,7 @@ class SchedulePolicyValidatorTest {
             assertThatCode(() -> validator.validate(TENANT_ID, null, candidate(day(0), "06:00", "14:00"), null))
                 .doesNotThrowAnyException();
 
-            verifyNoInteractions(policyService, shiftRepository);
+            verifyNoInteractions(policyService, shiftRepository, leaveRequestRepository);
         }
 
         /** BR-SCH-20: Tenant chưa có policy vẫn xếp ca được — getOrCreate tự sinh bản mặc định. */
@@ -382,6 +389,43 @@ class SchedulePolicyValidatorTest {
         }
     }
 
+    // ── BR-SCH-31: không xếp ca trong khoảng nghỉ đã duyệt ──────────────────
+
+    @Nested
+    class ApprovedLeave {
+
+        @Test
+        void shouldBlockShiftInsideApprovedLeave() {
+            givenApprovedLeave(LeaveType.ANNUAL, day(1), day(3));
+
+            assertBlocked(candidate(day(2), "06:00", "14:00"),
+                "đã được duyệt nghỉ phép năm từ 06/10/2026 đến 08/10/2026", "không xếp ca trong khoảng nghỉ");
+        }
+
+        /** Đang nghỉ thì báo đúng lý do nghỉ, không đọc ca hay policy để tính giờ làm. */
+        @Test
+        void shouldReportLeaveBeforeOtherRules() {
+            givenApprovedLeave(LeaveType.UNPAID, day(0), day(0));
+
+            assertBlocked(candidate(day(0), "06:00", "14:00"), "nghỉ không lương ngày 05/10/2026");
+            verifyNoInteractions(policyService, shiftRepository);
+        }
+
+        /**
+         * Chỉ hỏi đơn ĐÃ DUYỆT (đơn chờ duyệt không chặn) phủ NGÀY BẮT ĐẦU ca: ca qua đêm của ngày liền trước
+         * khoảng nghỉ thuộc ngày bắt đầu (BR-SCH-03) nên vẫn xếp được.
+         */
+        @Test
+        void shouldOnlyAskForApprovedLeaveCoveringShiftStartDate() {
+            givenExisting();
+
+            assertAllowed(candidate(day(1), "22:00", "06:00"));
+
+            verify(leaveRequestRepository).findOverlapping(
+                STAFF_ID, EnumSet.of(LeaveRequestStatus.APPROVED), day(1), day(1));
+        }
+    }
+
     // ── Tiện ích ───────────────────────────────────────────────────────────
 
     /** Bỏ hết giới hạn để mỗi nhóm test chỉ siết đúng quy tắc của nó. */
@@ -410,6 +454,15 @@ class SchedulePolicyValidatorTest {
         when(shiftRepository.findByStaffIdAndShiftDateBetweenOrderByShiftDateAscStartTimeAsc(
                 eq(STAFF_ID), any(LocalDate.class), any(LocalDate.class)))
             .thenReturn(List.of(shifts));
+    }
+
+    private void givenApprovedLeave(LeaveType type, LocalDate from, LocalDate to) {
+        when(leaveRequestRepository.findOverlapping(eq(STAFF_ID), any(), any(), any()))
+            .thenReturn(List.of(LeaveRequest.builder()
+                .id(UUID.randomUUID()).tenantId(TENANT_ID).locationId(LOCATION_ID).requesterId(STAFF_ID)
+                .leaveType(type).fromDate(from).toDate(to).reason("Việc gia đình")
+                .status(LeaveRequestStatus.APPROVED)
+                .build()));
     }
 
     /** Một ca 06:00–10:00 cho mỗi ngày từ day(fromDay) tới day(toDay). */

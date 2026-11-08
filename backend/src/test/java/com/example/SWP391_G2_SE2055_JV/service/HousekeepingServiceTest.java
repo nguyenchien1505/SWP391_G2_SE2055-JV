@@ -2,12 +2,15 @@ package com.example.SWP391_G2_SE2055_JV.service;
 
 import com.example.SWP391_G2_SE2055_JV.dto.AssignTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.AssignableStaffResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.CompleteTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.HousekeepingTaskResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.InspectionRecordResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.OpenTasksResponse;
 import com.example.SWP391_G2_SE2055_JV.dto.ReturnTaskRequest;
 import com.example.SWP391_G2_SE2055_JV.dto.TaskReturnResponse;
+import com.example.SWP391_G2_SE2055_JV.dto.TaskRoomDamageResponse;
+import com.example.SWP391_G2_SE2055_JV.entity.DamageReport;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTask;
 import com.example.SWP391_G2_SE2055_JV.entity.HousekeepingTaskReturn;
 import com.example.SWP391_G2_SE2055_JV.entity.InspectionRecord;
@@ -16,6 +19,7 @@ import com.example.SWP391_G2_SE2055_JV.entity.Room;
 import com.example.SWP391_G2_SE2055_JV.entity.RoomType;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
 import com.example.SWP391_G2_SE2055_JV.entity.User;
+import com.example.SWP391_G2_SE2055_JV.enums.DamageReportStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskStatus;
 import com.example.SWP391_G2_SE2055_JV.enums.HousekeepingTaskType;
 import com.example.SWP391_G2_SE2055_JV.enums.InspectionResult;
@@ -30,6 +34,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.UserStatus;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
 import com.example.SWP391_G2_SE2055_JV.exception.ResourceNotFoundException;
 import com.example.SWP391_G2_SE2055_JV.repository.AssignableStaffRepository;
+import com.example.SWP391_G2_SE2055_JV.repository.DamageReportRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskReturnRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.HousekeepingTaskReturnRepository.TaskReturnCount;
@@ -116,6 +121,7 @@ class HousekeepingServiceTest {
     @Mock SupervisorDutyRule         supervisorDutyRule;
     @Mock CleaningWorkDayRule        cleaningWorkDayRule;
     @Mock ReceptionCoverageRule      receptionCoverage;
+    @Mock DamageReportRepository     damageReportRepository;
 
     @InjectMocks HousekeepingService service;
 
@@ -467,7 +473,7 @@ class HousekeepingServiceTest {
             TestAuth.loginAs(STAFF_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
             Room room = stubTaskAndRoom(task);
 
-            service.completeTask(task.getId());
+            service.completeTask(task.getId(), null);
 
             assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.PENDING_INSPECTION);
             assertThat(task.getCompletedAt()).isNull();   // chưa nghiệm thu thì chưa có mốc hoàn thành
@@ -481,7 +487,7 @@ class HousekeepingServiceTest {
             TestAuth.loginAs(STAFF_2_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
             Room room = stubTaskAndRoom(task);
 
-            service.completeTask(task.getId());
+            service.completeTask(task.getId(), null);
 
             assertThat(task.getStatus()).isEqualTo(HousekeepingTaskStatus.PENDING_INSPECTION);
             assertThat(task.getAssigneeIds()).containsExactlyInAnyOrder(STAFF_ID, STAFF_2_ID);
@@ -495,10 +501,86 @@ class HousekeepingServiceTest {
             TestAuth.loginAsStaff(TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);   // id khác
             stubTask(task);
 
-            assertThatThrownBy(() -> service.completeTask(task.getId()))
+            assertThatThrownBy(() -> service.completeTask(task.getId(), null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("trong nhóm dọn");
             verifyNoInteractions(roomStatusService);
+        }
+
+        /** Chốt 02/11/2026: lời nhắn cho người kiểm tra lưu cùng bước báo xong, đã cắt khoảng trắng. */
+        @Test
+        void shouldKeepTrimmedNoteForInspector() {
+            HousekeepingTask task = inProgressTask(STAFF_ID);
+            TestAuth.loginAs(STAFF_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            stubTaskAndRoom(task);
+
+            HousekeepingTaskResponse response = service.completeTask(task.getId(), completeRequest("  Thiếu 1 gối  "));
+
+            assertThat(task.getCompletionNote()).isEqualTo("Thiếu 1 gối");
+            assertThat(response.getCompletionNote()).isEqualTo("Thiếu 1 gối");
+        }
+
+        /** Ô ghi chú để trống / toàn khoảng trắng = không ghi chú. */
+        @Test
+        void shouldTreatBlankNoteAsNoNote() {
+            HousekeepingTask task = inProgressTask(STAFF_ID);
+            TestAuth.loginAs(STAFF_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            stubTaskAndRoom(task);
+
+            service.completeTask(task.getId(), completeRequest("   "));
+
+            assertThat(task.getCompletionNote()).isNull();
+        }
+    }
+
+    // ── Báo hỏng đang chờ của phòng đang dọn — chốt 02/11/2026 ──────────────
+
+    @Nested
+    class RoomDamageReports {
+
+        private final UUID tvId = UUID.randomUUID();
+        private final UUID dryerId = UUID.randomUUID();
+
+        /** Gộp theo tài sản, mới nhất trước; chỉ nói "có phải mình báo không", không lộ người báo. */
+        @Test
+        void shouldGroupOpenReportsByAsset() {
+            HousekeepingTask task = inProgressTask(STAFF_ID);
+            TestAuth.loginAs(STAFF_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            stubTask(task);
+            LocalDateTime now = LocalDateTime.now();
+            when(damageReportRepository.findOfRoom(TENANT_ID, ROOM_ID, DamageReportStatus.NEW)).thenReturn(List.of(
+                damageReport(tvId, STAFF_2_ID, now),
+                damageReport(dryerId, STAFF_2_ID, now.minusHours(1)),
+                damageReport(tvId, STAFF_ID, now.minusHours(2))));
+
+            List<TaskRoomDamageResponse> result = service.getRoomDamageReports(task.getId());
+
+            assertThat(result).extracting(TaskRoomDamageResponse::getFixedAssetId).containsExactly(tvId, dryerId);
+            assertThat(result.get(0).getOpenReports()).isEqualTo(2);
+            assertThat(result.get(0).isReportedByMe()).isTrue();
+            assertThat(result.get(0).getLastReportedAt()).isEqualTo(now);
+            assertThat(result.get(1).getOpenReports()).isEqualTo(1);
+            assertThat(result.get(1).isReportedByMe()).isFalse();
+        }
+
+        /** Cùng phạm vi xem với việc dọn: nhân viên ngoài nhóm — 404, không đọc phiếu nào. */
+        @Test
+        void shouldHideReportsOfTaskOutsideTeam() {
+            HousekeepingTask task = inProgressTask(STAFF_ID);
+            TestAuth.loginAs(STAFF_2_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.HOUSEKEEPING);
+            stubTask(task);
+
+            assertThatThrownBy(() -> service.getRoomDamageReports(task.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+            verifyNoInteractions(damageReportRepository);
+        }
+
+        private DamageReport damageReport(UUID assetId, UUID reporterId, LocalDateTime reportedAt) {
+            return DamageReport.builder()
+                .id(UUID.randomUUID()).tenantId(TENANT_ID).locationId(LOCATION_ID)
+                .fixedAssetId(assetId).reporterId(reporterId).description("Hỏng")
+                .status(DamageReportStatus.NEW).reportedAt(reportedAt)
+                .build();
         }
     }
 
@@ -1937,7 +2019,7 @@ class HousekeepingServiceTest {
             HousekeepingTask task = inProgressTask(STAFF_ID);
             stubTaskAndRoom(task);
 
-            service.completeTask(task.getId());
+            service.completeTask(task.getId(), null);
 
             assertLoadedWithLock(task);
         }
@@ -2053,6 +2135,12 @@ class HousekeepingServiceTest {
         task.setAssignmentSource(TaskAssignmentSource.SELF_CLAIM);
         task.setAssignedBy(claimer);
         return task;
+    }
+
+    private static CompleteTaskRequest completeRequest(String note) {
+        CompleteTaskRequest request = new CompleteTaskRequest();
+        request.setNote(note);
+        return request;
     }
 
     private static ReturnTaskRequest returnRequest(String reason) {

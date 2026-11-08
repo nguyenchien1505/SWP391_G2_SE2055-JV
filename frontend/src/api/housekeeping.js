@@ -98,7 +98,8 @@ export async function claimTask(id) {
 
 /**
  * PATCH .../return — người ĐÃ TỰ NHẬN trả lại việc khi chưa bấm hoàn thành; lý do bắt buộc (BR-HK-17).
- * Dọn một mình thì việc về danh sách chờ nhận và phòng về «Chờ dọn»; nhóm còn người thì chỉ rút tên mình.
+ * Dọn một mình thì việc về hàng chờ (nhận lại trên sơ đồ phòng) và phòng về «Chờ dọn»; nhóm còn người thì chỉ
+ * rút tên mình.
  * Việc do Quản lý / Giám sát giao thì backend trả 400 kèm câu báo.
  */
 export async function returnTask(id, reason) {
@@ -118,9 +119,21 @@ export async function fetchTaskReturns(id) {
 /**
  * PATCH .../complete — bất kỳ ai trong nhóm dọn bấm được, và là xong cho cả nhóm (BR-PERM-05, chốt
  * 05/10/2026). Việc sang «Chờ kiểm tra» chứ chưa phải hoàn thành — còn chờ Quản lý nghiệm thu.
+ *
+ * @param note lời nhắn cho người kiểm tra (không bắt buộc, tối đa 500 ký tự) — trả về ở `completionNote`
  */
-export async function completeTask(id) {
-  const { data } = await api.patch(`/housekeeping/tasks/${id}/complete`);
+export async function completeTask(id, note) {
+  const { data } = await api.patch(`/housekeeping/tasks/${id}/complete`, note?.trim() ? { note: note.trim() } : {});
+  return data;
+}
+
+/**
+ * GET .../damage-reports — báo hỏng đang chờ xử lý của tài sản trong phòng của việc dọn, gộp theo tài sản:
+ * `[{ fixedAssetId, openReports, reportedByMe, lastReportedAt }]`. Người dọn thấy "đã có người báo" để khỏi
+ * báo trùng — không có tên người báo hay nội dung phiếu của người khác.
+ */
+export async function fetchRoomDamageReports(id) {
+  const { data } = await api.get(`/housekeeping/tasks/${id}/damage-reports`);
   return data;
 }
 

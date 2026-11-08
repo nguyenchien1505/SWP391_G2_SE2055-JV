@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { readErrorMessage } from '../../api/client';
 import { fetchTasks } from '../../api/housekeeping';
-import { fetchLeaveReviewQueue } from '../../api/leaveRequests';
 import { fetchRoomStatusSummary } from '../../api/rooms';
 import { fetchShifts } from '../../api/scheduling';
 import { fetchStaffDirectory } from '../../api/users';
+import { usePendingCounts } from '../../context/PendingCountsContext';
 import { formatDate, todayIso } from '../../pages/rooms/format';
 import StatCard from '../StatCard';
 import '../../pages/rooms/rooms.css';
@@ -15,8 +15,22 @@ import '../../pages/rooms/rooms.css';
  * trạng thái, nhân viên có ca hôm nay / tổng nhân viên, việc dọn theo trạng thái, đơn chờ duyệt.
  *
  * Đặt ở màn Thông tin khách sạn (/khach-san) của Manager. Phạm vi do backend ép về khách sạn
- * của người đăng nhập. Ô đơn chờ duyệt mới đếm đơn nghỉ — đổi ca chưa có module.
+ * của người đăng nhập. Ô «Đơn chờ duyệt» cộng cả 3 loại Manager phải duyệt — đơn nghỉ, đổi ca, điều chỉnh
+ * công — lấy từ bộ đếm chung (PendingCountsContext) với menu trái và tab «Chờ duyệt», nên mọi nơi cùng một số.
  */
+/** Màn duyệt theo thứ tự ưu tiên khi bấm thẻ «Đơn chờ duyệt». */
+const REVIEW_PAGES = [
+  ['leave', '/duyet-don-nghi'],
+  ['swap', '/duyet-doi-ca'],
+  ['adjustment', '/duyet-dieu-chinh-cong'],
+];
+
+/** Mở màn còn đơn chờ đầu tiên; hết đơn thì về màn đơn nghỉ như trước. */
+function reviewTargetOf(counts) {
+  const first = REVIEW_PAGES.find(([key]) => counts[key] > 0);
+  return first ? first[1] : '/duyet-don-nghi';
+}
+
 export default function HotelOpsSummary() {
   const today = todayIso();
   const [stats, setStats] = useState(null);
@@ -34,9 +48,8 @@ export default function HotelOpsSummary() {
       countTasks({ status: 'IN_PROGRESS' }),
       countTasks({ status: 'PENDING_INSPECTION' }),
       countTasks({ status: 'COMPLETED', assignedDate: today }),
-      fetchLeaveReviewQueue({ status: 'PENDING', size: 1 }).then((page) => page.totalElements ?? 0),
     ])
-      .then(([rooms, shifts, people, unassigned, inProgress, pending, doneToday, pendingLeave]) => {
+      .then(([rooms, shifts, people, unassigned, inProgress, pending, doneToday]) => {
         if (cancelled) return;
         // BR-DASH-03 đếm Staff. Quản lý không có ca (chốt 05/10/2026) — vẫn lọc theo role cho ca cũ.
         const staffIds = new Set(
@@ -51,7 +64,6 @@ export default function HotelOpsSummary() {
           inProgress,
           pending,
           doneToday,
-          pendingLeave,
         });
       })
       .catch((err) => !cancelled && setError(readErrorMessage(err, 'Không tải được số liệu vận hành.')));
@@ -61,6 +73,9 @@ export default function HotelOpsSummary() {
   }, [today]);
 
   const count = (status) => stats?.rooms?.counts?.[status] ?? 0;
+  const { counts: pendingCounts } = usePendingCounts();
+  const { leave, swap, adjustment } = pendingCounts;
+  const pendingKnown = [leave, swap, adjustment].every((n) => n !== undefined);
 
   return (
     <section className="ops-summary" aria-labelledby="ops-summary-title">
@@ -105,11 +120,11 @@ export default function HotelOpsSummary() {
               tone="amber"
             />
           </Link>
-          <Link to="/duyet-don-nghi" className="ops-card-link">
+          <Link to={reviewTargetOf(pendingCounts)} className="ops-card-link">
             <StatCard
-              label="Đơn nghỉ chờ duyệt"
-              value={stats.pendingLeave}
-              note="Đổi ca chưa có module"
+              label="Đơn chờ duyệt"
+              value={pendingKnown ? leave + swap + adjustment : '…'}
+              note={pendingKnown ? `Nghỉ ${leave} · Đổi ca ${swap} · Điều chỉnh công ${adjustment}` : 'Đang đếm đơn…'}
               icon="📨"
               tone="green"
             />

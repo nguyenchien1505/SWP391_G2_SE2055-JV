@@ -1,8 +1,12 @@
 package com.example.SWP391_G2_SE2055_JV.service;
 
+import com.example.SWP391_G2_SE2055_JV.entity.LeaveRequest;
 import com.example.SWP391_G2_SE2055_JV.entity.SchedulePolicy;
 import com.example.SWP391_G2_SE2055_JV.entity.Shift;
+import com.example.SWP391_G2_SE2055_JV.enums.LeaveRequestStatus;
+import com.example.SWP391_G2_SE2055_JV.enums.LeaveType;
 import com.example.SWP391_G2_SE2055_JV.exception.BusinessException;
+import com.example.SWP391_G2_SE2055_JV.repository.LeaveRequestRepository;
 import com.example.SWP391_G2_SE2055_JV.repository.ShiftRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -16,6 +20,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -35,14 +40,18 @@ import java.util.UUID;
  *   <li>BR-SCH-14 — "số ca liên tiếp" đếm theo SỐ NGÀY LIÊN TIẾP CÓ CA, không phải số bản ghi ca.</li>
  *   <li>BR-SCH-15 — số ngày riêng biệt có ca trong tuần ≤ (7 − số ngày nghỉ tối thiểu).</li>
  *   <li>BR-SCH-05 — trùng ca chỉ kiểm trong phạm vi Location hiện tại, không check chéo Location khác.</li>
+ *   <li>BR-SCH-31 — đơn nghỉ ĐÃ DUYỆT (cả phép năm lẫn không lương) phủ ngày bắt đầu ca thì không xếp được.</li>
  * </ul>
  */
 @Component
 @RequiredArgsConstructor
 public class SchedulePolicyValidator {
 
-    private final SchedulePolicyService policyService;
-    private final ShiftRepository       shiftRepository;
+    private static final Set<LeaveRequestStatus> APPROVED_LEAVE = EnumSet.of(LeaveRequestStatus.APPROVED);
+
+    private final SchedulePolicyService  policyService;
+    private final ShiftRepository        shiftRepository;
+    private final LeaveRequestRepository leaveRequestRepository;
 
     /**
      * @param excludeShiftId ca đang được sửa — loại khỏi phép tính để không tự đụng chính nó.
@@ -53,6 +62,8 @@ public class SchedulePolicyValidator {
             // Ca chưa phân công thì không ràng buộc ai — DM-03.
             return;
         }
+        // Đang nghỉ thì các con số giờ làm không còn ý nghĩa — báo lý do này trước.
+        checkApprovedLeave(staffId, candidate);
 
         // BR-SCH-20: "không chặn xếp ca vì chưa cấu hình" — Tenant chưa có policy thì
         // dùng luôn bản mặc định thay vì báo lỗi.
@@ -79,6 +90,22 @@ public class SchedulePolicyValidator {
         checkConsecutiveDays(existing, candidate, policy);
         checkMinRestBetweenShifts(existing, candidate, policy);
         checkMinDaysOffPerWeek(existing, candidate, policy, weekStart, weekEnd);
+    }
+
+    /**
+     * BR-SCH-31: sau khi đơn nghỉ được duyệt, Manager không xếp được ca cho người đó trong khoảng nghỉ. Đơn chờ
+     * duyệt không chặn. Đơn bị người duyệt rút ngắn đã mang ngày kết thúc mới (V12), nên ngày đã hủy nghỉ xếp lại
+     * được. Ca qua đêm thuộc ngày bắt đầu (BR-SCH-03): ca 22:00 của ngày liền trước khoảng nghỉ vẫn xếp được.
+     */
+    private void checkApprovedLeave(UUID staffId, Shift candidate) {
+        LocalDate date = candidate.getShiftDate();
+        List<LeaveRequest> leaves = leaveRequestRepository.findOverlapping(staffId, APPROVED_LEAVE, date, date);
+        if (!leaves.isEmpty()) {
+            LeaveRequest leave = leaves.get(0);
+            throw new BusinessException(String.format(
+                "Nhân viên đã được duyệt %s %s — không xếp ca trong khoảng nghỉ.",
+                leaveLabel(leave.getLeaveType()), period(leave.getFromDate(), leave.getToDate())));
+        }
     }
 
     /** BR-SCH-05: trùng ca chỉ xét trong CÙNG Location. */
@@ -239,6 +266,21 @@ public class SchedulePolicyValidator {
 
     private static String date(LocalDate value) {
         return value.format(DATE);
+    }
+
+    /** "ngày 05/10/2026" hoặc "từ 05/10/2026 đến 07/10/2026". */
+    private static String period(LocalDate from, LocalDate to) {
+        return from.equals(to) ? "ngày " + date(from) : "từ " + date(from) + " đến " + date(to);
+    }
+
+    private static String leaveLabel(LeaveType type) {
+        if (type == null) {
+            return "nghỉ";
+        }
+        return switch (type) {
+            case ANNUAL -> "nghỉ phép năm";
+            case UNPAID -> "nghỉ không lương";
+        };
     }
 
     /** 8.00 → "8", 7.50 → "7,5". */

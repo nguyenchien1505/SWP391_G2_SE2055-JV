@@ -142,7 +142,7 @@ export default function MyAdjustmentsPage() {
           <p className="muted">Chưa có ca nào trong {MAX_AGE_DAYS} ngày gần đây để điều chỉnh.</p>
         )}
         {shifts && shifts.length > 0 && (
-          <form onSubmit={handleSubmit} noValidate>
+          <form className="adjustment-form" onSubmit={handleSubmit} noValidate>
             <label className="field">
               <span className="field__label">Ca <span className="req">*</span></span>
               <select value={shiftId} onChange={(e) => setShiftId(e.target.value)}>

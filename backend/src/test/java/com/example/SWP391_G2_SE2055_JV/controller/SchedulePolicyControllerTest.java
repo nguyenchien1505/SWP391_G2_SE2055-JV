@@ -39,7 +39,8 @@ class SchedulePolicyControllerTest {
     /** Bản mặc định BR-SCH-20. */
     private static final String VALID_BODY = """
         {"maxHoursPerDay": 8, "maxHoursPerWeek": 48, "maxConsecutiveShifts": 6,
-         "minRestHoursBetweenShifts": 12, "minDaysOffPerWeek": 1, "swapResponseTimeoutHours": 24}
+         "minRestHoursBetweenShifts": 12, "minDaysOffPerWeek": 1, "swapResponseTimeoutHours": 24,
+         "annualLeaveDaysPerYear": 12, "annualLeaveNoticeDays": 3, "lateEarlyThresholdMinutes": 5}
         """;
 
     @Autowired MockMvc mockMvc;
@@ -85,6 +86,9 @@ class SchedulePolicyControllerTest {
             verify(schedulePolicyService).updatePolicy(request.capture());
             assertThat(request.getValue().getMaxHoursPerWeek()).isEqualByComparingTo("48");
             assertThat(request.getValue().getMinDaysOffPerWeek()).isEqualTo(1);
+            assertThat(request.getValue().getAnnualLeaveDaysPerYear()).isEqualTo(12);
+            assertThat(request.getValue().getAnnualLeaveNoticeDays()).isEqualTo(3);
+            assertThat(request.getValue().getLateEarlyThresholdMinutes()).isEqualTo(5);
         }
 
         /** BR-SCH-01: Manager đọc được nhưng không sửa được quy định chung của Tenant. */
@@ -108,6 +112,35 @@ class SchedulePolicyControllerTest {
                 .andExpect(status().isUnprocessableEntity());
             verifyNoInteractions(schedulePolicyService);
         }
+
+        /** Giới hạn 3 tham số M2 khớp CHECK ck_schedule_policies_leave_attendance (V19). */
+        @ParameterizedTest
+        @ValueSource(strings = {
+            "\"annualLeaveDaysPerYear\": 61", "\"annualLeaveDaysPerYear\": -1",
+            "\"annualLeaveNoticeDays\": 31", "\"lateEarlyThresholdMinutes\": 61",
+        })
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldRejectLeaveAndAttendanceValuesOutsideRange(String replacement) throws Exception {
+            String key = replacement.substring(0, replacement.indexOf(':'));
+            String body = VALID_BODY.replaceAll(key + ": \\d+", replacement);
+
+            mockMvc.perform(put("/scheduling/policy")
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(schedulePolicyService);
+        }
+
+        /** PUT toàn phần (DM-18): client cũ thiếu 3 trường mới thì bị từ chối, không lưu đè thành 0. */
+        @Test
+        @WithMockUser(roles = "DIRECTOR")
+        void shouldRequireNewFields() throws Exception {
+            String body = VALID_BODY.replace(", \"lateEarlyThresholdMinutes\": 5", "");
+
+            mockMvc.perform(put("/scheduling/policy")
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnprocessableEntity());
+            verifyNoInteractions(schedulePolicyService);
+        }
     }
 
     private static SchedulePolicyResponse defaultPolicy() {
@@ -119,6 +152,9 @@ class SchedulePolicyControllerTest {
             .minRestHoursBetweenShifts(new BigDecimal("12.00"))
             .minDaysOffPerWeek(1)
             .swapResponseTimeoutHours(24)
+            .annualLeaveDaysPerYear(12)
+            .annualLeaveNoticeDays(3)
+            .lateEarlyThresholdMinutes(5)
             .build();
     }
 }

@@ -68,6 +68,10 @@ class SchedulePolicyServiceTest {
         assertThat(policy.getMinRestHoursBetweenShifts()).isEqualByComparingTo("12");
         assertThat(policy.getMinDaysOffPerWeek()).isEqualTo(1);
         assertThat(policy.getSwapResponseTimeoutHours()).isEqualTo(24);
+        // BR-SCH-27, BR-SCH-07 bản sửa, BR-ATT-02.
+        assertThat(policy.getAnnualLeaveDaysPerYear()).isEqualTo(12);
+        assertThat(policy.getAnnualLeaveNoticeDays()).isEqualTo(3);
+        assertThat(policy.getLateEarlyThresholdMinutes()).isEqualTo(5);
     }
 
     /** DM-18: sửa đè đúng bản ghi duy nhất của Tenant, không tạo phiên bản mới. */
@@ -84,6 +88,9 @@ class SchedulePolicyServiceTest {
         request.setMinRestHoursBetweenShifts(new BigDecimal("11"));
         request.setMinDaysOffPerWeek(2);
         request.setSwapResponseTimeoutHours(24);
+        request.setAnnualLeaveDaysPerYear(15);
+        request.setAnnualLeaveNoticeDays(5);
+        request.setLateEarlyThresholdMinutes(10);
         service.updatePolicy(request);
 
         ArgumentCaptor<SchedulePolicy> saved = ArgumentCaptor.forClass(SchedulePolicy.class);
@@ -94,5 +101,8 @@ class SchedulePolicyServiceTest {
         assertThat(existing.getMaxConsecutiveShifts()).isEqualTo(5);
         assertThat(existing.getMinRestHoursBetweenShifts()).isEqualByComparingTo("11");
         assertThat(existing.getMinDaysOffPerWeek()).isEqualTo(2);
+        assertThat(existing.getAnnualLeaveDaysPerYear()).isEqualTo(15);
+        assertThat(existing.getAnnualLeaveNoticeDays()).isEqualTo(5);
+        assertThat(existing.getLateEarlyThresholdMinutes()).isEqualTo(10);
     }
 }

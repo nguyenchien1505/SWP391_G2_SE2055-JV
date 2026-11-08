@@ -57,7 +57,7 @@ export default function ReturnTaskModal({ task, meId, onClose, onReturned }) {
           <div className="alert alert--info">
             {teammates
               ? <>Bạn rời nhóm dọn phòng {room}; <strong>{teammates}</strong> vẫn dọn tiếp.</>
-              : `Phòng ${room} sẽ quay về «Chờ dọn» và trở lại danh sách chờ nhận.`}
+              : `Phòng ${room} sẽ quay về «Chờ dọn» để người khác nhận trên sơ đồ phòng.`}
           </div>
 
           <label className="field">

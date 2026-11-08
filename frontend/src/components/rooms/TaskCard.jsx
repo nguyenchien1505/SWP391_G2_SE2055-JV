@@ -47,6 +47,13 @@ export default function TaskCard({ task, actions = [], onShowPreviousInspection,
         <p className="task-card__flag">Tồn đọng từ {formatDate(task.assignedDate)}</p>
       )}
 
+      {/* Lời nhắn của người dọn lúc báo xong — người kiểm tra đọc trước khi chấm. */}
+      {task.completionNote && (
+        <p className="task-card__meta task-card__note">
+          <b>Ghi chú khi báo xong:</b> {task.completionNote}
+        </p>
+      )}
+
       {task.status === 'UNASSIGNED' && unassignedReasonLabel(task.unassignedReason) && (
         <p className="task-card__meta muted">{unassignedReasonLabel(task.unassignedReason)}</p>
       )}

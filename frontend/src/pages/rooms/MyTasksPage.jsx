@@ -1,38 +1,53 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { readErrorMessage } from '../../api/client';
-import { claimTask, completeTask, fetchOpenTasks, fetchTasks } from '../../api/housekeeping';
-import { fetchShifts } from '../../api/scheduling';
-import MyShiftCard from '../../components/scheduling/MyShiftCard';
-import OpenTaskList from '../../components/rooms/OpenTaskList';
-import PreviousInspectionModal from '../../components/rooms/PreviousInspectionModal';
+import { fetchOpenTasks, fetchTasks } from '../../api/housekeeping';
+import CleaningTaskDetail from '../../components/rooms/CleaningTaskDetail';
+import CompleteTaskModal from '../../components/rooms/CompleteTaskModal';
 import ReturnTaskModal from '../../components/rooms/ReturnTaskModal';
 import TaskStatusBadge from '../../components/rooms/TaskStatusBadge';
+import MyShiftCard from '../../components/scheduling/MyShiftCard';
+import { useWorkDayShifts } from '../../hooks/useWorkDayShifts';
 import { formatDate, todayIso } from './format';
 import { compareNatural, taskRoomLabel, teamNames } from './roomLabels';
-import { isInCurrentWorkDay, yesterdayIso } from './workDay';
 import './rooms.css';
 
 const DONE_STATUSES = ['PENDING_INSPECTION', 'COMPLETED'];
 
 /**
- * S-16 Việc của tôi + S-17 Hoàn thành + S-21 Việc đang chờ nhận + S-22 Trả lại việc — RM-17, RM-18, RM-21,
- * RM-22, BR-PERM-05, BR-HK-14 → BR-HK-17.
+ * Thứ tự làm việc: tồn đọng trước (BR-HK-04), rồi phòng dọn lại (khách có thể đang chờ — BR-HK-12), rồi theo
+ * tầng và số phòng để đi ít nhất.
+ */
+function compareWorkOrder(a, b) {
+  return Number(b.overdue) - Number(a.overdue)
+    || Number(Boolean(b.parentTaskId)) - Number(Boolean(a.parentTaskId))
+    || compareNatural(a.floor, b.floor)
+    || compareNatural(a.roomNumber, b.roomNumber);
+}
+
+/**
+ * S-16 Việc của tôi + S-17 Hoàn thành + S-22 Trả lại việc — RM-17, RM-18, RM-22, BR-PERM-05, BR-HK-04,
+ * BR-HK-16, BR-HK-17.
  *
- * Màn hình được dùng nhiều nhất hệ thống, và dùng khi đang đứng trong hành lang: làm
- * **mobile-first** thật sự — không có bảng, mỗi việc là một dòng với số phòng cỡ lớn và đúng
- * MỘT nút to chiếm hết chiều ngang.
+ * Màn hình được dùng nhiều nhất hệ thống, và dùng khi đang đứng trong phòng: làm **mobile-first** thật sự.
+ * Chốt 02/11/2026: thay danh sách "mỗi việc một dòng + nút Hoàn thành" bằng CHI TIẾT phòng đang dọn
+ * ({@link CleaningTaskDetail}) — thông tin phòng, lý do dọn lại, ghi chú phòng, tài sản để báo hỏng. Danh sách
+ * việc chờ nhận (S-21) chuyển sang sơ đồ phòng: nhận việc ngay trên thẻ phòng.
  *
  * Không có bộ lọc theo người: backend đã ép nhân viên chỉ thấy việc có mình trong nhóm dọn, nên gọi
- * `GET /housekeeping/tasks` là đủ (BR-PERM-05). Một phòng có thể nhiều người dọn — mỗi việc ghi rõ
- * dọn cùng ai, và một người bấm «Hoàn thành» là xong cho cả nhóm.
+ * `GET /housekeeping/tasks` là đủ (BR-PERM-05). Một người bấm «Hoàn thành» là xong cho cả nhóm.
  *
  * Các mục, theo thứ tự quan trọng khi đang làm:
- *   - **Ca hôm nay** — kèm nút Vào ca / Kết thúc ca: tự nhận việc đòi đã vào ca (BR-HK-15).
- *   - **Cần làm** — mọi việc đang làm, KHÔNG lọc theo ngày: việc tồn đọng từ hôm qua vẫn phải
- *     hiện, nếu không nhân viên sẽ không bao giờ thấy nó nữa (BR-HK-04). Việc mình tự nhận có thêm nút
- *     «Trả lại» nằm dưới «Hoàn thành» (BR-HK-17).
- *   - **Việc đang chờ nhận** — tự nhận việc chưa phân công (M2); được nhận hay không do backend nói.
+ *   - **Ca hôm nay** — khối Vào ca / Kết thúc ca của chấm công (`MyShiftCard`), y như trên sơ đồ phòng: tự nhận
+ *     việc đòi đã vào ca (BR-HK-15).
+ *   - **Đang dọn** — chi tiết MỘT phòng: phòng đầu theo thứ tự làm việc, hoặc phòng vừa chọn ở «Tiếp theo».
+ *     Tự nhận chỉ được một việc một lúc (BR-HK-16), nhưng Quản lý / Giám sát giao tay được nhiều việc
+ *     (BR-HK-02) — các việc còn lại nằm ở «Tiếp theo». Mọi việc đang làm đều hiện, KHÔNG lọc theo ngày:
+ *     việc tồn đọng từ hôm qua vẫn phải làm (BR-HK-04).
+ *   - Chưa có việc: số phòng đang chờ người nhận và lối sang sơ đồ phòng (lọc sẵn «Chờ dọn» — phòng chờ dọn
+ *     luôn có đúng một việc chưa phân công), kèm lý do chưa nhận được nếu có — backend nói
+ *     (`/housekeeping/tasks/open`).
  *   - **Đã xong hôm nay** — để tự đối chiếu cuối ca; tính theo NGÀY LÀM của ca đang làm (ca đêm từ hôm
  *     qua thì là hôm qua — BR-SCH-03).
  *
@@ -41,19 +56,27 @@ const DONE_STATUSES = ['PENDING_INSPECTION', 'COMPLETED'];
 export default function MyTasksPage() {
   const { user } = useAuth();
   const today = todayIso();
+  // Nhận phòng trên sơ đồ xong thì chuyển về đây kèm câu báo (react-router state).
+  const { state: navigationState, pathname } = useLocation();
+  const navigate = useNavigate();
 
   const [todo, setTodo] = useState([]);
   const [done, setDone] = useState([]);
+  const [focusId, setFocusId] = useState(null);         // việc đang xem chi tiết; null = việc đầu tiên
   const [openTasks, setOpenTasks] = useState(null);     // { canClaim, blockedReason, workDay, tasks }
   const [openError, setOpenError] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [banner, setBanner] = useState(null);       // { type, text }
-  const [submittingId, setSubmittingId] = useState(null);
-  const [claimingId, setClaimingId] = useState(null);
-  const [previousOf, setPreviousOf] = useState(null);   // việc dọn lại đang xem lý do không đạt
+  const [banner, setBanner] = useState(navigationState?.banner ?? null);   // { type, text }
+  const [completing, setCompleting] = useState(null);   // việc đang mở hộp «Báo xong» (S-17)
   const [returning, setReturning] = useState(null);     // việc đang mở hộp thoại trả lại (S-22)
-  const [shifts, setShifts] = useState(null);           // ca thuộc ngày làm hiện tại; null = chưa tải / lỗi
+  // Chấm công M2: ca thuộc ngày làm hiện tại — cùng nguồn với khối «Ca hôm nay» trên sơ đồ phòng.
+  const { shifts: workDayShifts, reload: reloadWorkDay, today: workDayToday } = useWorkDayShifts();
+
+  // Đọc câu báo một lần rồi bỏ khỏi lịch sử duyệt, để F5 không hiện lại thông báo cũ.
+  useEffect(() => {
+    if (navigationState?.banner) navigate(pathname, { replace: true });
+  }, [navigationState, pathname, navigate]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,15 +84,15 @@ export default function MyTasksPage() {
     try {
       const [inProgress, open] = await Promise.all([
         fetchTasks({ status: 'IN_PROGRESS' }),
-        // Danh sách chờ nhận lỗi thì chỉ mục đó báo lỗi — không chặn việc đang làm của mình.
+        // Việc chờ nhận lỗi thì chỉ khối "chưa có việc" thiếu số đếm — không chặn việc đang làm của mình.
         fetchOpenTasks().catch((err) => {
-          setOpenError(readErrorMessage(err, 'Không tải được danh sách việc chờ nhận.'));
+          setOpenError(readErrorMessage(err, 'Không tải được số phòng đang chờ nhận.'));
           return null;
         }),
       ]);
       if (open) setOpenError('');
       const ofWorkDay = await fetchTasks({ assignedDate: open?.workDay ?? today });
-      setTodo([...(inProgress.content ?? [])].sort((a, b) => compareNatural(a.roomNumber, b.roomNumber)));
+      setTodo([...(inProgress.content ?? [])].sort(compareWorkOrder));
       setOpenTasks(open);
       setDone((ofWorkDay.content ?? []).filter((task) => DONE_STATUSES.includes(task.status)));
     } catch (err) {
@@ -79,21 +102,9 @@ export default function MyTasksPage() {
     }
   }, [today]);
 
-  // Ca hôm nay: backend chỉ trả ca của chính nhân viên. Lỗi thì ẩn thẻ — không chặn việc dọn. Lấy cả
-  // hôm qua để hiện ca qua đêm bắt đầu từ hôm qua mà người đó còn đang làm (BR-SCH-03).
-  const loadShifts = useCallback(async () => {
-    try {
-      const list = await fetchShifts({ from: yesterdayIso(), to: today });
-      setShifts(list.filter((shift) => isInCurrentWorkDay(shift)));
-    } catch {
-      setShifts(null);
-    }
-  }, [today]);
-
   useEffect(() => {
     load();
-    loadShifts();
-  }, [load, loadShifts]);
+  }, [load]);
 
   // Người khác có thể vừa nhận phòng, Quản lý vừa giao việc — mở lại tab là tải lại.
   useEffect(() => {
@@ -102,45 +113,29 @@ export default function MyTasksPage() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [load]);
 
-  async function handleComplete(task) {
-    setSubmittingId(task.id);
+  // Việc đang xem vừa xong / bị gỡ thì quay về việc đầu tiên còn lại.
+  const focus = useMemo(() => todo.find((task) => task.id === focusId) ?? todo[0] ?? null, [todo, focusId]);
+  const others = todo.filter((task) => task !== focus);
+
+  function showTask(task) {
+    setFocusId(task.id);
     setBanner(null);
-    try {
-      const updated = await completeTask(task.id);
-      // Nói rõ là CHƯA xong hẳn, tránh nhân viên tưởng mình còn sót việc khi thấy nó vẫn ở đó.
-      setBanner({
-        type: 'success',
-        text: `Đã báo xong phòng ${taskRoomLabel(updated)}`
-          + ((updated.assignees?.length ?? 0) > 1 ? ' cho cả nhóm' : '')
-          + ' — chờ quản lý kiểm tra.',
-      });
-      await load();
-    } catch (err) {
-      setBanner({ type: 'error', text: readErrorMessage(err, 'Không báo hoàn thành được.') });
-    } finally {
-      setSubmittingId(null);
-    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  /** Tải lại cả khi lỗi: phòng người khác vừa nhận sẽ biến khỏi danh sách (BR-HK-18). */
-  async function handleClaim(task) {
-    setClaimingId(task.id);
-    setBanner(null);
-    try {
-      const claimed = await claimTask(task.id);
-      setBanner({
-        type: 'success',
-        text: `Bạn đã nhận phòng ${taskRoomLabel(claimed)} — phòng chuyển sang «Đang dọn».`,
-      });
-    } catch (err) {
-      setBanner({ type: 'error', text: readErrorMessage(err, 'Không nhận được việc này.') });
-    } finally {
-      setClaimingId(null);
-      await load();
-    }
+  /** Báo xong: nói rõ là CHƯA xong hẳn — còn chờ kiểm tra — để nhân viên khỏi tưởng còn sót việc. */
+  async function handleCompleted(updated) {
+    setCompleting(null);
+    setBanner({
+      type: 'success',
+      text: `Đã báo xong phòng ${taskRoomLabel(updated)}`
+        + ((updated.assignees?.length ?? 0) > 1 ? ' cho cả nhóm' : '')
+        + ' — chờ quản lý kiểm tra.',
+    });
+    await load();
   }
 
-  /** Trả xong: nói rõ phòng đi đâu — về danh sách chờ nhận, hay đồng đội dọn tiếp. */
+  /** Trả xong: nói rõ phòng đi đâu — về hàng chờ cho người khác nhận, hay đồng đội dọn tiếp. */
   async function handleReturned(updated) {
     setReturning(null);
     const staying = teamNames(updated);   // mình đã rời nhóm, còn lại là đồng đội
@@ -151,12 +146,14 @@ export default function MyTasksPage() {
     await load();
   }
 
-  /** Vào / kết thúc ca xong thì được nhận việc hay không cũng đổi theo — tải lại cả hai. */
+  /** Vào / kết thúc ca xong thì được nhận việc hay không cũng đổi theo — tải lại khối ca và việc chờ nhận. */
   function handleShiftChanged(message) {
     setBanner(message);
-    loadShifts();
+    reloadWorkDay();
     load();
   }
+
+  const waitingCount = openTasks?.tasks?.length ?? 0;
 
   return (
     <div className="page my-tasks">
@@ -181,95 +178,74 @@ export default function MyTasksPage() {
           {loadError}
         </div>
       )}
-      {loading && <p className="state">Đang tải dữ liệu…</p>}
+      {loading && todo.length === 0 && <p className="state">Đang tải dữ liệu…</p>}
 
-      {shifts && (
-        <MyShiftCard
-          shifts={shifts}
-          today={today}
-          onChanged={handleShiftChanged}
-          emptyText="Hôm nay bạn không có ca — việc dọn chỉ được giao vào ngày bạn có ca."
-          checkOutNote="Kết thúc ca thì bạn không tự nhận thêm việc dọn được nữa. Việc đang dọn dở vẫn nằm ở «Cần làm»."
+      {workDayShifts && (
+        <MyShiftCard shifts={workDayShifts} today={workDayToday} onChanged={handleShiftChanged} />
+      )}
+
+      {focus && (
+        <CleaningTaskDetail
+          key={focus.id}
+          task={focus}
+          meId={user?.id}
+          onComplete={setCompleting}
+          onReturn={setReturning}
         />
       )}
 
-      <section className="panel">
-        <div className="panel__head">
-          <h2>Cần làm</h2>
-          <span className="chip">{todo.length} phòng</span>
-        </div>
-
-        {!loading && todo.length === 0 && (
-          <div className="state state--empty">
-            <p>Bạn không có việc dọn nào đang làm.</p>
-            <p className="muted">Quản lý giao việc, hoặc bạn tự nhận ở mục «Việc đang chờ nhận».</p>
+      {others.length > 0 && (
+        <section className="panel">
+          <div className="panel__head">
+            <h2>Tiếp theo</h2>
+            <span className="chip">{others.length} phòng</span>
           </div>
-        )}
-
-        <ul className="task-list">
-          {todo.map((task) => (
-            <li key={task.id} className="task-row">
-              <div className="task-row__info">
-                <span className="task-row__room">
-                  {task.roomNumber ?? '—'}
-                  {task.roomTypeName && <small> - {task.roomTypeName}</small>}
-                </span>
-                <span className="task-row__meta">Tầng {task.floor ?? '—'}</span>
-                {teamNames(task, user?.id) && (
-                  <span className="task-row__meta">Dọn cùng: {teamNames(task, user?.id)}</span>
-                )}
-                {/* BR-HK-04: việc của hôm trước chưa xong thì vẫn phải làm, không tự hủy. Cờ do backend
-                    tính — việc của ca đêm từ hôm qua chưa tồn đọng khi ca chưa hết. */}
-                {task.overdue && (
-                  <span className="task-card__flag">Tồn đọng từ {formatDate(task.assignedDate)}</span>
-                )}
-                {/* BR-HK-12: người dọn lại cần biết lần trước không đạt ở chỗ nào. */}
-                {task.parentTaskId && (
-                  <button type="button" className="link-btn" onClick={() => setPreviousOf(task)}>
-                    Xem lý do phải dọn lại
-                  </button>
-                )}
-              </div>
-              <div className="task-row__buttons">
-                <button
-                  type="button"
-                  className="btn btn--primary task-row__action"
-                  disabled={submittingId === task.id}
-                  onClick={() => handleComplete(task)}
-                >
-                  {submittingId === task.id ? 'Đang gửi…' : 'Hoàn thành'}
+          <ul className="task-list">
+            {others.map((task) => (
+              <li key={task.id}>
+                <button type="button" className="task-row task-row--pick" onClick={() => showTask(task)}>
+                  <span className="task-row__info">
+                    <span className="task-row__room">
+                      {task.roomNumber ?? '—'}
+                      {task.roomTypeName && <small> - {task.roomTypeName}</small>}
+                    </span>
+                    <span className="task-row__meta">Tầng {task.floor ?? '—'}</span>
+                    {task.overdue && (
+                      <span className="task-card__flag">Tồn đọng từ {formatDate(task.assignedDate)}</span>
+                    )}
+                    {task.parentTaskId && <span className="task-card__flag">Dọn lại sau kiểm tra</span>}
+                  </span>
+                  <span className="task-row__go">Xem phòng ›</span>
                 </button>
-                {/* BR-HK-17: chỉ người tự nhận trả lại được — ẩn bớt cho dễ dùng, backend vẫn kiểm lại.
-                    Nằm DƯỚI «Hoàn thành» và là nút phụ để khó bấm nhầm. */}
-                {task.assignmentSource === 'SELF_CLAIM' && task.assignedBy === user?.id && (
-                  <button
-                    type="button"
-                    className="btn btn--ghost task-row__action"
-                    disabled={submittingId === task.id}
-                    onClick={() => setReturning(task)}
-                  >
-                    Trả lại
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-      {openError ? (
-        <div className="alert alert--error" role="alert">
-          {openError}
-        </div>
-      ) : (
-        <OpenTaskList
-          data={openTasks}
-          loading={loading}
-          claimingId={claimingId}
-          onClaim={handleClaim}
-          onReload={load}
-          onShowPreviousInspection={setPreviousOf}
-        />
+      {!loading && !loadError && todo.length === 0 && (
+        <section className="panel clean-empty">
+          <p className="clean-empty__title">Bạn chưa có phòng nào đang dọn</p>
+          {openTasks && (
+            <p className="muted">
+              {waitingCount > 0
+                ? `Có ${waitingCount} phòng đang chờ người nhận.`
+                : 'Hiện không có phòng nào chờ người nhận.'}
+            </p>
+          )}
+          {openError && <p className="muted">{openError}</p>}
+          {/* Chưa vào ca, đang là lễ tân duy nhất của ca… — backend nói, màn hình chỉ hiện ra (BR-HK-15). */}
+          {openTasks && !openTasks.canClaim && openTasks.blockedReason && waitingCount > 0 && (
+            <p className="board-panel__why">
+              <span className="material-symbols-outlined" aria-hidden="true">info</span>
+              {openTasks.blockedReason}
+            </p>
+          )}
+          <Link className="btn btn--primary clean-empty__go" to="/so-do-phong?status=DIRTY">
+            Chọn phòng trên sơ đồ
+          </Link>
+          <p className="muted">Quản lý hoặc giám sát cũng có thể giao phòng cho bạn.</p>
+        </section>
       )}
 
       <section className="panel">
@@ -302,8 +278,13 @@ export default function MyTasksPage() {
         </ul>
       </section>
 
-      {previousOf && (
-        <PreviousInspectionModal task={previousOf} onClose={() => setPreviousOf(null)} />
+      {completing && (
+        <CompleteTaskModal
+          task={completing}
+          meId={user?.id}
+          onClose={() => setCompleting(null)}
+          onCompleted={handleCompleted}
+        />
       )}
 
       {returning && (

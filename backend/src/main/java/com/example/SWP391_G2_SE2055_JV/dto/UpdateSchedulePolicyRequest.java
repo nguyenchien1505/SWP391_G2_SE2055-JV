@@ -10,7 +10,8 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 /**
- * Sửa bộ quy tắc xếp ca của Tenant — BR-SCH-01, BR-SCH-02, BR-SCH-21.
+ * Sửa bộ quy tắc xếp ca của Tenant — BR-SCH-01, BR-SCH-02, BR-SCH-21, BR-SCH-27, BR-SCH-07 bản sửa,
+ * BR-ATT-02.
  *
  * <p>DM-18: sửa đè trực tiếp, không lưu lịch sử phiên bản, nên đây là PUT toàn phần
  * chứ không phải PATCH từng trường.
@@ -49,4 +50,24 @@ public class UpdateSchedulePolicyRequest {
     @NotNull
     @Min(value = 1, message = "Thời gian chờ phản hồi đổi ca phải từ 1 giờ trở lên")
     private Integer swapResponseTimeoutHours;
+
+    // Giới hạn khớp CHECK ck_schedule_policies_leave_attendance (V19).
+
+    /** Quỹ phép năm — BR-SCH-27. */
+    @NotNull
+    @Min(value = 0, message = "Số ngày phép/năm phải từ 0 đến 60")
+    @Max(value = 60, message = "Số ngày phép/năm phải từ 0 đến 60")
+    private Integer annualLeaveDaysPerYear;
+
+    /** Số ngày phải báo trước khi xin phép năm — BR-SCH-07 bản sửa. */
+    @NotNull
+    @Min(value = 0, message = "Số ngày báo trước khi xin phép năm phải từ 0 đến 30")
+    @Max(value = 30, message = "Số ngày báo trước khi xin phép năm phải từ 0 đến 30")
+    private Integer annualLeaveNoticeDays;
+
+    /** Ngưỡng đi muộn / về sớm — BR-ATT-02. */
+    @NotNull
+    @Min(value = 0, message = "Ngưỡng đi muộn / về sớm phải từ 0 đến 60 phút")
+    @Max(value = 60, message = "Ngưỡng đi muộn / về sớm phải từ 0 đến 60 phút")
+    private Integer lateEarlyThresholdMinutes;
 }
