@@ -1,0 +1,175 @@
+<mxfile host="app.diagrams.net" modified="2026-11-07T07:15:00.000Z" agent="Antigravity" version="24.0.0" type="device">
+  <diagram id="flow1-platform-org" name="Flow 1 - Platform &amp; Organization Management">
+    <mxGraphModel dx="1422" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="920" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- System Boundary Box -->
+        <mxCell id="sys_box" value="Platform, Account &amp; Organization Management" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;verticalAlign=top;align=left;spacingLeft=16;spacingTop=10;fontStyle=1;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="200" y="40" width="760" height="810" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== LEFT ACTORS ==================== -->
+        <mxCell id="actor_admin" value="Platform Admin" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="70" y="185" width="30" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="actor_director" value="Director" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="70" y="510" width="30" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="actor_manager" value="Branch Manager" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="70" y="700" width="30" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== RIGHT ACTORS ==================== -->
+        <mxCell id="actor_guest" value="Guest" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="135" width="30" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="actor_staff" value="Staff" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="305" width="30" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="actor_vnpay" value="VNPay" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="490" width="30" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== LEFT COLUMN USE CASES ==================== -->
+        <mxCell id="uc03" value="UC03&lt;br&gt;Manage Tenants" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="95" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc04" value="UC04&lt;br&gt;Manage Platform Pricing Configurations" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="180" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc05" value="UC05&lt;br&gt;Manage Platform System Configurations" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="265" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc10" value="UC10&lt;br&gt;Manage Organization Catalogs" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="395" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc02" value="UC02&lt;br&gt;Manage Subscription Plan &amp; Billing" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="485" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc11" value="UC11&lt;br&gt;Manage Branch Manager Accounts" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="575" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc09" value="UC09&lt;br&gt;Manage Hotel Locations" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="665" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc12" value="UC12&lt;br&gt;Manage Branch Staff Accounts" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="250" y="750" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== RIGHT COLUMN USE CASES ==================== -->
+        <mxCell id="uc01" value="UC01&lt;br&gt;Register Tenant &amp; Verify Email" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="680" y="95" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc06" value="UC06&lt;br&gt;Authenticate User (Login &amp; Logout)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="680" y="190" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc07" value="UC07&lt;br&gt;Change Password &amp; Request Password Reset" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="680" y="300" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc08" value="UC08&lt;br&gt;View Personal Profile" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="680" y="395" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc_vnpay" value="Process VNPay Payment" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="680" y="485" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="uc_quota" value="Check Subscription Quota" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="680" y="707" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== ASSOCIATIONS (LEFT ACTORS) ==================== -->
+        <mxCell id="edge_admin_uc03" style="endArrow=none;html=1;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_admin" target="uc03">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_admin_uc04" style="endArrow=none;html=1;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_admin" target="uc04">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_admin_uc05" style="endArrow=none;html=1;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_admin" target="uc05">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_dir_uc10" style="endArrow=none;html=1;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_director" target="uc10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_dir_uc02" style="endArrow=none;html=1;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_director" target="uc02">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_dir_uc11" style="endArrow=none;html=1;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_director" target="uc11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_dir_uc09" style="endArrow=none;html=1;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_director" target="uc09">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_mgr_uc09" style="endArrow=none;html=1;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_manager" target="uc09">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_mgr_uc12" style="endArrow=none;html=1;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_manager" target="uc12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== ASSOCIATIONS (RIGHT ACTORS) ==================== -->
+        <mxCell id="edge_guest_uc01" style="endArrow=none;html=1;strokeColor=#000000;exitX=0;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_guest" target="uc01">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_guest_uc06" style="endArrow=none;html=1;strokeColor=#000000;exitX=0;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_guest" target="uc06">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_staff_uc06" style="endArrow=none;html=1;strokeColor=#000000;exitX=0;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_staff" target="uc06">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_staff_uc07" style="endArrow=none;html=1;strokeColor=#000000;exitX=0;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_staff" target="uc07">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_staff_uc08" style="endArrow=none;html=1;strokeColor=#000000;exitX=0;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_staff" target="uc08">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_vnpay_sub" style="endArrow=none;html=1;strokeColor=#000000;exitX=0;exitY=0.3;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor_vnpay" target="uc_vnpay">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== INCLUDE & EXTEND ARROWS ==================== -->
+        <!-- UC07 --<<extend>>--> UC06 -->
+        <mxCell id="rel_extend_uc07_uc06" value="&amp;lt;&amp;lt;extend&amp;gt;&amp;gt;" style="dashed=1;endArrow=open;endSize=10;html=1;strokeColor=#000000;fontFamily=Helvetica;fontSize=11;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="uc07" target="uc06">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Process VNPay Payment --<<extend>>--> UC02 -->
+        <mxCell id="rel_extend_vnpay_uc02" value="&amp;lt;&amp;lt;extend&amp;gt;&amp;gt;" style="dashed=1;endArrow=open;endSize=10;html=1;strokeColor=#000000;fontFamily=Helvetica;fontSize=11;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="uc_vnpay" target="uc02">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- UC09 --<<include>>--> Check Subscription Quota -->
+        <mxCell id="rel_include_uc09_quota" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;" style="dashed=1;endArrow=open;endSize=10;html=1;strokeColor=#000000;fontFamily=Helvetica;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.35;entryDx=0;entryDy=0;" edge="1" parent="1" source="uc09" target="uc_quota">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- UC12 --<<include>>--> Check Subscription Quota -->
+        <mxCell id="rel_include_uc12_quota" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;" style="dashed=1;endArrow=open;endSize=10;html=1;strokeColor=#000000;fontFamily=Helvetica;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.65;entryDx=0;entryDy=0;" edge="1" parent="1" source="uc12" target="uc_quota">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+

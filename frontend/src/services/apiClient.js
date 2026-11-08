@@ -28,18 +28,18 @@ class ApiClient {
     // Xóa Content-Type khỏi customHeaders nếu nó là null để tránh khởi tạo thành chuỗi "null"
     const cleanedHeaders = { ...customHeaders };
     let removeContentType = false;
-    
+
     if (cleanedHeaders['Content-Type'] === null) {
       delete cleanedHeaders['Content-Type'];
       removeContentType = true;
     }
 
     const headers = new Headers(cleanedHeaders);
-    
+
     if (!headers.has('Content-Type') && !removeContentType) {
       headers.set('Content-Type', 'application/json');
     }
-    
+
     headers.set('Accept', 'application/json');
     return headers;
   }
@@ -75,7 +75,7 @@ class ApiClient {
       if (response.status === 204) {
         return null;
       }
-      
+
       const text = await response.text();
       return text ? JSON.parse(text) : null;
     } catch (error) {
@@ -97,11 +97,11 @@ class ApiClient {
   post(endpoint, body, headers = {}) {
     // Check if body is FormData or URLSearchParams, don't stringify
     const isFormData = body instanceof FormData || body instanceof URLSearchParams;
-    
+
     // If it's URLSearchParams, we need to make sure Content-Type is application/x-www-form-urlencoded
     // Fetch does this automatically for URLSearchParams
     if (isFormData) {
-        headers['Content-Type'] = null; // Let fetch handle it
+      headers['Content-Type'] = null; // Let fetch handle it
     }
 
     return this.request(endpoint, {
