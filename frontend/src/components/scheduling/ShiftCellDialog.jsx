@@ -1,15 +1,20 @@
+import { useState } from 'react';
+import { readErrorMessage } from '../../api/client';
+import { deleteShift } from '../../api/scheduling';
+import ConfirmDialog from '../ConfirmDialog';
 import { formatDateTime } from '../../pages/rooms/format';
 import { ATTENDANCE_LABELS } from '../../pages/scheduling/attendance';
 import {
   UNASSIGNED_REASON_LABEL,
   formatHours,
   formatLongDate,
+  shiftHasEnded,
   shiftTone,
   timeRange,
 } from '../../pages/scheduling/scheduleFormat';
 import { OTHER_ROW, cellKey, groupByCell, lacksReceptionist } from '../../pages/scheduling/scheduleCells';
 import { coverageSummary, isReceptionist, personSubtitle } from '../../pages/scheduling/schedulePeople';
-import { useCloseOnEscape } from './shiftFields';
+import { BlockedAlert, useCloseOnEscape } from './shiftFields';
 
 /**
  * Chi tiết MỘT ô của bảng xếp lịch — một mẫu ca (hoặc "Ca giờ khác") trong một ngày (chốt 05/10/2026:
@@ -27,18 +32,28 @@ import { useCloseOnEscape } from './shiftFields';
  * @param templates     mẫu dùng được để xếp ca mới
  * @param templatesById tra mọi mẫu đã biết, kể cả mẫu của ca cũ
  * @param shifts        mọi ca của tuần đang xem
+ * Chỗ trống có 2 nút: «Giao người» và «Xóa» (chốt 09/11/2026). Ngày đã qua thì không thêm người vào ca; chỗ trống
+ * đã hết giờ không giao được ai nữa nên chỉ còn «Xóa».
+ *
+ * @param today      "YYYY-MM-DD" — ngày trước hôm nay không thêm người được nữa
  * @param onEdit     (shift) — mở hộp thoại sửa ca đó
  * @param onAdd      () — mở hộp thoại giao thêm người vào ca này
+ * @param onDeleted  (text) — vừa xóa một chỗ trống; trang tải lại lịch rồi mở lại ô này
  */
 export default function ShiftCellDialog({
-  cell, templates, templatesById, shifts, peopleById, onEdit, onAdd, onClose,
+  cell, today, templates, templatesById, shifts, peopleById, onEdit, onAdd, onDeleted, onClose,
 }) {
-  useCloseOnEscape(onClose, false);
+  const [deleting, setDeleting] = useState(null); // chỗ trống đang hỏi xác nhận xóa
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useCloseOnEscape(onClose, Boolean(deleting) || busy);
 
   const rowId = cell.templateId ?? OTHER_ROW;
   const template = cell.templateId ? templatesById.get(cell.templateId) ?? null : null;
   // Hàng "Ca giờ khác" luôn thêm được (giờ tự do); hàng mẫu chỉ khi mẫu còn dùng được.
-  const canAdd = !cell.templateId || templates.some((t) => t.id === cell.templateId);
+  const templateUsable = !cell.templateId || templates.some((t) => t.id === cell.templateId);
+  const pastDay = cell.date < today;
+  const canAdd = templateUsable && !pastDay;
   const list = groupByCell(shifts, peopleById).get(cellKey(rowId, cell.date)) ?? [];
 
   const staffed = list.filter((shift) => shift.staffId);
@@ -46,6 +61,20 @@ export default function ShiftCellDialog({
   const coverage = coverageSummary(staffed.map((shift) => peopleById.get(shift.staffId)));
   const missingReception = lacksReceptionist(rowId, list, peopleById);
   const title = cell.templateId ? template?.name ?? 'Mẫu ca khác' : 'Ca giờ khác';
+
+  async function confirmDelete() {
+    const slot = deleting;
+    setDeleting(null);
+    setBusy(true);
+    setError('');
+    try {
+      await deleteShift(slot.id);
+      onDeleted(`Đã xóa một chỗ trống của ${title} ${formatLongDate(cell.date)}.`);
+    } catch (err) {
+      setError(readErrorMessage(err, 'Không xóa được chỗ trống.'));
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cell-dialog-title">
@@ -75,7 +104,13 @@ export default function ShiftCellDialog({
           {coverage && <span className="chip">{coverage}</span>}
         </div>
 
-        {!canAdd && (
+        {pastDay && (
+          <div className="alert alert--info">
+            Ngày đã qua — không thêm người vào ca nữa. Chỗ trống của ngày này chỉ còn xóa được.
+          </div>
+        )}
+
+        {!templateUsable && !pastDay && (
           <div className="alert alert--info">
             {template && !template.active ? 'Mẫu này đã tắt' : 'Mẫu này không thuộc bộ mẫu chi nhánh đang dùng'} — không
             xếp thêm ca mới theo mẫu này; các ca bên dưới vẫn sửa, gỡ người hoặc xóa được.
@@ -102,11 +137,15 @@ export default function ShiftCellDialog({
                 shift={shift}
                 person={shift.staffId ? peopleById.get(shift.staffId) : null}
                 showTime={!template}
+                busy={busy}
                 onEdit={onEdit}
+                onDelete={setDeleting}
               />
             ))}
           </ul>
         )}
+
+        <BlockedAlert message={error} title="Không xóa được chỗ trống" />
 
         <div className="modal__actions modal__actions--split">
           {canAdd ? (
@@ -116,18 +155,32 @@ export default function ShiftCellDialog({
           ) : (
             <span />
           )}
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
+          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>
             Đóng
           </button>
         </div>
       </div>
+
+      {deleting && (
+        <ConfirmDialog
+          title="Xóa chỗ trống này?"
+          message={`Chỗ trống của ${title} ${formatLongDate(cell.date)} bị xóa khỏi lịch. Cần thêm người cho ca thì bấm «+ Thêm người vào ca».`}
+          confirmLabel="Xóa chỗ trống"
+          onCancel={() => setDeleting(null)}
+          onConfirm={confirmDelete}
+        />
+      )}
     </div>
   );
 }
 
-/** Một người (hoặc một chỗ trống) trong ca, kèm nút mở hộp thoại sửa đúng ca đó. */
-function ShiftRow({ shift, person, showTime, onEdit }) {
+/**
+ * Một người (hoặc một chỗ trống) trong ca, kèm nút mở hộp thoại sửa đúng ca đó. Chỗ trống có thêm nút «Xóa»; chỗ
+ * trống đã hết giờ không giao được ai nữa nên chỉ còn «Xóa».
+ */
+function ShiftRow({ shift, person, showTime, busy, onEdit, onDelete }) {
   const open = !shift.staffId;
+  const ended = open && shiftHasEnded(shift);
   const name = open ? 'Chỗ trống' : (person?.fullName ?? 'Nhân viên không còn ở khách sạn này');
   const details = [
     showTime ? `${timeRange(shift.startTime, shift.endTime)}${shift.overnight ? ' (qua đêm)' : ''}` : null,
@@ -137,6 +190,7 @@ function ShiftRow({ shift, person, showTime, onEdit }) {
     ['ABSENT', 'MISSED_CHECK_OUT', 'ON_LEAVE'].includes(shift.attendanceStatus)
       ? ATTENDANCE_LABELS[shift.attendanceStatus] : null,
     open && shift.unassignedReason ? UNASSIGNED_REASON_LABEL[shift.unassignedReason] : null,
+    ended ? 'Ca đã qua' : null,
   ].filter(Boolean);
 
   return (
@@ -149,9 +203,18 @@ function ShiftRow({ shift, person, showTime, onEdit }) {
         {person && <small>{personSubtitle(person)}</small>}
         {details.length > 0 && <small>{details.join(' · ')}</small>}
       </span>
-      <button type="button" className="btn btn--ghost btn--sm" onClick={() => onEdit(shift)}>
-        {open ? 'Giao người' : 'Sửa / gỡ'}
-      </button>
+      <span className="cell-dialog__actions">
+        {!ended && (
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => onEdit(shift)} disabled={busy}>
+            {open ? 'Giao người' : 'Sửa / gỡ'}
+          </button>
+        )}
+        {open && (
+          <button type="button" className="btn btn--danger-ghost btn--sm" onClick={() => onDelete(shift)} disabled={busy}>
+            Xóa
+          </button>
+        )}
+      </span>
     </li>
   );
 }

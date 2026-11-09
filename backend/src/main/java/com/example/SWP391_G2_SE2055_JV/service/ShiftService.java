@@ -27,10 +27,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -137,6 +137,7 @@ public class ShiftService {
             request.getEndTime(), tenantId, location);
         Shift shift = newShift(tenantId, request.getLocationId(), request.getShiftDate(), hours,
             request.getStaffId());
+        assertNotInPast(shift, "Không xếp được ca đã kết thúc");
 
         if (request.getStaffId() != null) {
             assertStaffBelongsToLocation(request.getStaffId(), tenantId, request.getLocationId());
@@ -178,6 +179,9 @@ public class ShiftService {
 
         ShiftHours hours = resolveHours(request.getSourceTemplateId(), request.getStartTime(),
             request.getEndTime(), tenantId, location);
+        // Mọi người cùng một khung giờ: ca đã kết thúc thì chặn cả lượt, kể cả chỗ trống.
+        assertNotInPast(newShift(tenantId, locationId, request.getShiftDate(), hours, null),
+            "Không xếp được ca đã kết thúc");
         // Kiểm tra CẢ CA trước từng người: thiếu lễ tân thì chọn lại danh sách, chưa cần xem ai vi phạm gì.
         receptionCoverage.assertCoveredAfterAdding(locationId, request.getShiftDate(), hours.templateId(), staffIds);
 
@@ -280,6 +284,12 @@ public class ShiftService {
         // Giờ ca đổi thì độ dài và cờ qua đêm phải tính lại trước khi validate (BR-SCH-03).
         shift.setOvernight(ShiftTimeUtils.isOvernight(shift.getStartTime(), shift.getEndTime()));
         shift.setDurationHours(ShiftTimeUtils.durationHours(shift.getStartTime(), shift.getEndTime()));
+        boolean timeChanged = !oldDate.equals(shift.getShiftDate()) || !oldStart.equals(shift.getStartTime())
+            || !oldEnd.equals(shift.getEndTime());
+        if (timeChanged) {
+            // Dời ca (kể cả chỗ trống) vào giờ đã qua thì không ai làm được nữa.
+            assertNotInPast(shift, "Không dời ca sang giờ đã kết thúc");
+        }
 
         if (changingCrew) {
             receptionCoverage.assertCoveredAfterAdding(shift.getLocationId(), shift.getShiftDate(),
@@ -289,8 +299,7 @@ public class ShiftService {
 
         // Đổi ca (chốt phương án a): ca đổi ngày giờ thì yêu cầu đổi ca đang chờ của nó không còn đúng
         // thứ hai người đã thỏa thuận — tự hủy.
-        if (!oldDate.equals(shift.getShiftDate()) || !oldStart.equals(shift.getStartTime())
-                || !oldEnd.equals(shift.getEndTime())) {
+        if (timeChanged) {
             shiftSwapService.expirePendingForShift(id);
         }
 
@@ -308,6 +317,7 @@ public class ShiftService {
             throw new BusinessException(
                 "Ca đã có người phụ trách. Gỡ người hiện tại trước khi gán người mới.");
         }
+        assertNotInPast(shift, "Không giao người cho ca đã kết thúc");
         assertStaffBelongsToLocation(staffId, shift.getTenantId(), shift.getLocationId());
         receptionCoverage.assertCoveredAfterAdding(shift.getLocationId(), shift.getShiftDate(),
             shift.getSourceTemplateId(), List.of(staffId));
@@ -360,14 +370,14 @@ public class ShiftService {
         if (shift.isCheckedIn()) {
             throw new BusinessException("Không xóa được ca đã check-in — sẽ mất dữ liệu chấm công.");
         }
-        // Khóa ngoại của yêu cầu đổi ca giữ lịch sử — muốn bỏ ca thì gỡ người thay vì xóa.
-        shiftSwapService.assertNoSwapRequests(id);
         if (shift.isAssigned()) {
             // Chỗ trống đã qua thì xóa được: không ai làm nên không có chấm công.
             assertNotEnded(shift, "xóa được");
             housekeepingService.assertCanLeaveShiftDay(shift.getStaffId(), shift.getShiftDate(), shift.getId());
             receptionCoverage.assertStillCoveredAfterRemoving(shift);
         }
+        // Yêu cầu đổi ca cũ có dính tới ca này giữ làm lịch sử, chỉ gỡ liên kết ca (V22); yêu cầu đang chờ thì tự hủy.
+        shiftSwapService.detachShift(id);
         // Ca không có cột xóa mềm: BR-ROOM-09/DM-17 chỉ yêu cầu lưu vết cho phòng,
         // còn một slot ca chưa ai làm thì không còn giá trị lịch sử nào.
         shiftRepository.delete(shift);
@@ -429,6 +439,23 @@ public class ShiftService {
         String timezone = locationRepository.findById(shift.getLocationId()).map(Location::getTimezone).orElse(null);
         if (AttendanceRules.hasEnded(shift, ShiftTimeUtils.nowAt(timezone))) {
             throw new BusinessException("Không " + action + " ca đã kết thúc — ca đã qua là dữ liệu chấm công.");
+        }
+    }
+
+    private static final DateTimeFormatter DAY_MONTH = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final DateTimeFormatter CLOCK = DateTimeFormatter.ofPattern("HH:mm");
+    
+    /**
+     * Không xếp, giao người hay dời ca thành ca ĐÃ KẾT THÚC (chốt 09/11/2026): giao ca cho giờ đã qua thì người đó
+     * không thể có giờ vào / ra ca và chấm công tính là Vắng. Ca đang diễn ra vẫn được — gọi người thay giữa ca, vào
+     * muộn thì chấm công tự đánh dấu đi muộn. Giờ "bây giờ" theo múi giờ khách sạn, như {@link #assertNotEnded}.
+     */
+    private void assertNotInPast(Shift shift, String reason) {
+        String timezone = locationRepository.findById(shift.getLocationId()).map(Location::getTimezone).orElse(null);
+        if (AttendanceRules.hasEnded(shift, ShiftTimeUtils.nowAt(timezone))) {
+            throw new BusinessException(String.format("%s (%s %s–%s) — chỉ xếp ca từ giờ trở đi.", reason,
+                shift.getShiftDate().format(DAY_MONTH), shift.getStartTime().format(CLOCK),
+                shift.getEndTime().format(CLOCK)));
         }
     }
 

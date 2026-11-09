@@ -5,6 +5,7 @@ import com.example.SWP391_G2_SE2055_JV.enums.SwapRequestStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -33,8 +34,18 @@ public interface ShiftSwapRequestRepository extends JpaRepository<ShiftSwapReque
     List<ShiftSwapRequest> findByShiftAndStatusIn(@Param("shiftId") UUID shiftId,
                                                   @Param("statuses") Collection<SwapRequestStatus> statuses);
 
-    /** Ca đã từng có yêu cầu đổi ca nào chưa, mọi trạng thái — khóa ngoại chặn xóa những ca này. */
-    boolean existsByRequesterShiftIdOrPeerShiftId(UUID requesterShiftId, UUID peerShiftId);
+    /**
+     * Ca sắp bị xóa: gỡ liên kết ca ở mọi yêu cầu có dính tới nó, phía người gửi (V22). Khóa ngoại vẫn RESTRICT nên
+     * phải gọi trước khi xóa ca. Gọi sau khi yêu cầu đang chờ của ca đã tự hủy.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE ShiftSwapRequest r SET r.requesterShiftId = null WHERE r.requesterShiftId = :shiftId")
+    int detachRequesterShift(@Param("shiftId") UUID shiftId);
+
+    /** Như {@link #detachRequesterShift}, phía đồng nghiệp. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE ShiftSwapRequest r SET r.peerShiftId = null WHERE r.peerShiftId = :shiftId")
+    int detachPeerShift(@Param("shiftId") UUID shiftId);
 
     Page<ShiftSwapRequest> findByTenantIdAndRequesterIdAndStatusIn(
         UUID tenantId, UUID requesterId, Collection<SwapRequestStatus> statuses, Pageable pageable);

@@ -368,15 +368,20 @@ public class ShiftSwapService {
     }
 
     /**
-     * Ca đã từng có yêu cầu đổi ca thì không xóa được: khóa ngoại {@code fk_swap_*_shift} giữ lịch sử
-     * yêu cầu, và Manager vẫn có cách khác là gỡ người (khi đó yêu cầu đang chờ tự hủy).
+     * Ca sắp bị xóa (chốt 09/11/2026 — trước đây ca từng có yêu cầu đổi ca không xóa được, chỗ trống nằm mãi trên
+     * lịch): yêu cầu đang chờ của ca tự hủy, rồi mọi yêu cầu có dính tới ca được gỡ liên kết (ca → NULL, V22). Yêu cầu
+     * vẫn còn làm lịch sử, giao diện ghi «Ca không còn». Gọi trong transaction của thao tác xóa ca, ngay trước khi xóa.
+     *
+     * @return số yêu cầu đã gỡ liên kết
      */
-    @Transactional(readOnly = true)
-    public void assertNoSwapRequests(UUID shiftId) {
-        if (swapRepository.existsByRequesterShiftIdOrPeerShiftId(shiftId, shiftId)) {
-            throw new BusinessException(
-                "Ca này đã có yêu cầu đổi ca nên không xóa được, để giữ lịch sử. Hãy gỡ người khỏi ca thay vì xóa.");
+    @Transactional
+    public int detachShift(UUID shiftId) {
+        expirePendingForShift(shiftId);
+        int detached = swapRepository.detachRequesterShift(shiftId) + swapRepository.detachPeerShift(shiftId);
+        if (detached > 0) {
+            log.info("Ca {} bị xóa — gỡ liên kết ca ở {} yêu cầu đổi ca (giữ làm lịch sử)", shiftId, detached);
         }
+        return detached;
     }
 
     /**
@@ -393,6 +398,7 @@ public class ShiftSwapService {
         }
         Set<UUID> shiftIds = pending.stream()
             .flatMap(r -> Stream.of(r.getRequesterShiftId(), r.getPeerShiftId()))
+            .filter(Objects::nonNull)
             .collect(Collectors.toSet());
         Map<UUID, Shift> shifts = shiftRepository.findAllById(shiftIds).stream()
             .collect(Collectors.toMap(Shift::getId, Function.identity()));
@@ -573,8 +579,13 @@ public class ShiftSwapService {
             if (r.getApproverId() != null) {
                 userIds.add(r.getApproverId());
             }
-            shiftIds.add(r.getRequesterShiftId());
-            shiftIds.add(r.getPeerShiftId());
+            // Ca đã bị xóa thì id là NULL (V22) — không đưa vào truy vấn.
+            if (r.getRequesterShiftId() != null) {
+                shiftIds.add(r.getRequesterShiftId());
+            }
+            if (r.getPeerShiftId() != null) {
+                shiftIds.add(r.getPeerShiftId());
+            }
         }
         Map<UUID, User> users = userRepository.findAllById(userIds).stream()
             .collect(Collectors.toMap(User::getId, Function.identity()));

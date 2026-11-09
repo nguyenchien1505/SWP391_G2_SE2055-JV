@@ -99,6 +99,18 @@ export function formatHours(hours) {
   return `${String(Math.round(value * 100) / 100).replace('.', ',')} giờ`;
 }
 
+/**
+ * Ca đã hết giờ chưa, theo giờ máy (người dùng ở Việt Nam) — cùng cách tính AttendanceRules.hasEnded: ca qua đêm
+ * kết thúc hôm sau. Dùng cho chỗ trống, vì backend chỉ trả cờ `ended` cho ca có người; backend vẫn chặn thật.
+ */
+export function shiftHasEnded(shift, now = new Date()) {
+  const end = parseIsoDate(shift.shiftDate);
+  const [hours, minutes] = hhmm(shift.endTime).split(':').map(Number);
+  end.setHours(hours, minutes, 0, 0);
+  if (isOvernight(shift.startTime, shift.endTime)) end.setDate(end.getDate() + 1);
+  return end <= now;
+}
+
 /** "22:00 – 06:00" */
 export function timeRange(start, end) {
   return `${hhmm(start)} – ${hhmm(end)}`;

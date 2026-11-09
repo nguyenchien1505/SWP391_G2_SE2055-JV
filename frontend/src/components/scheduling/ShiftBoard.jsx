@@ -100,7 +100,8 @@ export default function ShiftBoard({ days, today, templates, templatesById, shif
                           onClick={() => onOpenCell({ date: day, templateId })}
                         />
                       )}
-                      {list.length === 0 && !legacy && (
+                      {/* Ngày đã qua không giao ca mới (chốt 09/11/2026) — backend cũng chặn. */}
+                      {list.length === 0 && !legacy && day >= today && (
                         <button
                           type="button"
                           className="cell-add"
