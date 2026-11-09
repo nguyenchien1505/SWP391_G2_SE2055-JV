@@ -117,13 +117,32 @@ class ShiftSwapRequestRepositoryTest {
             .containsExactly(binhAsRequester.getId());
     }
 
-    /** Chặn xóa ca: tính cả yêu cầu đã đóng, vì khóa ngoại giữ lịch sử. */
+    /** V22: gỡ liên kết ca ở yêu cầu cũ thì xóa được ca; yêu cầu vẫn còn làm lịch sử, phía ca đó để trống. */
     @Test
-    void shouldTellWhetherShiftHasAnySwapHistory() {
+    void shouldKeepRequestAsHistoryWhenItsShiftIsDeleted() {
+        ShiftSwapRequest cancelled = repository.saveAndFlush(
+            request(an, shiftOfAn, binh, shiftOfBinh, SwapRequestStatus.CANCELLED));
+
+        int detached = repository.detachRequesterShift(shiftOfBinh) + repository.detachPeerShift(shiftOfBinh);
+        shiftRepository.deleteById(shiftOfBinh);
+        shiftRepository.flush();
+
+        assertThat(detached).isEqualTo(1);
+        assertThat(shiftRepository.findById(shiftOfBinh)).isEmpty();
+        ShiftSwapRequest kept = repository.findById(cancelled.getId()).orElseThrow();
+        assertThat(kept.getRequesterShiftId()).isEqualTo(shiftOfAn);
+        assertThat(kept.getPeerShiftId()).isNull();
+    }
+
+    /** Khóa ngoại vẫn RESTRICT: quên gỡ liên kết thì DB chặn xóa ca — lưới an toàn. */
+    @Test
+    void shouldStillRefuseDeletingShiftThatIsStillReferenced() {
         repository.saveAndFlush(request(an, shiftOfAn, binh, shiftOfBinh, SwapRequestStatus.CANCELLED));
 
-        assertThat(repository.existsByRequesterShiftIdOrPeerShiftId(shiftOfBinh, shiftOfBinh)).isTrue();
-        assertThat(repository.existsByRequesterShiftIdOrPeerShiftId(shiftOfCuong, shiftOfCuong)).isFalse();
+        assertThatThrownBy(() -> {
+            shiftRepository.deleteById(shiftOfBinh);
+            shiftRepository.flush();
+        }).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     /** Duyệt đổi ca khóa ghi 2 ca (SELECT … FOR UPDATE) — chỉ trả ca của đúng Tenant. */

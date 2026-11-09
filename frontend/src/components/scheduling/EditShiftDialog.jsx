@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { readErrorMessage } from '../../api/client';
 import { assignShift, deleteShift, unassignShift, updateShift } from '../../api/scheduling';
 import ConfirmDialog from '../ConfirmDialog';
-import { formatDateTime } from '../../pages/rooms/format';
+import { formatDateTime, todayIso } from '../../pages/rooms/format';
 import {
   UNASSIGNED_REASON_LABEL,
   formatDayMonth,
   formatHours,
   formatLongDate,
+  shiftHasEnded,
   hhmm,
   timeRange,
 } from '../../pages/scheduling/scheduleFormat';
@@ -53,6 +54,8 @@ export default function EditShiftDialog({
   // nên khóa như ca đã check-in. `ended` do backend tính theo giờ khách sạn, không tự suy từ tình trạng.
   const ended = Boolean(shift.staffId) && shift.ended === true;
   const locked = checkedIn || ended;
+  // Chỗ trống đã hết giờ: không giao được ai nữa (chốt 09/11/2026) — chỉ dời sang ngày khác hoặc xóa.
+  const openEnded = !shift.staffId && shiftHasEnded(shift);
   const assignee = shift.staffId ? peopleById.get(shift.staffId) : null;
   const template = shift.sourceTemplateId ? templatesById.get(shift.sourceTemplateId) : null;
 
@@ -189,6 +192,8 @@ export default function EditShiftDialog({
                     {busy === 'unassign' ? 'Đang gỡ…' : 'Gỡ người khỏi ca'}
                   </button>
                 </div>
+              ) : openEnded ? (
+                <p className="muted">Ca đã qua — không giao người được nữa. Dời sang ngày khác hoặc xóa chỗ trống này.</p>
               ) : (
                 <>
                   <div className="dialog-inline">
@@ -226,7 +231,7 @@ export default function EditShiftDialog({
               <h3 id="shift-time-title">Đổi ngày giờ</h3>
               <label className="field" htmlFor="shift-edit-date">
                 <span className="field__label">Ngày bắt đầu ca</span>
-                <input id="shift-edit-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                <input id="shift-edit-date" type="date" value={date} min={todayIso()} onChange={(e) => setDate(e.target.value)} />
                 <DateHelp date={date} />
               </label>
               <ShiftTimeFields idPrefix="edit" templates={templates} value={time} onChange={setTime} date={date} />

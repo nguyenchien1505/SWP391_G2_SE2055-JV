@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readErrorMessage } from '../../api/client';
 import { createShifts } from '../../api/scheduling';
+import { todayIso } from '../../pages/rooms/format';
 import { durationHours, formatHours, formatLongDate, hhmm, timeRange } from '../../pages/scheduling/scheduleFormat';
 import {
   PERMISSION_FILTERS,
@@ -182,7 +183,7 @@ export default function CreateShiftsDialog({
             id="assign-date"
             type="date"
             value={date}
-            min={days[0]}
+            min={days[0] > todayIso() ? days[0] : todayIso()}
             max={days[6]}
             onChange={(e) => setDate(e.target.value)}
             required

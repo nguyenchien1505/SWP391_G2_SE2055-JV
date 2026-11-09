@@ -189,8 +189,7 @@ export default function SchedulePage() {
   }
 
   /** Tải lại lịch TRƯỚC khi báo thành công, để lưới (và ô đang xem) đã đúng khi người dùng đọc thông báo. */
-  async function handleSaved(text) {
-    const back = dialog?.returnTo;
+  async function handleSaved(text, back = dialog?.returnTo) {
     setDialog(null);
     await loadShifts();
     setBanner({ type: 'success', text });
@@ -199,6 +198,8 @@ export default function SchedulePage() {
 
   /** Nút "+ Giao ca" trên đầu trang: mặc định hôm nay nếu đang xem tuần này, không thì Thứ Hai. */
   const defaultDate = days.includes(today) ? today : days[0];
+  // Cả tuần đang xem đã qua: không giao ca mới (chốt 09/11/2026) — backend cũng chặn.
+  const weekIsPast = days[6] < today;
 
   // ── Hiển thị ───────────────────────────────────────────────────────────────
 
@@ -218,7 +219,8 @@ export default function SchedulePage() {
             type="button"
             className="btn btn--primary"
             onClick={() => openCreate({ date: defaultDate })}
-            disabled={!lookups}
+            disabled={!lookups || weekIsPast}
+            title={weekIsPast ? 'Tuần này đã qua — không giao ca mới cho ngày đã qua' : undefined}
           >
             + Giao ca
           </button>
@@ -340,12 +342,14 @@ export default function SchedulePage() {
       {dialog?.kind === 'cell' && lookups && (
         <ShiftCellDialog
           cell={dialog.cell}
+          today={today}
           templates={activeTemplates}
           templatesById={templatesById}
           shifts={shifts}
           peopleById={peopleById}
           onEdit={(shift) => setDialog({ kind: 'edit', shift, returnTo: dialog.cell })}
           onAdd={() => openCreate(initialFor(dialog.cell), dialog.cell)}
+          onDeleted={(text) => handleSaved(text, dialog.cell)}
           onClose={() => setDialog(null)}
         />
       )}

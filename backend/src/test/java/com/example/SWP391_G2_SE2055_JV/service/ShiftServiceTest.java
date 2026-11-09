@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -57,6 +58,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -901,17 +903,29 @@ class ShiftServiceTest {
             verify(shiftRepository, never()).delete(any());
         }
 
-        /** Khóa ngoại của yêu cầu đổi ca giữ lịch sử: ca đã có yêu cầu thì chỉ gỡ người, không xóa. */
+        /** Ca từng có yêu cầu đổi ca vẫn xóa được: gỡ liên kết ca ở các yêu cầu cũ (giữ lịch sử) rồi mới xóa (V22). */
         @Test
-        void shouldNotDeleteShiftThatHasSwapRequests() {
-            givenOwnedShift(assignedShift());
-            doThrow(new BusinessException("Ca này đã có yêu cầu đổi ca nên không xóa được"))
-                .when(shiftSwapService).assertNoSwapRequests(SHIFT_ID);
+        void shouldDetachSwapRequestsBeforeDeleting() {
+            Shift shift = unassignedShift();
+            givenOwnedShift(shift);
 
-            assertThatThrownBy(() -> service.deleteShift(SHIFT_ID))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("yêu cầu đổi ca");
-            verify(shiftRepository, never()).delete(any());
+            service.deleteShift(SHIFT_ID);
+
+            InOrder order = inOrder(shiftSwapService, shiftRepository);
+            order.verify(shiftSwapService).detachShift(SHIFT_ID);
+            order.verify(shiftRepository).delete(shift);
+        }
+
+        /** Chỗ trống đã qua không giao được ai nữa — chỉ còn cách xóa, nên phải xóa được. */
+        @Test
+        void shouldDeleteEndedOpenSlot() {
+            Shift shift = unassignedShift();
+            shift.setShiftDate(ShiftTimeUtils.todayInHanoi().minusDays(1));
+            givenOwnedShift(shift);
+
+            service.deleteShift(SHIFT_ID);
+
+            verify(shiftRepository).delete(shift);
         }
 
         /** Ca chưa có người thì xóa không làm ai mất ngày làm việc. */
@@ -1107,6 +1121,113 @@ class ShiftServiceTest {
             request.setStaffIds(staffIds);
             request.setOpenSlots(0);
             return request;
+        }
+    }
+
+    // ── Ca đã kết thúc: không xếp / giao / dời vào quá khứ (chốt 09/11/2026) ──
+
+    @Nested
+    class PastShifts {
+
+        private final LocalDate yesterday = ShiftTimeUtils.todayInHanoi().minusDays(1);
+
+        @BeforeEach
+        void loginAsManager() {
+            TestAuth.loginAsManager(TENANT_ID, LOCATION_ID);
+        }
+
+        /** Giao ca cho giờ đã qua thì người đó không thể vào / ra ca — chấm công sẽ tính Vắng oan. */
+        @Test
+        void shouldRejectCreatingShiftThatAlreadyEnded() {
+            givenLocationInTenant();
+            CreateShiftRequest request = request(STAFF_ID, null, "06:00", "14:00");
+            request.setShiftDate(yesterday);
+
+            assertThatThrownBy(() -> service.createShift(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Không xếp được ca đã kết thúc")
+                .hasMessageContaining("06:00–14:00");
+            verify(shiftRepository, never()).save(any());
+            verifyNoInteractions(policyValidator);
+        }
+
+        /** Cả lượt giao nhiều người lẫn chỗ trống: ca đã kết thúc thì chặn cả lượt, không lưu gì. */
+        @Test
+        void shouldRejectBatchForShiftThatAlreadyEnded() {
+            givenLocationInTenant();
+            CreateShiftBatchRequest request = new CreateShiftBatchRequest();
+            request.setLocationId(LOCATION_ID);
+            request.setShiftDate(yesterday);
+            request.setStartTime(LocalTime.of(6, 0));
+            request.setEndTime(LocalTime.of(14, 0));
+            request.setStaffIds(List.of(STAFF_ID));
+            request.setOpenSlots(1);
+
+            assertThatThrownBy(() -> service.createShifts(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Không xếp được ca đã kết thúc");
+            verify(shiftRepository, never()).saveAll(any());
+            verifyNoInteractions(policyValidator);
+        }
+
+        @Test
+        void shouldRejectAssigningEndedOpenSlot() {
+            Shift shift = unassignedShift();
+            shift.setShiftDate(yesterday);
+            givenOwnedShift(shift);
+
+            assertThatThrownBy(() -> service.assignStaff(SHIFT_ID, STAFF_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Không giao người cho ca đã kết thúc");
+            assertThat(shift.getStaffId()).isNull();
+            verifyNoInteractions(policyValidator);
+        }
+
+        /**
+         * Ca đang diễn ra vẫn giao được — gọi người thay giữa ca, vào muộn thì chấm công tự đánh dấu đi muộn. Ca
+         * 00:00–00:00 của hôm nay (24 giờ, kết thúc 0 giờ mai) luôn đang diễn ra dù test chạy lúc nào trong ngày.
+         */
+        @Test
+        void shouldAssignShiftThatIsStillGoingOn() {
+            Shift shift = unassignedShift();
+            shift.setShiftDate(ShiftTimeUtils.todayInHanoi());
+            shift.setStartTime(LocalTime.MIDNIGHT);
+            shift.setEndTime(LocalTime.MIDNIGHT);
+            shift.setOvernight(true);
+            givenOwnedShift(shift);
+            givenStaff(activeStaff());
+            givenSaveReturnsArgument();
+
+            service.assignStaff(SHIFT_ID, STAFF_ID);
+
+            assertThat(shift.getStaffId()).isEqualTo(STAFF_ID);
+        }
+
+        @Test
+        void shouldRejectMovingShiftIntoThePast() {
+            givenOwnedShift(unassignedShift());
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setShiftDate(yesterday);
+
+            assertThatThrownBy(() -> service.updateShift(SHIFT_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Không dời ca sang giờ đã kết thúc");
+            verify(shiftRepository, never()).save(any());
+        }
+
+        /** Chỗ trống đã qua dời sang tương lai thì lại dùng được. */
+        @Test
+        void shouldMoveEndedOpenSlotIntoTheFuture() {
+            Shift shift = unassignedShift();
+            shift.setShiftDate(yesterday);
+            givenOwnedShift(shift);
+            givenSaveReturnsArgument();
+            UpdateShiftRequest request = new UpdateShiftRequest();
+            request.setShiftDate(MONDAY);
+
+            service.updateShift(SHIFT_ID, request);
+
+            assertThat(shift.getShiftDate()).isEqualTo(MONDAY);
         }
     }
 

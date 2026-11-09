@@ -46,14 +46,16 @@ public class ShiftSwapRequest extends AuditableEntity {
     @Column(name = "requester_id", length = 36, nullable = false)
     private UUID requesterId;
 
-    @Column(name = "requester_shift_id", length = 36, nullable = false)
+    /** NULL khi ca đã bị xóa sau khi yêu cầu khép lại — yêu cầu giữ làm lịch sử (V22). */
+    @Column(name = "requester_shift_id", length = 36)
     private UUID requesterShiftId;
 
     /** Phải cùng ĐÚNG MỘT Position với người gửi — BR-SCH-12. */
     @Column(name = "peer_id", length = 36, nullable = false)
     private UUID peerId;
 
-    @Column(name = "peer_shift_id", length = 36, nullable = false)
+    /** NULL khi ca đã bị xóa sau khi yêu cầu khép lại — yêu cầu giữ làm lịch sử (V22). */
+    @Column(name = "peer_shift_id", length = 36)
     private UUID peerShiftId;
 
     @Enumerated(EnumType.STRING)

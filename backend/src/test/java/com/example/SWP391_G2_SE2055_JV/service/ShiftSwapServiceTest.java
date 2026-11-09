@@ -26,9 +26,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
@@ -46,6 +49,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -416,13 +420,44 @@ class ShiftSwapServiceTest {
             assertThat(request.getStatus()).isEqualTo(SwapRequestStatus.EXPIRED);
         }
 
+        /** Xóa ca (V22): yêu cầu đang chờ của ca tự hủy trước, rồi mọi yêu cầu cũ được gỡ liên kết ca — giữ làm lịch sử. */
         @Test
-        void shouldRefuseDeletingShiftWithSwapHistory() {
-            when(swapRepository.existsByRequesterShiftIdOrPeerShiftId(SHIFT_A_ID, SHIFT_A_ID)).thenReturn(true);
+        void shouldExpirePendingThenDetachShiftBeforeDeletion() {
+            ShiftSwapRequest request = pending(SwapRequestStatus.PENDING_MANAGER);
+            when(swapRepository.findByShiftAndStatusIn(SHIFT_A_ID, SwapRequestStatus.PENDING_STATUSES))
+                .thenReturn(List.of(request));
+            when(swapRepository.detachRequesterShift(SHIFT_A_ID)).thenReturn(2);
+            when(swapRepository.detachPeerShift(SHIFT_A_ID)).thenReturn(1);
 
-            assertThatThrownBy(() -> service.assertNoSwapRequests(SHIFT_A_ID))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("gỡ người");
+            assertThat(service.detachShift(SHIFT_A_ID)).isEqualTo(3);
+
+            assertThat(request.getStatus()).isEqualTo(SwapRequestStatus.EXPIRED);
+            InOrder order = inOrder(swapRepository);
+            order.verify(swapRepository).saveAll(List.of(request));
+            order.verify(swapRepository).detachRequesterShift(SHIFT_A_ID);
+            order.verify(swapRepository).detachPeerShift(SHIFT_A_ID);
+        }
+
+        /** Ca đã bị xóa (id NULL): danh sách vẫn trả yêu cầu, phía ca đó để trống — giao diện ghi «Ca không còn». */
+        @Test
+        @SuppressWarnings("unchecked")
+        void shouldListRequestWhoseShiftWasDeleted() {
+            TestAuth.loginAs(A_ID, Role.STAFF, TENANT_ID, LOCATION_ID, PositionType.RECEPTION);
+            ShiftSwapRequest old = pending(SwapRequestStatus.APPROVED);
+            old.setRequesterShiftId(null);
+            when(swapRepository.findByTenantIdAndRequesterIdAndStatusIn(eq(TENANT_ID), eq(A_ID), anyCollection(),
+                    any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(old)));
+            when(userRepository.findAllById(any())).thenReturn(List.of(staffA, staffB));
+            when(shiftRepository.findAllById(any())).thenReturn(List.of(shiftB));
+
+            Page<ShiftSwapRequestResponse> page = service.list(ShiftSwapService.Box.SENT, null, Pageable.unpaged());
+
+            ArgumentCaptor<Iterable<UUID>> queried = ArgumentCaptor.forClass(Iterable.class);
+            verify(shiftRepository).findAllById(queried.capture());
+            assertThat(queried.getValue()).doesNotContainNull().containsExactly(SHIFT_B_ID);
+            assertThat(page.getContent().get(0).getRequester().getShift()).isNull();
+            assertThat(page.getContent().get(0).getPeer().getShift().getId()).isEqualTo(SHIFT_B_ID);
         }
     }
 
