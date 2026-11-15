@@ -44,7 +44,7 @@ export const AreaManagementScreen = ({ userRole, canReport = false }) => {
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('create'); // 'create' | 'edit'
+  const [modalMode, setModalMode] = useState('create'); // 'create' | 'edit'    
   const [selectedArea, setSelectedArea] = useState(null);
   const [areaName, setAreaName] = useState('');
 
@@ -304,9 +304,9 @@ export const AreaManagementScreen = ({ userRole, canReport = false }) => {
     locationName: isDirector ? locationNameOf(detailArea) : null,
     onReportAsset: canReport
       ? (asset) => {
-          setReportNotice(null);
-          setReportingAsset(asset);
-        }
+        setReportNotice(null);
+        setReportingAsset(asset);
+      }
       : undefined,
     reportNotice: reportNotice?.areaId === detailArea.id ? reportNotice.text : null,
     onDismissReportNotice: () => setReportNotice(null),
@@ -411,7 +411,7 @@ export const AreaManagementScreen = ({ userRole, canReport = false }) => {
               isRowSelected={(item) => item.id === selectedId}
               minWidthClass="min-w-[480px]"
               emptyMessage={searchTerm ? 'Không có khu vực nào khớp từ khóa.' : 'Chưa có khu vực nào.'}
-            />
+            />/
           </div>
 
           {wide && (detailArea ? (

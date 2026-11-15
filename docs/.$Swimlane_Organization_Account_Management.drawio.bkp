@@ -1,0 +1,532 @@
+<mxfile host="Electron" agent="Claude Code">
+  <diagram id="swimlane-org-accounts" name="Organization &amp; Account Management">
+    <mxGraphModel dx="1371" dy="701" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1760" pageHeight="2420" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="lane_dir" parent="1" style="swimlane;html=1;startSize=40;horizontal=1;collapsible=0;fillColor=#FFFFFF;swimlaneFillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontStyle=1;fontSize=14;" value="Director" vertex="1">
+          <mxGeometry height="2400" width="480" as="geometry" />
+        </mxCell>
+        <mxCell id="start" parent="lane_dir" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Start" vertex="1">
+          <mxGeometry height="50" width="50" x="345" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p_createLoc" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Create Location" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="165" as="geometry" />
+        </mxCell>
+        <mxCell id="p_upgrade" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Upgrade Plan" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="275" as="geometry" />
+        </mxCell>
+        <mxCell id="n_upgrade" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Renew / Upgrade Plan flow (Subscription)." vertex="1">
+          <mxGeometry height="22" width="240" x="30" y="289" as="geometry" />
+        </mxCell>
+        <mxCell id="p_createDept" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Create Department" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="495" as="geometry" />
+        </mxCell>
+        <mxCell id="p_createPos" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Create Position" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="615" as="geometry" />
+        </mxCell>
+        <mxCell id="n_createDept" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Tenant-wide catalog shared by all hotels. Name unique in the tenant." vertex="1">
+          <mxGeometry height="33" width="240" x="30" y="504" as="geometry" />
+        </mxCell>
+        <mxCell id="n_createPos" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Belongs to one active Department. Type: Reception / Housekeeping / Supervision / Other – pre-ticks the staff permissions. Name unique in the tenant." vertex="1">
+          <mxGeometry height="45" width="240" x="30" y="618" as="geometry" />
+        </mxCell>
+        <mxCell id="p_createMgr" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Create Manager" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="735" as="geometry" />
+        </mxCell>
+        <mxCell id="p_assignHotel" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Assign Hotel" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="855" as="geometry" />
+        </mxCell>
+        <mxCell id="n_createMgr" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Full profile, no Position. Hotel optional: blank = reserve Manager. One Manager per hotel. Email unique system-wide." vertex="1">
+          <mxGeometry height="45" width="240" x="30" y="738" as="geometry" />
+        </mxCell>
+        <mxCell id="n_assignHotel" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Active reserve Manager only; the hotel must have no Manager." vertex="1">
+          <mxGeometry height="33" width="240" x="30" y="864" as="geometry" />
+        </mxCell>
+        <mxCell id="p_reviewOrg" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Review Hotels &amp; Catalog" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="1525" as="geometry" />
+        </mxCell>
+        <mxCell id="d_orgAction" parent="lane_dir" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Action Needed?" vertex="1">
+          <mxGeometry height="90" width="150" x="295" y="1625" as="geometry" />
+        </mxCell>
+        <mxCell id="p_editOrg" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Edit Hotel / Catalog" vertex="1">
+          <mxGeometry height="50" width="150" x="95" y="1645" as="geometry" />
+        </mxCell>
+        <mxCell id="end_editOrg" parent="lane_dir" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="End" vertex="1">
+          <mxGeometry height="50" width="50" x="15" y="1645" as="geometry" />
+        </mxCell>
+        <mxCell id="n_reviewOrg" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Hide / show a Department or Position instead of deleting it: hidden items can&#39;t be picked, hiding a Department hides its Positions." vertex="1">
+          <mxGeometry height="45" width="260" x="20" y="1528" as="geometry" />
+        </mxCell>
+        <mxCell id="n_editOrg" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Location: all info (max 3 stars). Department / Position: name, Position type (pre-ticks new staff only)." vertex="1">
+          <mxGeometry height="33" width="265" x="20" y="1702" as="geometry" />
+        </mxCell>
+        <mxCell id="p_reviewMgr" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Review Managers" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="1765" as="geometry" />
+        </mxCell>
+        <mxCell id="d_mgrAction" parent="lane_dir" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Action Needed?" vertex="1">
+          <mxGeometry height="90" width="150" x="295" y="1875" as="geometry" />
+        </mxCell>
+        <mxCell id="p_editMgr" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Edit Manager" vertex="1">
+          <mxGeometry height="50" width="150" x="95" y="1895" as="geometry" />
+        </mxCell>
+        <mxCell id="p_lockMgr" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Lock / Unlock Manager" vertex="1">
+          <mxGeometry height="50" width="150" x="95" y="2015" as="geometry" />
+        </mxCell>
+        <mxCell id="p_resetMgr" parent="lane_dir" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Reset Password" vertex="1">
+          <mxGeometry height="50" width="150" x="95" y="2135" as="geometry" />
+        </mxCell>
+        <mxCell id="n_reviewMgr" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="The Director manages Manager accounts only; Staff accounts are view-only." vertex="1">
+          <mxGeometry height="33" width="245" x="20" y="1774" as="geometry" />
+        </mxCell>
+        <mxCell id="n_editMgr" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Email can&#39;t change. A new start date re-checks the hotel status." vertex="1">
+          <mxGeometry height="33" width="235" x="85" y="1952" as="geometry" />
+        </mxCell>
+        <mxCell id="n_lockMgr" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Locked user is logged out at once and can&#39;t log in. The hotel keeps a locked Manager." vertex="1">
+          <mxGeometry height="33" width="235" x="85" y="2072" as="geometry" />
+        </mxCell>
+        <mxCell id="n_resetMgr" parent="lane_dir" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="New temp password shown once; must be changed at next login." vertex="1">
+          <mxGeometry height="33" width="235" x="85" y="2192" as="geometry" />
+        </mxCell>
+        <mxCell id="lane_sys" parent="1" style="swimlane;html=1;startSize=40;horizontal=1;collapsible=0;fillColor=#FFFFFF;swimlaneFillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontStyle=1;fontSize=14;" value="System" vertex="1">
+          <mxGeometry height="2400" width="500" x="480" as="geometry" />
+        </mxCell>
+        <mxCell id="d_hotelQuota" parent="lane_sys" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Within Hotel Quota?" vertex="1">
+          <mxGeometry height="80" width="140" x="70" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="p_saveLoc" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Save Location" vertex="1">
+          <mxGeometry height="50" width="150" x="65" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="n_hotelQuota" parent="lane_sys" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Hotels allowed by the current plan. A pending or prepaid invoice with fewer hotels also caps it." vertex="1">
+          <mxGeometry height="33" width="255" x="225" y="284" as="geometry" />
+        </mxCell>
+        <mxCell id="n_saveLoc" parent="lane_sys" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Status: Not Operational until its Manager reaches the start date." vertex="1">
+          <mxGeometry height="33" width="255" x="225" y="394" as="geometry" />
+        </mxCell>
+        <mxCell id="p_saveDept" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Save Department" vertex="1">
+          <mxGeometry height="50" width="150" x="65" y="495" as="geometry" />
+        </mxCell>
+        <mxCell id="p_savePos" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Save Position" vertex="1">
+          <mxGeometry height="50" width="150" x="65" y="615" as="geometry" />
+        </mxCell>
+        <mxCell id="p_issueMgr" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Issue Manager Account" vertex="1">
+          <mxGeometry height="50" width="150" x="65" y="735" as="geometry" />
+        </mxCell>
+        <mxCell id="d_hotelAssigned" parent="lane_sys" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Hotel Assigned?" vertex="1">
+          <mxGeometry height="80" width="140" x="70" y="840" as="geometry" />
+        </mxCell>
+        <mxCell id="p_checkStart" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Check Start Date" vertex="1">
+          <mxGeometry height="50" width="150" x="65" y="965" as="geometry" />
+        </mxCell>
+        <mxCell id="d_startReached" parent="lane_sys" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Start Date Reached?" vertex="1">
+          <mxGeometry height="80" width="140" x="70" y="1060" as="geometry" />
+        </mxCell>
+        <mxCell id="p_setOperational" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Set Hotel Operational" vertex="1">
+          <mxGeometry height="50" width="150" x="65" y="1185" as="geometry" />
+        </mxCell>
+        <mxCell id="n_checkStart" parent="lane_sys" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Runs when a Manager is assigned or the start date is edited, and hourly (hotel time zone)." vertex="1">
+          <mxGeometry height="33" width="230" x="255" y="974" as="geometry" />
+        </mxCell>
+        <mxCell id="n_setOperational" parent="lane_sys" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Location status: Operational. Moving the start date later turns it back to Not Operational." vertex="1">
+          <mxGeometry height="33" width="255" x="225" y="1194" as="geometry" />
+        </mxCell>
+        <mxCell id="d_staffQuota" parent="lane_sys" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Within Staff Quota?" vertex="1">
+          <mxGeometry height="80" width="140" x="300" y="1280" as="geometry" />
+        </mxCell>
+        <mxCell id="end_staffQuota" parent="lane_sys" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="End" vertex="1">
+          <mxGeometry height="50" width="50" x="115" y="1295" as="geometry" />
+        </mxCell>
+        <mxCell id="p_issueStaff" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Issue Staff Account" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="1405" as="geometry" />
+        </mxCell>
+        <mxCell id="n_staffQuota" parent="lane_sys" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Staff quota of the plan (pending / prepaid invoice included). Terminated staff, the Director and Managers are not counted." vertex="1">
+          <mxGeometry height="45" width="265" x="15" y="1352" as="geometry" />
+        </mxCell>
+        <mxCell id="d_inUse" parent="lane_sys" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Still In Use?" vertex="1">
+          <mxGeometry height="80" width="140" x="70" y="1630" as="geometry" />
+        </mxCell>
+        <mxCell id="p_deleteItem" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Delete Item" vertex="1">
+          <mxGeometry height="50" width="150" x="65" y="1765" as="geometry" />
+        </mxCell>
+        <mxCell id="end_org" parent="lane_sys" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="End" vertex="1">
+          <mxGeometry height="50" width="50" x="345" y="1765" as="geometry" />
+        </mxCell>
+        <mxCell id="n_inUse" parent="lane_sys" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Location: has staff (incl. terminated), active rooms or areas. Department: has Positions. Position: held by staff (incl. terminated)." vertex="1">
+          <mxGeometry height="45" width="260" x="225" y="1610" as="geometry" />
+        </mxCell>
+        <mxCell id="d_runsHotel" parent="lane_sys" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Runs a Hotel?" vertex="1">
+          <mxGeometry height="80" width="140" x="70" y="1880" as="geometry" />
+        </mxCell>
+        <mxCell id="p_handover" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Hand Over Hotel" vertex="1">
+          <mxGeometry height="50" width="150" x="65" y="2015" as="geometry" />
+        </mxCell>
+        <mxCell id="p_terminate" parent="lane_sys" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Terminate Account" vertex="1">
+          <mxGeometry height="50" width="150" x="295" y="2135" as="geometry" />
+        </mxCell>
+        <mxCell id="end_sys" parent="lane_sys" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="End" vertex="1">
+          <mxGeometry height="50" width="50" x="345" y="2310" as="geometry" />
+        </mxCell>
+        <mxCell id="n_runsHotel" parent="lane_sys" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Yes: the Director picks an active reserve Manager or creates a new Manager to take over the hotel." vertex="1">
+          <mxGeometry height="33" width="260" x="225" y="1872" as="geometry" />
+        </mxCell>
+        <mxCell id="n_handover" parent="lane_sys" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Same step as the termination. Hotel status follows the new Manager&#39;s start date." vertex="1">
+          <mxGeometry height="56" width="135" x="223" y="2012" as="geometry" />
+        </mxCell>
+        <mxCell id="n_terminate" parent="lane_sys" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Soft delete: status Terminated, history kept, future shifts &amp; housekeeping tasks unassigned. Permanent delete only if no data was ever recorded (frees the email)." vertex="1">
+          <mxGeometry height="45" width="270" x="15" y="2190" as="geometry" />
+        </mxCell>
+        <mxCell id="lane_mgr" parent="1" style="swimlane;html=1;startSize=40;horizontal=1;collapsible=0;fillColor=#FFFFFF;swimlaneFillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontStyle=1;fontSize=14;" value="Manager" vertex="1">
+          <mxGeometry height="2400" width="500" x="980" as="geometry" />
+        </mxCell>
+        <mxCell id="p_mgrLogin" parent="lane_mgr" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Log In &amp;&lt;br&gt;Change Password" vertex="1">
+          <mxGeometry height="50" width="150" x="55" y="735" as="geometry" />
+        </mxCell>
+        <mxCell id="p_updateContact" parent="lane_mgr" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Update Hotel Contact" vertex="1">
+          <mxGeometry height="50" width="150" x="275" y="965" as="geometry" />
+        </mxCell>
+        <mxCell id="end_contact" parent="lane_mgr" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="End" vertex="1">
+          <mxGeometry height="50" width="50" x="325" y="1080" as="geometry" />
+        </mxCell>
+        <mxCell id="n_mgrLogin" parent="lane_mgr" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Temp password shown once to the Director (also e-mailed if mail is on); must be changed at first login. A reserve Manager only sees a waiting screen until a hotel is assigned." vertex="1">
+          <mxGeometry height="33" width="470" x="15" y="687" as="geometry" />
+        </mxCell>
+        <mxCell id="n_updateContact" parent="lane_mgr" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Address &amp; phone of own hotel only." vertex="1">
+          <mxGeometry height="33" width="120" x="142" y="974" as="geometry" />
+        </mxCell>
+        <mxCell id="p_createStaff" parent="lane_mgr" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Create Staff" vertex="1">
+          <mxGeometry height="50" width="150" x="55" y="1295" as="geometry" />
+        </mxCell>
+        <mxCell id="n_createStaff" parent="lane_mgr" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Own hotel only. Full profile + active Position (Department follows it). Permissions pre-ticked by Position type; the Manager can adjust them." vertex="1">
+          <mxGeometry height="45" width="275" x="215" y="1298" as="geometry" />
+        </mxCell>
+        <mxCell id="p_reviewStaff" parent="lane_mgr" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Review Staff" vertex="1">
+          <mxGeometry height="50" width="150" x="55" y="1825" as="geometry" />
+        </mxCell>
+        <mxCell id="d_staffAction" parent="lane_mgr" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=11;" value="Action Needed?" vertex="1">
+          <mxGeometry height="90" width="150" x="55" y="1930" as="geometry" />
+        </mxCell>
+        <mxCell id="p_editStaff" parent="lane_mgr" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Edit Staff" vertex="1">
+          <mxGeometry height="50" width="150" x="275" y="1950" as="geometry" />
+        </mxCell>
+        <mxCell id="p_lockStaff" parent="lane_mgr" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Lock / Unlock Staff" vertex="1">
+          <mxGeometry height="50" width="150" x="275" y="2070" as="geometry" />
+        </mxCell>
+        <mxCell id="p_resetStaff" parent="lane_mgr" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Reset Password" vertex="1">
+          <mxGeometry height="50" width="150" x="275" y="2190" as="geometry" />
+        </mxCell>
+        <mxCell id="n_reviewStaff" parent="lane_mgr" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Own hotel only. Manager accounts are handled by the Director." vertex="1">
+          <mxGeometry height="33" width="270" x="215" y="1834" as="geometry" />
+        </mxCell>
+        <mxCell id="n_editStaff" parent="lane_mgr" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Profile, Position, permissions; email can&#39;t change. Housekeeping stays while a cleaning task is in progress." vertex="1">
+          <mxGeometry height="45" width="248" x="182" y="2005" as="geometry" />
+        </mxCell>
+        <mxCell id="n_lockStaff" parent="lane_mgr" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Locked staff is logged out at once and can&#39;t log in." vertex="1">
+          <mxGeometry height="22" width="248" x="182" y="2127" as="geometry" />
+        </mxCell>
+        <mxCell id="n_resetStaff" parent="lane_mgr" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Shown once to the Manager. A staff &quot;forgot password&quot; request is e-mailed to the Manager when mail is on." vertex="1">
+          <mxGeometry height="33" width="248" x="182" y="2245" as="geometry" />
+        </mxCell>
+        <mxCell id="lane_stf" parent="1" style="swimlane;html=1;startSize=40;horizontal=1;collapsible=0;fillColor=#FFFFFF;swimlaneFillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontStyle=1;fontSize=14;" value="Staff" vertex="1">
+          <mxGeometry height="2400" width="260" x="1480" as="geometry" />
+        </mxCell>
+        <mxCell id="p_staffLogin" parent="lane_stf" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;" value="Log In &amp;&lt;br&gt;Change Password" vertex="1">
+          <mxGeometry height="50" width="150" x="55" y="1405" as="geometry" />
+        </mxCell>
+        <mxCell id="n_staffLogin" parent="lane_stf" style="shape=note;whiteSpace=wrap;html=1;size=10;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=9;align=left;verticalAlign=top;spacingLeft=4;spacingRight=12;spacingTop=1;" value="Temp password shown once to the Manager (also e-mailed if mail is on); must be changed at first login and after every reset." vertex="1">
+          <mxGeometry height="45" width="240" x="10" y="1345" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="start" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_createLoc" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="p_createLoc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="d_hotelQuota" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="190" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="d_hotelQuota" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="p_upgrade" value="No">
+          <mxGeometry relative="1" x="-0.4" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="p_upgrade" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="p_createLoc" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="d_hotelQuota" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_saveLoc" value="Yes">
+          <mxGeometry relative="1" x="-0.4" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="p_saveLoc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_createDept" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="370" y="410" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="p_createDept" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_saveDept" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="p_saveDept" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_createPos" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="580" />
+              <mxPoint x="370" y="580" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="p_createPos" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_savePos" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="p_savePos" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_createMgr" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="700" />
+              <mxPoint x="370" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="p_createMgr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_issueMgr" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="p_issueMgr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_mgrLogin" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="p_issueMgr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="d_hotelAssigned" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="d_hotelAssigned" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="p_assignHotel" value="No">
+          <mxGeometry relative="1" x="-0.4" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="d_hotelAssigned" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_checkStart" value="Yes">
+          <mxGeometry relative="1" x="-0.4" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="p_assignHotel" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_checkStart" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="370" y="990" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" edge="1" parent="1" source="p_checkStart" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="d_startReached" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e18" edge="1" parent="1" source="d_startReached" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="p_checkStart" value="No">
+          <mxGeometry relative="1" x="-0.6" as="geometry">
+            <Array as="points">
+              <mxPoint x="720" y="1100" />
+              <mxPoint x="720" y="990" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e19" edge="1" parent="1" source="d_startReached" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_setOperational" value="Yes">
+          <mxGeometry relative="1" x="-0.4" as="geometry" />
+        </mxCell>
+        <mxCell id="e20" edge="1" parent="1" source="p_mgrLogin" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_updateContact" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1330" y="760" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e21" edge="1" parent="1" source="p_updateContact" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="end_contact" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e22" edge="1" parent="1" source="p_mgrLogin" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_createStaff" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e23" edge="1" parent="1" source="p_createStaff" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="d_staffQuota" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e24" edge="1" parent="1" source="d_staffQuota" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="end_staffQuota" value="No">
+          <mxGeometry relative="1" x="-0.3" as="geometry" />
+        </mxCell>
+        <mxCell id="e25" edge="1" parent="1" source="d_staffQuota" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_issueStaff" value="Yes">
+          <mxGeometry relative="1" x="-0.4" as="geometry" />
+        </mxCell>
+        <mxCell id="e26" edge="1" parent="1" source="p_issueStaff" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_staffLogin" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e27" edge="1" parent="1" source="p_setOperational" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_reviewOrg" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="370" y="1210" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e28" edge="1" parent="1" source="p_reviewOrg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="d_orgAction" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e29" edge="1" parent="1" source="d_orgAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="p_editOrg" value="Edit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e30" edge="1" parent="1" source="p_editOrg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="end_editOrg" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e31" edge="1" parent="1" source="d_orgAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="d_inUse" value="Delete">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e32" edge="1" parent="1" source="d_inUse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="end_org" value="Yes (blocked)">
+          <mxGeometry relative="1" x="-0.5" as="geometry">
+            <Array as="points">
+              <mxPoint x="850" y="1670" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e33" edge="1" parent="1" source="d_inUse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_deleteItem" value="No">
+          <mxGeometry relative="1" x="-0.4" as="geometry" />
+        </mxCell>
+        <mxCell id="e34" edge="1" parent="1" source="p_deleteItem" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="end_org" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e35" edge="1" parent="1" source="d_orgAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_reviewMgr" value="No">
+          <mxGeometry relative="1" x="-0.2" as="geometry" />
+        </mxCell>
+        <mxCell id="e36" edge="1" parent="1" source="p_reviewMgr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="d_mgrAction" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e37" edge="1" parent="1" source="d_mgrAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="p_editMgr" value="Edit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e38" edge="1" parent="1" source="d_mgrAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.25;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="p_lockMgr" value="Lock / Unlock">
+          <mxGeometry relative="1" x="-0.2" as="geometry">
+            <Array as="points">
+              <mxPoint x="332.5" y="2040" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e39" edge="1" parent="1" source="d_mgrAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="p_resetMgr" value="Reset">
+          <mxGeometry relative="1" x="-0.2" as="geometry">
+            <Array as="points">
+              <mxPoint x="370" y="2160" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e40" edge="1" parent="1" source="d_mgrAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="d_runsHotel" value="Terminate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e41" edge="1" parent="1" source="d_mgrAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.75;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0;entryDx=0;entryDy=0;" target="end_sys" value="No">
+          <mxGeometry relative="1" x="-0.8224" as="geometry">
+            <Array as="points">
+              <mxPoint x="407.5" y="2317.3" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e42" edge="1" parent="1" source="p_editMgr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;" target="end_sys" value="">
+          <mxGeometry relative="1" x="-0.5527" as="geometry">
+            <Array as="points">
+              <mxPoint x="25" y="1920" />
+              <mxPoint x="25" y="2352.7" />
+            </Array>
+            <mxPoint x="150" y="2310" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e43" edge="1" parent="1" source="p_lockMgr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.037;entryY=0.705;entryDx=0;entryDy=0;entryPerimeter=0;" target="end_sys" value="">
+          <mxGeometry relative="1" x="-0.643" as="geometry">
+            <Array as="points">
+              <mxPoint x="45" y="2040" />
+              <mxPoint x="45" y="2345.3" />
+            </Array>
+            <mxPoint x="830" y="2350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e44" edge="1" parent="1" source="p_resetMgr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="end_sys" value="">
+          <mxGeometry relative="1" x="-0.7554" as="geometry">
+            <Array as="points">
+              <mxPoint x="65" y="2160" />
+              <mxPoint x="65" y="2335" />
+            </Array>
+            <mxPoint x="150" y="2280" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e45" edge="1" parent="1" source="d_runsHotel" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_handover" value="Yes">
+          <mxGeometry relative="1" x="-0.4" as="geometry" />
+        </mxCell>
+        <mxCell id="e46" edge="1" parent="1" source="d_runsHotel" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_terminate" value="No">
+          <mxGeometry relative="1" x="-0.6" as="geometry">
+            <Array as="points">
+              <mxPoint x="850" y="1920" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e47" edge="1" parent="1" source="p_handover" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_terminate" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="2160" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e48" edge="1" parent="1" source="p_terminate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="end_sys" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e49" edge="1" parent="1" source="p_staffLogin" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_reviewStaff" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1610" y="1790" />
+              <mxPoint x="1110" y="1790" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e50" edge="1" parent="1" source="p_reviewStaff" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="d_staffAction" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e51" edge="1" parent="1" source="d_staffAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_editStaff" value="Edit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e52" edge="1" parent="1" source="d_staffAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.75;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_lockStaff" value="Lock / Unlock">
+          <mxGeometry relative="1" x="-0.2" as="geometry">
+            <Array as="points">
+              <mxPoint x="1147.5" y="2095" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e53" edge="1" parent="1" source="d_staffAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p_resetStaff" value="Reset">
+          <mxGeometry relative="1" x="-0.2" as="geometry">
+            <Array as="points">
+              <mxPoint x="1110" y="2215" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e54" edge="1" parent="1" source="d_staffAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="p_terminate" value="Terminate">
+          <mxGeometry relative="1" x="-0.75" as="geometry">
+            <Array as="points">
+              <mxPoint x="950" y="1975" />
+              <mxPoint x="950" y="2160" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e55" edge="1" parent="1" source="d_staffAction" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.25;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" target="end_sys" value="No">
+          <mxGeometry relative="1" x="-0.7293" as="geometry">
+            <Array as="points">
+              <mxPoint x="1072.5" y="2317.3" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e56" edge="1" parent="1" source="p_editStaff" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;" target="end_sys" value="">
+          <mxGeometry relative="1" x="-0.4686" as="geometry">
+            <Array as="points">
+              <mxPoint x="1465" y="1975" />
+              <mxPoint x="1465" y="2352.7" />
+            </Array>
+            <mxPoint x="1350" y="2350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e57" edge="1" parent="1" source="p_lockStaff" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.984;entryY=0.675;entryDx=0;entryDy=0;entryPerimeter=0;" target="end_sys" value="">
+          <mxGeometry relative="1" x="-0.5696" as="geometry">
+            <Array as="points">
+              <mxPoint x="1445" y="2095" />
+              <mxPoint x="1445" y="2343.8" />
+            </Array>
+            <mxPoint x="1355" y="2335" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e58" edge="1" parent="1" source="p_resetStaff" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;html=1;endArrow=classic;endFill=1;strokeColor=#000000;fontColor=#000000;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="end_sys" value="">
+          <mxGeometry relative="1" x="-0.7101" as="geometry">
+            <Array as="points">
+              <mxPoint x="1425" y="2215" />
+              <mxPoint x="1425" y="2335" />
+            </Array>
+            <mxPoint x="1350" y="2320" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

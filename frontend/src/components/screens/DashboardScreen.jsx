@@ -6,7 +6,7 @@ import { DamageReportModal } from '../modals/DamageReportModal';
 
 const pct = (part, total) => (total ? ((part / total) * 100).toFixed(1) : '0.0');
 
-/** Ô báo lỗi thay cho số liệu của một thẻ — không hiện số 0 như thể là dữ liệu thật. */
+/** Ô báo lỗi thay cho số liệu của một thẻ  */
 function SectionError({ message, onRetry }) {
   return (
     <div className="mt-4 p-3 rounded-xl bg-[#FFEBEE] border border-[#D32F2F]/30 text-xs text-[#D32F2F] space-y-2">

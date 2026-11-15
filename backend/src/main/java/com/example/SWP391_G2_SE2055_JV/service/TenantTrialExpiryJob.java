@@ -33,3 +33,6 @@ public class TenantTrialExpiryJob {
         log.info("Job hết hạn dùng thử: đã khóa {} Tenant", suspended);
     }
 }
+
+
+
