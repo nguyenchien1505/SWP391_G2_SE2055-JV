@@ -97,7 +97,6 @@ export default function LoginPage() {
       <div className="login-card">
         <header className="login-card__head">
           <Logo />
-          <span className="version-chip">v2.4.1</span>
         </header>
 
         <div className="login-card__body">
@@ -232,25 +231,13 @@ export default function LoginPage() {
             Doanh nghiệp chưa có tài khoản?{' '}
             <Link to="/dang-ky" className="link-button">Đăng ký dùng thử miễn phí</Link>
           </p>
-
-          <div className="support-box">
-            <span className="support-box__icon" aria-hidden="true">
-              ☎
-            </span>
-            <p>
-              Cần hỗ trợ truy cập? Liên hệ <b>Quản trị viên chi nhánh</b> hoặc hotline nội bộ:
-              <br />
-              <a href="tel:19006868">1900 6868</a>
-            </p>
-          </div>
         </div>
 
         <footer className="login-card__foot">
           <span className="dot dot--online" aria-hidden="true" />
           <span>Sao Mai Hospitality PMS &amp; Ops · Multi-Tenant</span>
           <span className="spacer" />
-          <span className="version-chip">v2.4.1 Production-VN</span>
-          <span>© 2025 Sao Mai Group</span>
+        
         </footer>
       </div>
     </div>
